@@ -5,9 +5,22 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'release']),
+  // Node/Electron ana süreç dosyaları (CommonJS)
+  {
+    files: ['launch-electron.js', 'electron/**/*.cjs'],
+    extends: [js.configs.recommended],
+    languageOptions: {
+      globals: globals.node,
+      sourceType: 'commonjs',
+    },
+    rules: {
+      'no-empty': ['error', { allowEmptyCatch: true }],
+    },
+  },
   {
     files: ['**/*.{js,jsx}'],
+    ignores: ['launch-electron.js', 'electron/**'],
     extends: [
       js.configs.recommended,
       reactHooks.configs.flat.recommended,
