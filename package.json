@@ -1,0 +1,83 @@
+{
+  "name": "hardsetups-launcher",
+  "private": true,
+  "version": "1.0.0-beta.4",
+  "main": "electron/main.cjs",
+  "author": "HardSetups",
+  "description": "HardSetups Minecraft Launcher",
+  "scripts": {
+    "dev": "concurrently \"vite\" \"cross-env NODE_ENV=development node launch-electron.js\"",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "electron": "electron .",
+    "dist": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win",
+    "dist:dir": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --dir"
+  },
+  "build": {
+    "appId": "com.hardsetups.launcher",
+    "productName": "HardSetups Launcher",
+    "directories": {
+      "output": "release"
+    },
+    "asar": true,
+    "electronFuses": {
+      "runAsNode": false
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "public",
+        "to": "public"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/logo.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "HardSetups Launcher",
+      "artifactName": "HardSetups-Launcher-Kurulum-${version}.${ext}"
+    }
+  },
+  "dependencies": {
+    "axios": "^1.13.2",
+    "framer-motion": "^12.23.26",
+    "lucide-react": "^0.562.0",
+    "minecraft-launcher-core": "^3.18.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react-swc": "^4.2.2",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "msmc": "^5.0.5",
+    "vite": "^7.2.4"
+  }
+}
