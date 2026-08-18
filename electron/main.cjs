@@ -220,6 +220,33 @@ function startApp() {
         }
     });
 
+    ipcMain.handle('mods:check-updates', async (_e, instanceId) => {
+        const instance = instances.get(instanceId);
+        if (!instance) throw new Error(`Profil bulunamadı: ${instanceId}`);
+        if (!instance.mcVersion) throw new Error('Önce profile bir Minecraft sürümü seçin');
+        try {
+            const result = await modrinth.checkUpdates({
+                modsDir: instances.getModsDir(instanceId),
+                mcVersion: instance.mcVersion,
+                loader: instance.loader,
+            });
+            return { ok: true, ...result };
+        } catch (err) {
+            log.error(`[MAIN] Güncelleme denetimi hatası: ${err.stack || err.message}`);
+            return { ok: false, error: friendlyError(err) };
+        }
+    });
+
+    ipcMain.handle('mods:apply-update', async (_e, instanceId, update) => {
+        try {
+            const file = await modrinth.applyUpdate(instances.getModsDir(instanceId), update || {});
+            return { ok: true, file };
+        } catch (err) {
+            log.error(`[MAIN] Mod güncelleme hatası: ${err.stack || err.message}`);
+            return { ok: false, error: friendlyError(err) };
+        }
+    });
+
     ipcMain.handle('mods:performance-preset', async (event, instanceId) => {
         const instance = instances.get(instanceId);
         if (!instance) throw new Error(`Profil bulunamadı: ${instanceId}`);

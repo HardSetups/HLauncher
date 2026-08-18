@@ -2,7 +2,8 @@
 // SHA-1 doğrulamalı kurulum. API anahtarı gerektirmez.
 const fs = require('fs');
 const path = require('path');
-const { httpGetJson } = require('./http.cjs');
+const crypto = require('crypto');
+const { httpGetJson, httpPostJson } = require('./http.cjs');
 const { downloadFile } = require('./download.cjs');
 const log = require('./logger.cjs');
 
@@ -146,4 +147,78 @@ async function installPerformancePreset({ modsDir, mcVersion, loader, onProgress
     return report;
 }
 
-module.exports = { search, pickVersion, installProject, listModFiles, removeModFile, installPerformancePreset, PERFORMANCE_MODS };
+// ─── Güncelleme denetimi ────────────────────────────────────────────────────
+
+function hashFileSha1(filePath) {
+    return crypto.createHash('sha1').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+/**
+ * Saf karşılaştırma: dosya hash'leri + mevcut/en yeni sürüm haritalarından
+ * güncelleme listesi üretir (test edilebilir olması için ayrık).
+ * @param {Array<{file:string, hash:string}>} fileHashes
+ * @param {Record<string, object>} currentByHash  hash → Modrinth version (dosyanın ait olduğu)
+ * @param {Record<string, object>} latestByHash   hash → Modrinth version (uyumlu en yeni)
+ */
+function computeUpdates(fileHashes, currentByHash, latestByHash) {
+    const updates = [];
+    let unknown = 0;
+    for (const { file, hash } of fileHashes) {
+        const current = currentByHash[hash];
+        if (!current) { unknown++; continue; } // Modrinth dışı / elle eklenmiş mod
+        const latest = latestByHash[hash];
+        if (!latest || latest.id === current.id) continue;
+        const newFile = latest.files?.find((f) => f.primary) || latest.files?.[0];
+        if (!newFile) continue;
+        updates.push({
+            oldFile: file,
+            projectId: latest.project_id,
+            currentVersion: current.version_number,
+            latestVersion: latest.version_number,
+            url: newFile.url,
+            filename: newFile.filename,
+            sha1: newFile.hashes?.sha1 || null,
+        });
+    }
+    return { updates, unknown };
+}
+
+/** Kurulu modları Modrinth'e hash ile sorup güncellemeleri bulur. */
+async function checkUpdates({ modsDir, mcVersion, loader }) {
+    const files = listModFiles(modsDir);
+    if (!files.length) return { checked: 0, updates: [], unknown: 0 };
+
+    const fileHashes = files.map((f) => ({ file: f.file, hash: hashFileSha1(path.join(modsDir, f.file)) }));
+    const hashes = fileHashes.map((f) => f.hash);
+
+    // Hangi dosya hangi Modrinth sürümü? (bilinmeyenler yanıtta yer almaz)
+    const currentByHash = await httpPostJson(`${API}/version_files`, { hashes, algorithm: 'sha1' });
+    // Aynı hash'ler için bu MC sürümü + loader ile uyumlu en yeni sürüm
+    const latestByHash = await httpPostJson(`${API}/version_files/update`, {
+        hashes,
+        algorithm: 'sha1',
+        loaders: loaderFacets(loader),
+        game_versions: [mcVersion],
+    });
+
+    const result = computeUpdates(fileHashes, currentByHash, latestByHash);
+    log.info(`[MODRINTH] Güncelleme denetimi: ${files.length} dosya, ${result.updates.length} güncelleme, ${result.unknown} bilinmeyen`);
+    return { checked: files.length, ...result };
+}
+
+/** Tek bir güncellemeyi uygular: yeni dosyayı indirir, eskisini kaldırır. */
+async function applyUpdate(modsDir, { oldFile, url, filename, sha1 }) {
+    const dest = path.join(modsDir, filename);
+    await downloadFile(url, dest, { sha1: sha1 || undefined });
+    if (oldFile && oldFile !== filename) {
+        try { removeModFile(modsDir, oldFile); } catch { /* eski dosya zaten yoksa geç */ }
+    }
+    log.info(`[MODRINTH] Güncellendi: ${oldFile} → ${filename}`);
+    return filename;
+}
+
+module.exports = {
+    search, pickVersion, installProject, listModFiles, removeModFile,
+    installPerformancePreset, PERFORMANCE_MODS,
+    checkUpdates, applyUpdate, computeUpdates, hashFileSha1,
+};

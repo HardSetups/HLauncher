@@ -69,4 +69,43 @@ async function httpGetJson(url, opts = {}) {
     catch { throw new Error(`Geçersiz JSON yanıtı: ${url}`); }
 }
 
-module.exports = { httpGetStream, httpGetText, httpGetJson, USER_AGENT };
+/** JSON gövdeli POST; JSON yanıt döndürür. */
+function httpPostJson(url, body, { timeout = DEFAULT_TIMEOUT } = {}) {
+    return new Promise((resolve, reject) => {
+        const payload = JSON.stringify(body);
+        const u = new URL(url);
+        const proto = u.protocol === 'https:' ? https : http;
+        const req = proto.request(u, {
+            method: 'POST',
+            headers: {
+                'User-Agent': USER_AGENT,
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payload),
+            },
+        }, (res) => {
+            if (res.statusCode !== 200) {
+                res.resume();
+                return reject(Object.assign(new Error(`HTTP ${res.statusCode}`), { statusCode: res.statusCode, url }));
+            }
+            let size = 0;
+            const chunks = [];
+            res.on('data', (c) => {
+                size += c.length;
+                if (size > MAX_TEXT_BYTES) { res.destroy(); return reject(new Error(`Yanıt çok büyük: ${url}`)); }
+                chunks.push(c);
+            });
+            res.on('end', () => {
+                try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
+                catch { reject(new Error(`Geçersiz JSON yanıtı: ${url}`)); }
+            });
+            res.on('error', reject);
+        });
+        req.setTimeout(timeout, () => {
+            req.destroy(Object.assign(new Error(`Zaman aşımı: ${url}`), { code: 'ETIMEDOUT' }));
+        });
+        req.on('error', reject);
+        req.end(payload);
+    });
+}
+
+module.exports = { httpGetStream, httpGetText, httpGetJson, httpPostJson, USER_AGENT };

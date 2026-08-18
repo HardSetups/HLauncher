@@ -167,6 +167,35 @@ test('slugify: türkçe/özel karakterler', () => {
     assert.strictEqual(instances.slugify('Mc Ornek: Sunucu!'), 'mc-ornek-sunucu');
 });
 
+// ─── modrinth.cjs (güncelleme denetimi) ─────────────────────────────────────
+const { computeUpdates, hashFileSha1 } = require('../electron/lib/modrinth.cjs');
+
+test('computeUpdates: yeni sürüm varsa güncelleme üretir', () => {
+    const fileHashes = [{ file: 'sodium-1.jar', hash: 'aaa' }, { file: 'elle-eklenen.jar', hash: 'bbb' }];
+    const current = { aaa: { id: 'v1', version_number: '1.0', project_id: 'p1' } };
+    const latest = { aaa: { id: 'v2', version_number: '2.0', project_id: 'p1', files: [{ primary: true, url: 'https://x/s2.jar', filename: 'sodium-2.jar', hashes: { sha1: 'ccc' } }] } };
+    const { updates, unknown } = computeUpdates(fileHashes, current, latest);
+    assert.strictEqual(unknown, 1); // elle eklenen mod bilinmeyen sayılır
+    assert.strictEqual(updates.length, 1);
+    assert.deepStrictEqual(updates[0], {
+        oldFile: 'sodium-1.jar', projectId: 'p1',
+        currentVersion: '1.0', latestVersion: '2.0',
+        url: 'https://x/s2.jar', filename: 'sodium-2.jar', sha1: 'ccc',
+    });
+});
+test('computeUpdates: aynı sürümse güncelleme yok', () => {
+    const fileHashes = [{ file: 'a.jar', hash: 'aaa' }];
+    const v = { id: 'v1', version_number: '1.0', files: [] };
+    const { updates } = computeUpdates(fileHashes, { aaa: v }, { aaa: v });
+    assert.strictEqual(updates.length, 0);
+});
+test('hashFileSha1: bilinen içerik için doğru özet', () => {
+    const f = path.join(tmpAppData, 'hash-test.txt');
+    fs.writeFileSync(f, 'hlauncher');
+    // echo -n hlauncher | sha1sum
+    assert.strictEqual(hashFileSha1(f), require('crypto').createHash('sha1').update('hlauncher').digest('hex'));
+});
+
 // ─── errors.cjs ─────────────────────────────────────────────────────────────
 const { friendlyError } = require('../electron/lib/errors.cjs');
 

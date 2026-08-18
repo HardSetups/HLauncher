@@ -50,6 +50,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     removeMod:        (instanceId, fileName) => ipcRenderer.invoke('mods:remove', instanceId, fileName),
     installMod:       (instanceId, projectId) => ipcRenderer.invoke('mods:install', { instanceId, projectId }),
     installPerformancePreset: (instanceId) => ipcRenderer.invoke('mods:performance-preset', instanceId),
+    checkModUpdates:  (instanceId) => ipcRenderer.invoke('mods:check-updates', instanceId),
+    applyModUpdate:   (instanceId, update) => ipcRenderer.invoke('mods:apply-update', instanceId, update),
     importMrpack:     () => ipcRenderer.invoke('mrpack:import'),
 
     // Sunucu manifesti / OptiFine manuel

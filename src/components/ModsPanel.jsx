@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Download, Trash2, Zap, Package, Loader2 } from 'lucide-react';
+import { Search, Download, Trash2, Zap, Package, Loader2, RefreshCw, ArrowUpCircle } from 'lucide-react';
 import { contrastText } from '../utils/color';
 import { useI18n } from '../i18n.jsx';
 
@@ -20,6 +20,9 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
   const [busyAction, setBusyAction] = useState(null); // 'perf' | 'mrpack'
   const [installedMods, setInstalledMods] = useState([]);
   const [progressMsg, setProgressMsg] = useState('');
+  const [updates, setUpdates] = useState(null); // null = denetlenmedi
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [updatingFile, setUpdatingFile] = useState(null); // dosya adı | 'all'
   const searchTimer = useRef(null);
 
   const canMod = instance && MODDED_LOADERS.includes(instance.loader);
@@ -100,7 +103,51 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
 
   const handleRemove = async (fileName) => {
     await window.electronAPI.removeMod(instance.id, fileName);
+    setUpdates((prev) => prev?.filter((u) => u.oldFile !== fileName) ?? null);
     refreshInstalled();
+  };
+
+  const handleCheckUpdates = async () => {
+    setCheckingUpdates(true);
+    try {
+      const res = await window.electronAPI.checkModUpdates(instance.id);
+      if (!res.ok) { onError(res.error); return; }
+      setUpdates(res.updates);
+      if (!res.updates.length) onNotice(t('mods.upToDate', { count: res.checked }));
+    } finally {
+      setCheckingUpdates(false);
+    }
+  };
+
+  const applyOneUpdate = async (update) => {
+    const res = await window.electronAPI.applyModUpdate(instance.id, update);
+    if (!res.ok) { onError(res.error); return false; }
+    setUpdates((prev) => prev?.filter((u) => u.oldFile !== update.oldFile) ?? null);
+    return true;
+  };
+
+  const handleUpdateOne = async (update) => {
+    setUpdatingFile(update.oldFile);
+    try {
+      if (await applyOneUpdate(update)) onNotice(t('mods.updated', { file: update.filename }));
+      refreshInstalled();
+    } finally {
+      setUpdatingFile(null);
+    }
+  };
+
+  const handleUpdateAll = async () => {
+    setUpdatingFile('all');
+    try {
+      let done = 0;
+      for (const update of updates || []) {
+        if (await applyOneUpdate(update)) done++;
+      }
+      refreshInstalled();
+      onNotice(t('mods.updatedAll', { count: done }));
+    } finally {
+      setUpdatingFile(null);
+    }
   };
 
   const numberFmt = new Intl.NumberFormat(lang === 'tr' ? 'tr-TR' : 'en-US');
@@ -210,9 +257,60 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
 
           {/* Kurulu modlar */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <h3 style={{ fontSize: '14px', fontWeight: '900', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px', marginBottom: '14px' }}>
-              {t('mods.installed', { count: installedMods.length })}
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+              <h3 style={{ fontSize: '14px', fontWeight: '900', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px' }}>
+                {t('mods.installed', { count: installedMods.length })}
+              </h3>
+              {installedMods.length > 0 && (
+                <button
+                  onClick={handleCheckUpdates}
+                  disabled={checkingUpdates || updatingFile !== null}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', padding: '7px 12px', borderRadius: '10px', fontWeight: '700', fontSize: '11px' }}
+                >
+                  {checkingUpdates ? <Loader2 size={13} className="spin" /> : <RefreshCw size={13} />}
+                  {checkingUpdates ? t('mods.checkingUpdates') : t('mods.checkUpdates')}
+                </button>
+              )}
+            </div>
+
+            {updates && updates.length > 0 && (
+              <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '14px', padding: '12px', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: '800', color: '#10b981' }}>
+                    {t('mods.updatesFound', { count: updates.length })}
+                  </span>
+                  {updates.length > 1 && (
+                    <button
+                      onClick={handleUpdateAll}
+                      disabled={updatingFile !== null}
+                      style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#10b981', color: '#04140d', padding: '6px 12px', borderRadius: '8px', fontWeight: '800', fontSize: '11px' }}
+                    >
+                      {updatingFile === 'all' ? <Loader2 size={12} className="spin" /> : <ArrowUpCircle size={12} />}
+                      {t('mods.updateAll')}
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {updates.map((u) => (
+                    <div key={u.oldFile} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ flex: 1, fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${u.oldFile} → ${u.filename}`}>
+                        {u.oldFile}
+                        <span style={{ color: 'rgba(255,255,255,0.4)' }}> {u.currentVersion} → </span>
+                        <span style={{ color: '#10b981', fontWeight: '700' }}>{u.latestVersion}</span>
+                      </span>
+                      <button
+                        onClick={() => handleUpdateOne(u)}
+                        disabled={updatingFile !== null}
+                        style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(16,185,129,0.2)', color: '#10b981', padding: '5px 10px', borderRadius: '8px', fontWeight: '700', fontSize: '11px', flexShrink: 0 }}
+                      >
+                        {updatingFile === u.oldFile ? <Loader2 size={12} className="spin" /> : <ArrowUpCircle size={12} />}
+                        {t('mods.update')}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px' }}>
               {installedMods.length === 0 && (
                 <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>{t('mods.empty')}</p>

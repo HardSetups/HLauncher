@@ -1,5 +1,9 @@
 # Değişiklik Günlüğü
 
+## 1.0.0-alpha.2 (hazırlanıyor)
+
+- **Mod güncelleme denetimi:** Modlar sekmesinde "Güncellemeleri Denetle" — kurulu jar'lar Modrinth'e hash ile sorulur, eski sürümler tek tek veya "Tümünü Güncelle" ile yenilenir (elle eklenen modlara dokunulmaz)
+
 ## 1.0.0-alpha.1 — HLauncher (2026-08)
 
 İlk HLauncher sürümü. HardSetups Launcher 1.0.0-beta.4 üzerine tam yeniden yapılanma.
