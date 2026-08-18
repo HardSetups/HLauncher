@@ -1,31 +1,31 @@
-# HLauncher (HardSetups Launcher)
+# HLauncher
 
-Oyuncu dostu ve sunucu dostu bir Minecraft launcher'ı. Electron + React + Vite ile geliştirilir; oyun başlatma çekirdeği `minecraft-launcher-core` üzerine kuruludur.
+Oyuncu dostu ve sunucu dostu Minecraft launcher'ı. Electron + React + Vite; oyun başlatma çekirdeği `minecraft-launcher-core`.
 
-> Proje şu an "HardSetups Launcher" markasıyla çalışıyor ve **HLauncher** olarak yeniden markalanma sürecinde. Tam plan için [ROADMAP.md](ROADMAP.md).
+## Özellikler
 
-## Özellikler (mevcut)
-
-- Release / OptiFine / Fabric başlatma — OptiFine ve Fabric otomatik indirilip kurulur
-- Mojang sürüm listesinden sürüm seçimi (son 3 yılın release'leri, 12 saat önbellek)
-- Sunucu listesi: ekle/kaldır, canlı durum (oyuncu sayısı, MOTD, ikon — mcstatus.io)
-- Tek tıkla sunucuya bağlanarak başlatma (Quick Play)
-- Java otomatik tespiti; yoksa Adoptium'dan Java 21 JRE otomatik indirme
-- RAM ayarı, tam ekran, özel Java yolu, tema rengi ve arka plan seçimi
-- Oyun açıkken launcher gizlenir, kapanınca geri gelir
+- **Profiller:** her profilin kendi sürümü, loader'ı, RAM'i ve mod klasörü
+- **Loader'lar:** Release, OptiFine, Fabric, Quilt, Forge, NeoForge (deneysel) — hepsi otomatik kurulur
+- **Tek tık mod kurulumu:** Modrinth araması, bağımlılıklar dahil; `.mrpack` modpack içe aktarma
+- **Performans Paketi:** Sodium + Lithium + FerriteCore + ImmediatelyFast + EntityCulling tek tıkla
+- **Sunucu dostu:** sunucu sahibi `hlauncher.json` yayınlar, oyuncu tek tıkla doğru sürüm + mod setiyle hazır — bkz. [docs/SERVER-MANIFEST.md](docs/SERVER-MANIFEST.md)
+- **Hesap:** Microsoft girişi (premium) veya çevrimdışı kullanıcı adı
+- Java otomatik yönetimi (sürüme göre 8/17/21, SHA doğrulamalı indirme)
+- Canlı sunucu durumu, favoriler, sunucu duyuruları; TR/EN arayüz; ilk açılış sihirbazı
+- JVM preset'leri, sistem belleğine göre RAM önerisi, otomatik güncelleme altyapısı
 
 ## Geliştirme
 
 ```bash
 npm install
-npm run dev        # Vite + Electron birlikte
+npm run dev        # Vite + Electron
+npm test           # birim testler
 npm run lint       # ESLint
 npm run dist       # Windows NSIS kurulum paketi (release/)
-npm run dist:dir   # Paketleme (kurulumsuz, hızlı test)
 ```
 
-Önemli: geliştirme makinesinde `ELECTRON_RUN_AS_NODE=1` sistem değişkeni tanımlı olduğundan Electron her zaman `launch-electron.js` sarmalayıcısı üzerinden başlatılır. Ayrıntılar ve diğer kritik notlar için [CLAUDE.md](CLAUDE.md).
+Geliştirme makinesi notu: `ELECTRON_RUN_AS_NODE=1` sistem değişkeni tanımlı olduğundan Electron her zaman `launch-electron.js` üzerinden başlatılır. Mimari ayrıntıları için [CLAUDE.md](CLAUDE.md), yol haritası ve yayın öncesi kontrol listesi için [ROADMAP.md](ROADMAP.md).
 
 ## Veri konumu
 
-Oyun dosyaları ve launcher verisi: `%APPDATA%\.hardsetups` (eski `.thehardcraft` klasörü ilk açılışta otomatik taşınır).
+`%APPDATA%\.hlauncher` — eski `.hardsetups` / `.thehardcraft` klasörleri ilk açılışta otomatik taşınır. Ayarlar `config.json`, profiller `instances.json`, loglar `logs/hlauncher.log`.

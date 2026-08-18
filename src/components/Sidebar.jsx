@@ -1,14 +1,18 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Home, Settings, User, Server, MessageCircle, Copy, Check } from 'lucide-react';
+import { Home, Settings, User, Server, Package, Layers, MessageCircle, Copy, Check } from 'lucide-react';
+import { useI18n } from '../i18n.jsx';
 
 const Sidebar = ({ activeTab, setActiveTab, accent = '#00f2ff', copyText = '' }) => {
+    const { t } = useI18n();
     const [copied, setCopied] = useState(false);
 
     const menuItems = [
-        { id: 'dashboard', icon: <Home size={20} />, label: 'Ana Sayfa' },
-        { id: 'servers', icon: <Server size={20} />, label: 'Sunucular' },
-        { id: 'settings', icon: <Settings size={20} />, label: 'Ayarlar' },
+        { id: 'dashboard', icon: <Home size={20} />, label: t('nav.home') },
+        { id: 'servers', icon: <Server size={20} />, label: t('nav.servers') },
+        { id: 'mods', icon: <Package size={20} />, label: t('nav.mods') },
+        { id: 'profiles', icon: <Layers size={20} />, label: t('nav.profiles') },
+        { id: 'settings', icon: <Settings size={20} />, label: t('nav.settings') },
     ];
 
     const openDiscord = () => {
@@ -30,11 +34,11 @@ const Sidebar = ({ activeTab, setActiveTab, accent = '#00f2ff', copyText = '' })
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            padding: '24px 0',
-            gap: '24px'
+            padding: '20px 0',
+            gap: '14px',
         }}>
-            <div className="logo" style={{ marginBottom: '16px' }}>
-                <img src="logo.png" alt="Logo" style={{ width: '56px', height: '56px', objectFit: 'contain' }} />
+            <div className="logo" style={{ marginBottom: '8px' }}>
+                <img src="logo.png" alt="Logo" style={{ width: '48px', height: '48px', objectFit: 'contain' }} />
             </div>
 
             {menuItems.map(item => (
@@ -44,17 +48,18 @@ const Sidebar = ({ activeTab, setActiveTab, accent = '#00f2ff', copyText = '' })
                     style={{
                         background: activeTab === item.id ? 'rgba(255,255,255,0.1)' : 'none',
                         color: activeTab === item.id ? accent : 'white',
-                        padding: '12px',
+                        padding: '10px',
                         borderRadius: '12px',
                         position: 'relative',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
-                        gap: '4px'
+                        gap: '4px',
+                        width: '64px',
                     }}
                 >
                     {item.icon}
-                    <span style={{ fontSize: '10px' }}>{item.label}</span>
+                    <span style={{ fontSize: '9px', fontWeight: '600' }}>{item.label}</span>
                     {activeTab === item.id && (
                         <motion.div
                             layoutId="sidebar-indicator"
@@ -72,10 +77,10 @@ const Sidebar = ({ activeTab, setActiveTab, accent = '#00f2ff', copyText = '' })
                 </button>
             ))}
 
-            <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <button
                     onClick={openDiscord}
-                    title="Discord'a Katıl"
+                    title="Discord"
                     style={{
                         background: 'rgba(88, 101, 242, 0.2)',
                         color: '#5865F2',
@@ -92,7 +97,7 @@ const Sidebar = ({ activeTab, setActiveTab, accent = '#00f2ff', copyText = '' })
                 <button
                     onClick={copyAddress}
                     disabled={!copyText}
-                    title={copyText ? `Adresi kopyala: ${copyText}` : 'Kopyalanacak adres yok'}
+                    title={copyText || ''}
                     style={{
                         background: copied ? 'rgba(16, 185, 129, 0.35)' : 'rgba(16, 185, 129, 0.2)',
                         color: '#10b981',
@@ -107,10 +112,11 @@ const Sidebar = ({ activeTab, setActiveTab, accent = '#00f2ff', copyText = '' })
                 </button>
 
                 <button
-                    onClick={() => setActiveTab('profile')}
+                    onClick={() => setActiveTab('account')}
+                    title={t('nav.account')}
                     style={{
-                        background: activeTab === 'profile' ? 'rgba(255,255,255,0.1)' : 'none',
-                        color: activeTab === 'profile' ? accent : 'white',
+                        background: activeTab === 'account' ? 'rgba(255,255,255,0.1)' : 'none',
+                        color: activeTab === 'account' ? accent : 'white',
                         padding: '12px',
                         borderRadius: '12px'
                     }}

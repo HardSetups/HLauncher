@@ -2,14 +2,19 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Search, Check } from 'lucide-react';
 import { contrastText } from '../utils/color';
+import { useI18n } from '../i18n.jsx';
 
 const LOADERS = [
   { id: 'release', label: 'Release' },
   { id: 'optifine', label: 'OptiFine' },
   { id: 'fabric', label: 'Fabric' },
+  { id: 'quilt', label: 'Quilt' },
+  { id: 'forge', label: 'Forge' },
+  { id: 'neoforge', label: 'NeoForge', experimental: true },
 ];
 
 function VersionPicker({ accent, loaderType, setLoaderType, versionManifest, versionManifestLoading, versionManifestError, selectedVersion, setSelectedVersion }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const rootRef = useRef(null);
@@ -32,24 +37,25 @@ function VersionPicker({ accent, loaderType, setLoaderType, versionManifest, ver
   const latestId = versionManifest[0]?.id;
 
   const dropdownLabel = versionManifestLoading
-    ? 'Sürümler yükleniyor...'
+    ? t('vp.loading')
     : versionManifestError
-      ? 'Sürüm listesi alınamadı'
-      : (selectedVersion || 'Sürüm seç');
+      ? t('vp.error')
+      : (selectedVersion || t('vp.select'));
 
   return (
     <div style={{ display: 'flex', gap: '12px', alignItems: 'stretch', flexWrap: 'wrap' }}>
 
       {/* Loader segmented control */}
-      <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '14px', padding: '4px', border: '1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '14px', padding: '4px', border: '1px solid rgba(255,255,255,0.08)', flexWrap: 'wrap' }}>
         {LOADERS.map((l) => (
           <button
             key={l.id}
             onClick={() => setLoaderType(l.id)}
+            title={l.experimental ? t('vp.experimental') : ''}
             style={{
               position: 'relative', background: 'none', border: 'none',
-              borderRadius: '10px', padding: '10px 18px',
-              fontWeight: '700', fontSize: '13px', cursor: 'pointer',
+              borderRadius: '10px', padding: '10px 14px',
+              fontWeight: '700', fontSize: '12px', cursor: 'pointer',
               color: loaderType === l.id ? contrastText(accent) : 'rgba(255,255,255,0.7)',
             }}
           >
@@ -60,7 +66,10 @@ function VersionPicker({ accent, loaderType, setLoaderType, versionManifest, ver
                 style={{ position: 'absolute', inset: 0, background: accent, borderRadius: '10px', zIndex: 0 }}
               />
             )}
-            <span style={{ position: 'relative', zIndex: 1 }}>{l.label}</span>
+            <span style={{ position: 'relative', zIndex: 1 }}>
+              {l.label}
+              {l.experimental && <sup style={{ fontSize: '8px', marginLeft: '2px' }}>β</sup>}
+            </span>
           </button>
         ))}
       </div>
@@ -81,7 +90,7 @@ function VersionPicker({ accent, loaderType, setLoaderType, versionManifest, ver
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {dropdownLabel}
             {selectedVersion && selectedVersion === latestId && (
-              <span style={{ fontSize: '10px', fontWeight: '800', background: `${accent}22`, color: accent, padding: '3px 8px', borderRadius: '10px', letterSpacing: '0.5px' }}>EN YENİ</span>
+              <span style={{ fontSize: '10px', fontWeight: '800', background: `${accent}22`, color: accent, padding: '3px 8px', borderRadius: '10px', letterSpacing: '0.5px' }}>{t('vp.latest')}</span>
             )}
           </span>
           <motion.span animate={{ rotate: open ? 180 : 0 }} style={{ display: 'flex' }}>
@@ -107,13 +116,13 @@ function VersionPicker({ accent, loaderType, setLoaderType, versionManifest, ver
                 <input
                   autoFocus
                   type="text" value={query} onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Sürüm ara (örn. 1.21)"
+                  placeholder={t('vp.search')}
                   style={{ flex: 1, background: 'none', border: 'none', color: '#fff', fontSize: '14px', outline: 'none' }}
                 />
               </div>
               <div style={{ maxHeight: '240px', overflowY: 'auto', padding: '6px' }}>
                 {filtered.length === 0 && (
-                  <p style={{ padding: '14px', fontSize: '13px', color: 'rgba(255,255,255,0.35)', textAlign: 'center' }}>Eşleşen sürüm yok</p>
+                  <p style={{ padding: '14px', fontSize: '13px', color: 'rgba(255,255,255,0.35)', textAlign: 'center' }}>{t('vp.none')}</p>
                 )}
                 {filtered.map((v) => (
                   <button
@@ -130,7 +139,7 @@ function VersionPicker({ accent, loaderType, setLoaderType, versionManifest, ver
                     <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       {v.id}
                       {v.id === latestId && (
-                        <span style={{ fontSize: '9px', fontWeight: '800', background: `${accent}22`, color: accent, padding: '2px 6px', borderRadius: '8px' }}>EN YENİ</span>
+                        <span style={{ fontSize: '9px', fontWeight: '800', background: `${accent}22`, color: accent, padding: '2px 6px', borderRadius: '8px' }}>{t('vp.latest')}</span>
                       )}
                     </span>
                     {selectedVersion === v.id && <Check size={15} />}

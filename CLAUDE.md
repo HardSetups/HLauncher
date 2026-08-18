@@ -2,61 +2,54 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Direction
+## Project
 
-The launcher is being evolved into **HLauncher** — a player-friendly, server-friendly Minecraft launcher (easy mod install, performance presets, server-published mod manifests). See `ROADMAP.md` for the full plan and current phase. Current branding in code is still "HardSetups Launcher".
+**HLauncher** (1.0.0-alpha.x) — player-friendly, server-friendly Minecraft launcher. Electron + React/Vite, launch core on `minecraft-launcher-core` (MCLC). UI language is Turkish-first with full TR/EN i18n. See `ROADMAP.md` for status and pre-release checklist, `CHANGELOG.md` for history.
 
 ## Commands
 
 ```bash
-npm run dev          # Start Vite dev server + Electron (concurrently)
+npm run dev          # Vite + Electron (wait-on gates Electron until Vite is up)
 npm run build        # Build frontend with Vite
-npm run dist         # Build frontend + package Windows .exe installer
-npm run dist:dir     # Build + package into directory (no installer, faster)
-npm run lint         # ESLint
+npm test             # Unit tests (tests/unit.test.cjs, plain node+assert)
+npm run lint         # ESLint (browser rules for src/, node rules for electron/)
+npm run dist         # Build + NSIS Windows x64 installer → release/
+npm run dist:dir     # Build + unpacked dir (faster, for QA)
 ```
 
 ## Critical Environment Note
 
-`ELECTRON_RUN_AS_NODE=1` is set as a system environment variable on the dev machine. This disables Electron's built-in modules (app, BrowserWindow, etc.), making `require('electron')` return a path string instead of the API. The workaround is `launch-electron.js` — the dev script runs `node launch-electron.js` instead of `electron .` directly. Never remove this wrapper.
+`ELECTRON_RUN_AS_NODE=1` is set as a system environment variable on the dev machine. This disables Electron's built-in modules, making `require('electron')` return a path string. The workaround is `launch-electron.js` — dev runs `node launch-electron.js` instead of `electron .`. Never remove this wrapper, nor the relaunch guard at the top of `main.cjs`.
 
 ## Architecture
 
-**Dual-module project:** The frontend (`src/`) is ESM/React, the Electron process (`electron/`) is CommonJS (`.cjs`). Root `package.json` has NO `"type": "module"` field — this is intentional, required for Electron main process compatibility.
+**Dual-module:** `src/` is ESM/React, `electron/` is CommonJS (`.cjs`). Root `package.json` has NO `"type": "module"` — intentional.
 
-**IPC Bridge:**
-- `electron/preload.cjs` — exposes `window.electronAPI` to renderer via `contextBridge`
-- `electron/main.cjs` — window creation + IPC handlers: `launch-game`, `stop-game`, `close-app`, `minimize-app`, `hide-launcher`/`show-launcher` (launcher hides while game runs), `select-java-path` (file dialog), `get-version-manifest`
-- `electron/launcher.cjs` — all launch logic: wraps `minecraft-launcher-core` (MCLC), auto-installs OptiFine/Fabric, detects/downloads Java, manages game process lifecycle
+**Main process (`electron/`):**
+- `main.cjs` — relaunch guard, single-instance lock, `no-sandbox` when packaged, window (opaque `backgroundColor` — never `transparent: true`), all IPC handlers
+- `launcher.cjs` — launch orchestration: resolve instance → install loader → ensure Java → account auth → MCLC. JVM presets (`balanced|lowram|zgc|custom`), QuickPlay for 1.20+, `--server/--port` for older
+- `lib/paths.cjs` — data root `%APPDATA%\.hlauncher` (auto-migrates `.hardsetups`/`.thehardcraft`); instance dirs (`default` plays in root for backwards compat, others in `instances/<id>`)
+- `lib/store.cjs` — atomic JSON settings store (`config.json`): settings/account/servers/activeInstanceId
+- `lib/http.cjs`, `lib/download.cjs` — all network I/O: redirects, timeouts, SHA1/SHA256 verify, 3 retries
+- `lib/zip.cjs` — adm-zip (no PowerShell)
+- `lib/java.cjs` — required Java by MC version (≤1.16→8, 1.17-1.20.4→17, else 21); find (bundled→Mojang→vendors→system) or download from Adoptium with SHA-256
+- `lib/instances.cjs` — profile registry (`instances.json`), CRUD, `managedFiles` tracking
+- `lib/loaders/` — `optifine.cjs` (BMCL API + manual official-jar fallback), `fabriclike.cjs` (Fabric+Quilt via meta profile JSON), `forge.cjs` (Forge/NeoForge installer jar → MCLC `forge` option; NeoForge needs MC 1.20.2+)
+- `lib/modrinth.cjs` — search/version-pick/install with required deps; performance preset (sodium, lithium, ferrite-core, immediatelyfast, entityculling)
+- `lib/mrpack.cjs` — .mrpack import → new instance (path-traversal-safe)
+- `lib/servermanifest.cjs` — fetch/validate/apply `hlauncher.json` (schema in docs/SERVER-MANIFEST.md); syncs managed mods on re-apply
+- `lib/accounts.cjs` — Microsoft via msmc (`Auth('select_account').launch('electron')`, refresh token persisted) + offline; `getMclcAuth()` for launch
+- `lib/errors.cjs` — error → friendly Turkish message; `lib/logger.cjs` — electron-log → `logs/hlauncher.log`
+- `lib/updater.cjs` — electron-updater (needs real GitHub owner in `build.publish`); `lib/discord.cjs` — RPC, disabled until `DISCORD_CLIENT_ID` is set
 
-**Launch flow (`launcher.cjs launchGame`):** loaderType is `release` | `optifine` | `fabric`. For optifine/fabric, an installed version is looked up under `<root>/versions/`; if missing it is installed automatically, and the resulting version id is passed to MCLC as `version.custom` (MCLC resolves `inheritsFrom` itself — there is no manual version-JSON merging in this codebase anymore):
-- **OptiFine:** best stable build queried + jar downloaded from BMCL API (`bmclapi2.bangbang93.com/optifine/<mcVer>`), launchwrapper jar extracted from the OptiFine jar (new versions: `launchwrapper-of-X.Y`, old: `launchwrapper-1.12`), then a minimal `version.json` with `inheritsFrom` + `--tweakClass optifine.OptiFineTweaker` is written.
-- **Fabric:** best stable loader + ready-made MCLC-compatible version profile fetched from Fabric Meta (`meta.fabricmc.net/v2`).
-- If a server address was entered, MCLC `quickPlay` auto-joins that server on game start.
+**Renderer (`src/`):** `App.jsx` owns state, boots from `store:all` IPC (no localStorage persistence anymore — one-time migration from legacy `thc_*` keys exists). Debounced write-through to settings. Tabs: dashboard, servers, mods, profiles, settings, account + onboarding wizard. `i18n.jsx` = provider + full TR/EN dicts (`t('key', {params})`). Components: TitleBar, Sidebar, ServerListPanel (favorites, version badge, manifest apply), VersionPicker (6 loaders), ProfilesPanel, ModsPanel, SettingsPanel, AccountPanel, Onboarding, Modal.
 
-**Version manifest:** `getRecentReleaseVersions()` fetches Mojang's `version_manifest_v2.json`, filters to releases from the last 3 years, caches 12h at `<root>/version_manifest_cache.json`.
+**Dashboard model:** the version/loader pickers edit the ACTIVE instance (profile); launching sends `{instanceId, serverIp}` — everything else (account, RAM, Java, JVM args) is resolved in the main process from the store.
 
-**Java detection (`getJavaPath`):** required version by MC version (`getRequiredJava`): year-based versions (25.x+) and 1.20.5+/1.21+ → Java 21, 1.17–1.20.4 → 17, older → 8. Search order: launcher-bundled runtime (`<root>/runtime/javaXX`) → Mojang launcher runtimes → scan of common vendor install dirs (Adoptium, Oracle, Zulu, Microsoft, BellSoft, Corretto) → system `java` if its version suffices. If nothing found, a Java 21 JRE is downloaded from Adoptium and unpacked to `<root>/runtime/java21` (KNOWN GAP: always 21, wrong for MC ≤1.16 needing Java 8). ZIP extraction currently shells out to PowerShell `Expand-Archive`.
+**Packaged-app gotchas (do not remove):** `runAsNode: false` fuse + ELECTRON_RUN_AS_NODE relaunch guard; `no-sandbox` when packaged (STATUS_BREAKPOINT crash-loops on some machines); opaque window; `vite.config.js` ignores `release/` in watch.
 
-**Auth:** offline only (`Authenticator.getAuth(username)`); no Microsoft login yet (`msmc` is in devDependencies, unused).
+## Testing / QC
 
-**Frontend (`src/`):** React 19 + framer-motion + lucide-react, inline styles throughout, all UI text Turkish.
-- `App.jsx` — state owner (tabs, user, servers, statuses, loader/version selection, RAM/fullscreen/javaPath, theme accent+background); registers IPC listeners once; persists everything to `localStorage` (`thc_*` keys)
-- `components/` — `TitleBar` (frameless-window controls), `Sidebar` (nav + Discord + copy address), `ServerListPanel` (compact & grid variants, add/remove/select servers), `VersionPicker` (loader segmented control + searchable version dropdown), `Modal` (error dialog)
-- Live server status: polls `api.mcstatus.io/v2/status/java/<address>` every 30s per added server (staggered 300ms), shows online state/players/MOTD/icon.
-
-**Build output:** `release/` (git-ignored) — electron-builder produces an NSIS Windows x64 installer. App data stored at `%APPDATA%\.hardsetups` (auto-migrated from legacy `.thehardcraft` on first run). `public/` is copied as `extraResources`; images referenced by bare paths (`logo.png`, `bg*.jpg`).
-
-**Packaged-app gotchas (do not remove):** `runAsNode: false` fuse in package.json `electronFuses` + the ELECTRON_RUN_AS_NODE relaunch guard at the top of `main.cjs` (the dev machine leaks that env var); `no-sandbox` switch when `app.isPackaged` in `main.cjs` — on some machines ALL sandboxed Chromium child processes (GPU, network service, renderer) crash-loop with STATUS_BREAKPOINT when launched from the installed location, leaving either no window or an invisible one; the main window must stay opaque (`backgroundColor`, no `transparent: true`) or a non-painting renderer produces a fully invisible window; `vite.config.js` `server.watch.ignored` excludes `release/` so `npm run dist` doesn't crash a running dev server.
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `electron/main.cjs` | Electron main process entry point (window + IPC) |
-| `electron/launcher.cjs` | Launch logic, OptiFine/Fabric/Java auto-install |
-| `electron/preload.cjs` | Context bridge (IPC ↔ renderer) |
-| `src/App.jsx` | Root React component, all app state |
-| `src/components/` | TitleBar, Sidebar, ServerListPanel, VersionPicker, Modal |
-| `launch-electron.js` | Wrapper that unsets `ELECTRON_RUN_AS_NODE` before spawning Electron |
-| `ROADMAP.md` | HLauncher plan and phase status |
+- `npm test` — pure-function tests with APPDATA redirected to a temp dir (never touches real user data)
+- i18n key consistency: every `t('...')` key must exist in both dicts in `src/i18n.jsx`
+- After renderer changes run `npm run lint && npm run build`; after electron changes also `npm test`

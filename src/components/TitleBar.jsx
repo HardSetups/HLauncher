@@ -42,7 +42,7 @@ const TitleBar = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <img src="logo.png" alt="" style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
                 <span style={{ fontSize: '12px', fontWeight: '600', color: 'rgba(255,255,255,0.65)', letterSpacing: '0.5px' }}>
-                    HARDSETUPS LAUNCHER
+                    HLAUNCHER
                 </span>
             </div>
             <div style={{ display: 'flex', gap: '2px', WebkitAppRegion: 'no-drag' }}>

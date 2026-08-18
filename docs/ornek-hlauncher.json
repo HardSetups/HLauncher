@@ -1,0 +1,15 @@
+{
+  "manifestVersion": 1,
+  "name": "Örnek Sunucu",
+  "address": "mc.orneksunucu.com",
+  "mcVersion": "1.21.4",
+  "loader": "fabric",
+  "recommendedRam": 4,
+  "mods": [
+    { "type": "modrinth", "id": "sodium" },
+    { "type": "modrinth", "id": "lithium" }
+  ],
+  "announcements": [
+    { "date": "2026-08-17", "text": "Yeni sezon başladı!" }
+  ]
+}

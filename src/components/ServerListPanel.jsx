@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, Plus, Trash2, Users } from 'lucide-react';
+import { ChevronRight, Plus, Trash2, Users, Star, PackageCheck } from 'lucide-react';
 import { contrastText } from '../utils/color';
+import { useI18n } from '../i18n.jsx';
 
 function statusDot(status) {
   const color = status?.state === 'online' ? '#4bff4b' : status?.state === 'loading' ? '#f59e0b' : '#666';
@@ -19,7 +20,7 @@ function statusDot(status) {
   );
 }
 
-function ServerCard({ accent, server, status, selected, compact, index, onSelect, onRemove }) {
+function ServerCard({ accent, server, status, selected, compact, index, onSelect, onRemove, onToggleFavorite, onApplyManifest, t }) {
   return (
     <motion.div
       layout
@@ -55,17 +56,23 @@ function ServerCard({ accent, server, status, selected, compact, index, onSelect
 
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {server.favorite && <Star size={12} fill="#f59e0b" color="#f59e0b" style={{ flexShrink: 0 }} />}
           <h4 style={{ fontSize: compact ? '15px' : '17px', fontWeight: '800', color: selected ? accent : '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {server.name || server.address}
           </h4>
           {statusDot(status)}
+          {!compact && status?.version && (
+            <span style={{ fontSize: '10px', fontWeight: '700', background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)', padding: '2px 8px', borderRadius: '8px', flexShrink: 0 }}>
+              {status.version}
+            </span>
+          )}
         </div>
         <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {server.address}
         </p>
         {!compact && (
           <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.55)', marginTop: '6px', minHeight: '16px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {status?.state === 'online' ? (status.motd || '—') : status?.state === 'loading' ? 'Kontrol ediliyor...' : 'Sunucu çevrimdışı'}
+            {status?.state === 'online' ? (status.motd || '—') : status?.state === 'loading' ? t('srv.checking') : t('srv.offline')}
           </p>
         )}
       </div>
@@ -80,69 +87,100 @@ function ServerCard({ accent, server, status, selected, compact, index, onSelect
       {compact && selected && <ChevronRight size={18} color={accent} style={{ flexShrink: 0 }} />}
 
       {!compact && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onRemove(server.id); }}
-          title="Sunucuyu kaldır"
-          style={{ background: 'none', color: 'rgba(255,255,255,0.3)', padding: '8px', flexShrink: 0 }}
-        >
-          <Trash2 size={16} />
-        </button>
+        <div style={{ display: 'flex', gap: '2px', flexShrink: 0 }}>
+          {server.manifestUrl && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onApplyManifest(server); }}
+              title={t('srv.applyManifest')}
+              style={{ background: 'none', color: accent, padding: '8px' }}
+            >
+              <PackageCheck size={16} />
+            </button>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleFavorite(server.id); }}
+            title={t('srv.favorite')}
+            style={{ background: 'none', color: server.favorite ? '#f59e0b' : 'rgba(255,255,255,0.3)', padding: '8px' }}
+          >
+            <Star size={16} fill={server.favorite ? '#f59e0b' : 'none'} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onRemove(server.id); }}
+            title={t('srv.remove')}
+            style={{ background: 'none', color: 'rgba(255,255,255,0.3)', padding: '8px' }}
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
       )}
     </motion.div>
   );
 }
 
-function ServerListPanel({ accent, variant = 'compact', servers, statuses, selectedServerId, onSelect, onAdd, onRemove, onSeeAll }) {
+function sortServers(servers) {
+  return [...servers].sort((a, b) => (b.favorite === true) - (a.favorite === true));
+}
+
+function ServerListPanel({ accent, variant = 'compact', servers, statuses, selectedServerId, onSelect, onAdd, onRemove, onToggleFavorite, onApplyManifest, onSeeAll }) {
+  const { t } = useI18n();
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
+  const [manifestUrl, setManifestUrl] = useState('');
   const compact = variant === 'compact';
-  const visibleServers = compact ? servers.slice(0, 5) : servers;
+  const sorted = sortServers(servers);
+  const visibleServers = compact ? sorted.slice(0, 5) : sorted;
 
   const handleAdd = () => {
     if (!address.trim()) return;
-    onAdd(name.trim(), address.trim());
+    onAdd(name.trim(), address.trim(), manifestUrl.trim());
     setName('');
     setAddress('');
+    setManifestUrl('');
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? '12px' : '16px', height: compact ? 'auto' : '100%' }}>
       {!compact && (
         <div>
-          <h2 style={{ fontSize: '40px', fontWeight: '800', marginBottom: '8px' }}>SUNUCULAR</h2>
-          <p style={{ color: 'rgba(255,255,255,0.5)', marginBottom: '24px' }}>Sunucularını ekle, canlı durumunu takip et ve bağlanacağın sunucuyu seç.</p>
+          <h2 style={{ fontSize: '40px', fontWeight: '800', marginBottom: '8px' }}>{t('srv.title')}</h2>
+          <p style={{ color: 'rgba(255,255,255,0.5)', marginBottom: '24px' }}>{t('srv.subtitle')}</p>
         </div>
       )}
 
       {!compact && (
-        <div className="glass-panel" style={{ padding: '20px', display: 'flex', gap: '10px' }}>
+        <div className="glass-panel" style={{ padding: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <input
             type="text" value={name} onChange={(e) => setName(e.target.value)}
-            placeholder="Sunucu adı (opsiyonel)" className="prof-input" style={{ marginTop: 0, flex: '0 0 200px' }}
+            placeholder={t('srv.name.placeholder')} className="prof-input" style={{ marginTop: 0, flex: '0 0 180px' }}
           />
           <input
             type="text" value={address} onChange={(e) => setAddress(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-            placeholder="Sunucu adresi (örn. mc.example.com:25565)" className="prof-input" style={{ marginTop: 0, flex: 1 }}
+            placeholder={t('srv.address.placeholder')} className="prof-input" style={{ marginTop: 0, flex: 1, minWidth: '200px' }}
+          />
+          <input
+            type="text" value={manifestUrl} onChange={(e) => setManifestUrl(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+            placeholder={t('srv.manifest.placeholder')} className="prof-input" style={{ marginTop: 0, flex: 1, minWidth: '200px' }}
           />
           <motion.button
             whileTap={{ scale: 0.95 }}
             onClick={handleAdd}
-            style={{ background: accent, color: contrastText(accent), border: 'none', borderRadius: '12px', padding: '0 20px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+            style={{ background: accent, color: contrastText(accent), border: 'none', borderRadius: '12px', padding: '12px 20px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
           >
-            <Plus size={18} /> Ekle
+            <Plus size={18} /> {t('common.add')}
           </motion.button>
         </div>
       )}
 
       {compact && (
-        <h3 style={{ fontSize: '14px', fontWeight: '900', color: 'rgba(255,255,255,0.4)', letterSpacing: '2px' }}>SUNUCULAR</h3>
+        <h3 style={{ fontSize: '14px', fontWeight: '900', color: 'rgba(255,255,255,0.4)', letterSpacing: '2px' }}>{t('srv.title')}</h3>
       )}
 
-      <div style={{ display: compact ? 'flex' : 'grid', flexDirection: compact ? 'column' : undefined, gridTemplateColumns: compact ? undefined : 'repeat(auto-fill, minmax(320px, 1fr))', gap: compact ? '10px' : '16px', overflowY: 'auto' }}>
+      <div style={{ display: compact ? 'flex' : 'grid', flexDirection: compact ? 'column' : undefined, gridTemplateColumns: compact ? undefined : 'repeat(auto-fill, minmax(340px, 1fr))', gap: compact ? '10px' : '16px', overflowY: 'auto' }}>
         {visibleServers.length === 0 && (
           <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px', padding: compact ? '4px 0' : '20px 0' }}>
-            {compact ? 'Henüz sunucu eklenmedi.' : 'Henüz sunucu eklemediniz. Yukarıdan bir adres girip ekleyin.'}
+            {compact ? t('srv.empty.compact') : t('srv.empty.grid')}
           </p>
         )}
         <AnimatePresence mode="popLayout">
@@ -157,6 +195,9 @@ function ServerListPanel({ accent, variant = 'compact', servers, statuses, selec
               index={i}
               onSelect={onSelect}
               onRemove={onRemove}
+              onToggleFavorite={onToggleFavorite}
+              onApplyManifest={onApplyManifest}
+              t={t}
             />
           ))}
         </AnimatePresence>
@@ -164,7 +205,7 @@ function ServerListPanel({ accent, variant = 'compact', servers, statuses, selec
 
       {compact && servers.length > 5 && (
         <button onClick={onSeeAll} style={{ background: 'none', color: accent, fontSize: '12px', fontWeight: '700', padding: '4px 0', textAlign: 'left' }}>
-          Tümünü gör ({servers.length}) →
+          {t('srv.seeAll', { count: servers.length })}
         </button>
       )}
     </div>

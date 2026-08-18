@@ -1,95 +1,130 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import TitleBar from './components/TitleBar';
 import Sidebar from './components/Sidebar';
 import Modal from './components/Modal';
 import ServerListPanel from './components/ServerListPanel';
 import VersionPicker from './components/VersionPicker';
+import ProfilesPanel from './components/ProfilesPanel';
+import ModsPanel from './components/ModsPanel';
+import SettingsPanel from './components/SettingsPanel';
+import AccountPanel from './components/AccountPanel';
+import Onboarding from './components/Onboarding';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Layers, Users, Zap, Check } from 'lucide-react';
-import axios from 'axios';
+import { Play, Layers, Users, Zap } from 'lucide-react';
 import { contrastText } from './utils/color';
+import { I18nProvider, useI18n } from './i18n.jsx';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-const LOADER_LABELS = { release: 'Release', optifine: 'OptiFine', fabric: 'Fabric' };
 const MAX_SERVERS = 20;
-
-const ACCENTS = [
-  { color: '#ff6a3d', name: 'Ateş' },
-  { color: '#00f2ff', name: 'Buz' },
-  { color: '#ef4444', name: 'Kızıl' },
-  { color: '#10b981', name: 'Zümrüt' },
-  { color: '#8b5cf6', name: 'Mor' },
-  { color: '#f59e0b', name: 'Amber' },
-];
-
-const BACKGROUNDS = [
-  { file: 'bg.png', name: 'Klasik' },
-  { file: 'bg_kingdoms.jpg', name: 'Krallık' },
-  { file: 'bg_skyblock.jpg', name: 'Skyblock' },
-  { file: 'bg_towny.jpg', name: 'Kasaba' },
-];
-
-const INSTALL_LABELS = {
-  optifine: 'OptiFine kuruluyor',
-  fabric: 'Fabric kuruluyor',
-  download: 'Java indiriliyor',
-  extract: 'Dosyalar çıkarılıyor',
-  start: 'Hazırlanıyor',
-};
-
-// ─── App ─────────────────────────────────────────────────────────────────────
+const LOADER_LABELS = { release: 'Release', optifine: 'OptiFine', fabric: 'Fabric', quilt: 'Quilt', forge: 'Forge', neoforge: 'NeoForge' };
 
 function App() {
-  const [activeTab, setActiveTab]       = useState('dashboard');
-  const [user, setUser]                 = useState(() => {
-    const saved = localStorage.getItem('thc_username');
-    return saved ? { name: saved } : null;
-  });
-  const [launching, setLaunching]       = useState(false);
-  const [gameRunning, setGameRunning]   = useState(false);
-  const [progress, setProgress]         = useState(0);
-  const [javaPath, setJavaPath]         = useState('');
+  const { t, setLang } = useI18n();
+
+  // ── Boot verisi (main süreçteki store'dan) ────────────────────────────────
+  const [settings, setSettingsState] = useState(null);
+  const [servers, setServersState] = useState([]);
+  const [account, setAccount] = useState(null);
+  const [instances, setInstances] = useState([]);
+  const [activeInstanceId, setActiveInstanceIdState] = useState('default');
+  const [systemInfo, setSystemInfo] = useState({ totalMemGb: 16, appVersion: '', logsDir: '' });
+
+  // ── UI durumu ─────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [launching, setLaunching] = useState(false);
+  const [gameRunning, setGameRunning] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressLabel, setProgressLabel] = useState('');
+  const [installStatus, setInstallStatus] = useState(null);
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [isHoveringPlay, setIsHoveringPlay] = useState(false);
-  const [ramMax, setRamMax]             = useState(4);
-  const [fullscreen, setFullscreen]     = useState(false);
-
-  // Theme
-  const [accent, setAccent]   = useState(() => localStorage.getItem('thc_accent') || '#ff6a3d');
-  const [bgImage, setBgImage] = useState(() => localStorage.getItem('thc_bg') || 'bg.png');
-
-  // Servers
-  const [servers, setServers] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('thc_servers') || '[]'); } catch { return []; }
-  });
+  const [connectAddress, setConnectAddress] = useState('');
   const [serverStatuses, setServerStatuses] = useState({});
   const [selectedServerId, setSelectedServerId] = useState(null);
-  const [connectServerIp, setConnectServerIp] = useState(() => localStorage.getItem('thc_connect_address') || '');
+  const [globalBusy, setGlobalBusy] = useState(null);
 
-  // Version / loader
-  const [loaderType, setLoaderType] = useState(() => localStorage.getItem('thc_loader_type') || 'release');
-  const [selectedVersion, setSelectedVersion] = useState(() => localStorage.getItem('thc_selected_version') || '');
   const [versionManifest, setVersionManifest] = useState([]);
   const [versionManifestLoading, setVersionManifestLoading] = useState(true);
   const [versionManifestError, setVersionManifestError] = useState(null);
 
-  // UI state
-  const [errorMessage, setErrorMessage] = useState(null);
-  const [installStatus, setInstallStatus] = useState(null);
-  const [progressLabel, setProgressLabel] = useState('');
+  const manifestApplyingRef = useRef(false);
 
-  // ── IPC Listeners (registered once) ────────────────────────────────────────
+  // ── Ayar yazımı (debounce ile main sürece) ────────────────────────────────
+  const pendingPatch = useRef({});
+  const patchTimer = useRef(null);
+  const updateSetting = useCallback((key, value) => {
+    setSettingsState((prev) => ({ ...prev, [key]: value }));
+    pendingPatch.current[key] = value;
+    clearTimeout(patchTimer.current);
+    patchTimer.current = setTimeout(() => {
+      const patch = pendingPatch.current;
+      pendingPatch.current = {};
+      window.electronAPI.patchSettings(patch);
+    }, 400);
+  }, []);
+
+  const saveServers = useCallback((next) => {
+    setServersState(next);
+    window.electronAPI.setServers(next);
+  }, []);
+
+  const refreshInstances = useCallback(() => {
+    return window.electronAPI.listInstances().then(setInstances);
+  }, []);
+
+  // ── Boot: store + sistem bilgisi + profiller ──────────────────────────────
+  useEffect(() => {
+    Promise.all([
+      window.electronAPI.getStoreData(),
+      window.electronAPI.getSystemInfo(),
+      window.electronAPI.listInstances(),
+    ]).then(([store, sys, insts]) => {
+      setServersState(store.servers || []);
+      setAccount(store.account);
+      setActiveInstanceIdState(store.activeInstanceId || 'default');
+      setSystemInfo(sys);
+      setInstances(insts);
+      setConnectAddress(store.settings.connectAddress || '');
+      setLang(store.settings.language || 'tr');
+
+      // Eski sürümden (localStorage) tek seferlik migrasyon
+      const legacyName = localStorage.getItem('thc_username');
+      if (!store.settings.onboarded && legacyName) {
+        const patch = { onboarded: true };
+        const accent = localStorage.getItem('thc_accent');
+        const bg = localStorage.getItem('thc_bg');
+        if (accent) patch.accent = accent;
+        if (bg) patch.bgImage = bg;
+        window.electronAPI.patchSettings(patch);
+        window.electronAPI.loginOffline(legacyName).then((res) => { if (res.ok) setAccount(res.account); });
+        try {
+          const legacyServers = JSON.parse(localStorage.getItem('thc_servers') || '[]')
+            .slice(0, MAX_SERVERS)
+            .map((s) => ({ ...s, favorite: false, manifestUrl: '' }));
+          if (legacyServers.length) {
+            setServersState(legacyServers);
+            window.electronAPI.setServers(legacyServers);
+          }
+        } catch { /* eski liste bozuksa atla */ }
+        ['thc_username', 'thc_servers', 'thc_accent', 'thc_bg', 'thc_loader_type', 'thc_selected_version', 'thc_connect_address'].forEach((k) => localStorage.removeItem(k));
+        setSettingsState({ ...store.settings, ...patch });
+      } else {
+        setSettingsState(store.settings);
+      }
+    }).catch((err) => {
+      setSettingsState({ language: 'tr', accent: '#ff6a3d', bgImage: 'bg.png', ram: 4, fullscreen: false, javaPath: '', jvmPreset: 'balanced', customJvmArgs: '', checkUpdates: true, onboarded: true });
+      setErrorMessage(String(err?.message || err));
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── IPC dinleyicileri (bir kez) ───────────────────────────────────────────
   useEffect(() => {
     window.electronAPI.onLaunchProgress((data) => {
       const pct = Math.floor(((data.task || 0) / (data.total || 100)) * 100);
       setProgress(pct);
-      const labels = {
-        'assets': 'Oyun görselleri indiriliyor',
-        'classes': 'Oyun dosyaları indiriliyor',
-        'libraries': 'Kütüphaneler indiriliyor',
-        'natives': 'Native dosyalar indiriliyor',
-      };
-      setProgressLabel(labels[data.type] || 'Dosyalar hazırlanıyor');
+      const keys = { assets: 'progress.assets', classes: 'progress.classes', libraries: 'progress.libraries', natives: 'progress.natives' };
+      setProgressLabel(keys[data.type] || 'progress.preparing');
     });
 
     window.electronAPI.onLaunchFinished(() => {
@@ -121,10 +156,14 @@ function App() {
       }
     });
 
+    window.electronAPI.onModProgress((p) => {
+      if (manifestApplyingRef.current) setGlobalBusy(p.message || null);
+    });
+
     return () => window.electronAPI.removeGameListeners();
   }, []);
 
-  // ── Version manifest (fetched once, shared by Release/OptiFine/Fabric tabs) ─
+  // ── Sürüm listesi ─────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     window.electronAPI.getVersionManifest()
@@ -132,11 +171,10 @@ function App() {
         if (cancelled) return;
         setVersionManifestLoading(false);
         if (res.error || !res.versions?.length) {
-          setVersionManifestError(res.error || 'Sürüm listesi alınamadı');
+          setVersionManifestError(res.error || t('vp.error'));
           return;
         }
         setVersionManifest(res.versions);
-        setSelectedVersion((prev) => (prev && res.versions.some((v) => v.id === prev)) ? prev : res.versions[0].id);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -144,25 +182,27 @@ function App() {
         setVersionManifestError(err.message);
       });
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Persistence ───────────────────────────────────────────────────────────
-  useEffect(() => { localStorage.setItem('thc_servers', JSON.stringify(servers)); }, [servers]);
-  useEffect(() => { localStorage.setItem('thc_connect_address', connectServerIp); }, [connectServerIp]);
-  useEffect(() => { localStorage.setItem('thc_loader_type', loaderType); }, [loaderType]);
-  useEffect(() => { if (selectedVersion) localStorage.setItem('thc_selected_version', selectedVersion); }, [selectedVersion]);
-  useEffect(() => { localStorage.setItem('thc_accent', accent); }, [accent]);
-  useEffect(() => { localStorage.setItem('thc_bg', bgImage); }, [bgImage]);
+  // ── connectAddress kalıcılığı ─────────────────────────────────────────────
+  useEffect(() => {
+    if (settings) updateSetting('connectAddress', connectAddress);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectAddress]);
 
-  // ── Live server status polling (mcstatus.io, staggered, 30s/server) ────────
+  // ── Canlı sunucu durumu (mcstatus.io, 30sn) ───────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
     const fetchStatus = async (server) => {
       try {
-        const res = await axios.get(`https://api.mcstatus.io/v2/status/java/${encodeURIComponent(server.address)}`, { timeout: 8000 });
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(`https://api.mcstatus.io/v2/status/java/${encodeURIComponent(server.address)}`, { signal: controller.signal });
+        clearTimeout(timer);
+        const data = await res.json();
         if (cancelled) return;
-        const data = res.data;
         setServerStatuses((prev) => ({
           ...prev,
           [server.id]: {
@@ -170,12 +210,13 @@ function App() {
             players: data.players ? { online: data.players.online, max: data.players.max } : null,
             motd: data.motd?.clean || null,
             icon: data.icon || null,
+            version: data.version?.name_clean || null,
             fetchedAt: Date.now(),
           },
         }));
       } catch {
         if (cancelled) return;
-        setServerStatuses((prev) => ({ ...prev, [server.id]: { state: 'offline', players: null, motd: null, icon: null, fetchedAt: Date.now() } }));
+        setServerStatuses((prev) => ({ ...prev, [server.id]: { state: 'offline', players: null, motd: null, icon: null, version: null, fetchedAt: Date.now() } }));
       }
     };
 
@@ -190,70 +231,125 @@ function App() {
     return () => { cancelled = true; clearInterval(id); };
   }, [servers]);
 
-  // ── Server list handlers ────────────────────────────────────────────────
-  const handleAddServer = useCallback((name, address) => {
-    setServers((prev) => {
-      if (prev.length >= MAX_SERVERS) {
-        setErrorMessage(`En fazla ${MAX_SERVERS} sunucu ekleyebilirsiniz.`);
-        return prev;
-      }
-      if (prev.some((s) => s.address.toLowerCase() === address.toLowerCase())) {
-        setErrorMessage('Bu sunucu adresi zaten listenizde ekli.');
-        return prev;
-      }
-      return [...prev, { id: crypto.randomUUID(), name, address, addedAt: Date.now() }];
-    });
-  }, []);
+  // ── Sunucu listesi işlemleri ──────────────────────────────────────────────
+  const handleAddServer = useCallback((name, address, manifestUrl) => {
+    if (servers.length >= MAX_SERVERS) {
+      setErrorMessage(t('srv.max', { max: MAX_SERVERS }));
+      return;
+    }
+    if (servers.some((s) => s.address.toLowerCase() === address.toLowerCase())) {
+      setErrorMessage(t('srv.dup'));
+      return;
+    }
+    saveServers([...servers, { id: crypto.randomUUID(), name, address, manifestUrl: manifestUrl || '', favorite: false, addedAt: Date.now() }]);
+  }, [servers, saveServers, t]);
 
   const handleRemoveServer = useCallback((id) => {
-    setServers((prev) => prev.filter((s) => s.id !== id));
+    saveServers(servers.filter((s) => s.id !== id));
     setSelectedServerId((prev) => (prev === id ? null : prev));
-  }, []);
+  }, [servers, saveServers]);
+
+  const handleToggleFavorite = useCallback((id) => {
+    saveServers(servers.map((s) => (s.id === id ? { ...s, favorite: !s.favorite } : s)));
+  }, [servers, saveServers]);
 
   const handleSelectServer = useCallback((server) => {
     setSelectedServerId(server.id);
-    setConnectServerIp(server.address);
+    setConnectAddress(server.address);
   }, []);
 
-  // ── Launch Logic ─────────────────────────────────────────────────────────
+  const handleApplyManifest = useCallback(async (server) => {
+    manifestApplyingRef.current = true;
+    setGlobalBusy(t('common.loading'));
+    try {
+      const res = await window.electronAPI.applyServerManifest(server.manifestUrl);
+      if (!res.ok) { setErrorMessage(res.error); return; }
+      await refreshInstances();
+      await window.electronAPI.setActiveInstance(res.instanceId);
+      setActiveInstanceIdState(res.instanceId);
+      setConnectAddress(res.address);
+      setNotice(t('srv.manifestApplied', { name: res.name, count: res.modCount }));
+    } finally {
+      manifestApplyingRef.current = false;
+      setGlobalBusy(null);
+    }
+  }, [refreshInstances, t]);
+
+  // ── Profil işlemleri ──────────────────────────────────────────────────────
+  const activeInstance = instances.find((i) => i.id === activeInstanceId) || instances[0] || null;
+
+  const handleSetActiveInstance = useCallback((id) => {
+    window.electronAPI.setActiveInstance(id).then(() => setActiveInstanceIdState(id));
+  }, []);
+
+  const handleUpdateInstance = useCallback((id, patch) => {
+    window.electronAPI.updateInstance(id, patch).then(refreshInstances).catch((err) => setErrorMessage(err.message));
+  }, [refreshInstances]);
+
+  const handleDeleteInstance = useCallback((instance) => {
+    if (!window.confirm(t('prof.deleteConfirm', { name: instance.name }))) return;
+    window.electronAPI.deleteInstance(instance.id).then(() => {
+      if (activeInstanceId === instance.id) setActiveInstanceIdState('default');
+      refreshInstances();
+    });
+  }, [activeInstanceId, refreshInstances, t]);
+
+  const handleCreateInstance = useCallback((data) => {
+    window.electronAPI.createInstance(data)
+      .then((inst) => refreshInstances().then(() => handleSetActiveInstance(inst.id)))
+      .catch((err) => setErrorMessage(err.message));
+  }, [refreshInstances, handleSetActiveInstance]);
+
+  // ── Başlatma ──────────────────────────────────────────────────────────────
   const doLaunch = useCallback(() => {
-    if (!selectedVersion) { setErrorMessage('Lütfen bir sürüm seçin.'); return; }
     setLaunching(true);
     setProgress(0);
     setProgressLabel('');
     window.electronAPI.launchGame({
-      username:     user.name,
-      ramMax:       `${ramMax}G`,
-      baseVersion:  selectedVersion,
-      loaderType,
-      version:      selectedVersion,
-      serverIp:     connectServerIp.trim(),
-      javaPath:     javaPath.trim(),
-      fullscreen,
+      instanceId: activeInstanceId,
+      serverIp: connectAddress.trim(),
     });
-  }, [user, ramMax, javaPath, fullscreen, connectServerIp, selectedVersion, loaderType]);
+  }, [activeInstanceId, connectAddress]);
 
   const handleLaunch = useCallback(() => {
-    if (!user) { setActiveTab('profile'); return; }
+    if (!account) {
+      setActiveTab('account');
+      setErrorMessage(t('acc.required'));
+      return;
+    }
     doLaunch();
-  }, [user, doLaunch]);
+  }, [account, doLaunch, t]);
 
+  // ── Türetilmiş değerler ───────────────────────────────────────────────────
+  if (!settings) {
+    return (
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0a0c', color: 'rgba(255,255,255,0.4)' }}>
+        {t('common.loading')}
+      </div>
+    );
+  }
+
+  const accent = settings.accent;
+  const bgImage = settings.bgImage;
+  const onAccent = contrastText(accent);
   const selectedServer = servers.find((s) => s.id === selectedServerId);
   const totalOnline = Object.values(serverStatuses).reduce((sum, s) => sum + (s.state === 'online' ? (s.players?.online || 0) : 0), 0);
-  const onAccent = contrastText(accent);
 
-  // Kurulum (Java/OptiFine/Fabric) ilerlemesi başlatma kutusuna entegre
+  const latestVersionId = versionManifest[0]?.id;
+  const displayVersion = activeInstance?.mcVersion || latestVersionId || '—';
+  const displayLoader = activeInstance ? LOADER_LABELS[activeInstance.loader] : '—';
+
   const installing = installStatus && installStatus.type !== 'done';
   const activeProgress = installing ? (installStatus.percent || 0) : progress;
   const activeLabel = installing
-    ? (installStatus.message || INSTALL_LABELS[installStatus.type] || 'Hazırlanıyor')
-    : (progressLabel ? `${progressLabel} %${progress}` : `Başlatılıyor %${progress}`);
+    ? (installStatus.message || t('progress.preparing'))
+    : (progressLabel ? `${t(progressLabel)} %${progress}` : `${t('progress.starting')} %${progress}`);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={{ height: '100%', display: 'flex', position: 'relative', background: '#0a0a0c', color: '#fff', overflow: 'hidden' }}>
 
-      {/* Background — tema seçimine göre, yavaş zoom animasyonlu */}
+      {/* Arka plan */}
       <AnimatePresence>
         <motion.div
           key={bgImage}
@@ -270,15 +366,15 @@ function App() {
       <TitleBar />
 
       <div style={{ display: 'flex', flex: 1, position: 'relative', zIndex: 2, height: '100%' }}>
-        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} accent={accent} copyText={connectServerIp.trim()} />
+        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} accent={accent} copyText={connectAddress.trim()} />
 
-        <main style={{ flex: 1, marginTop: '32px', display: 'flex', padding: '24px', gap: '24px' }}>
+        <main style={{ flex: 1, marginTop: '32px', display: 'flex', padding: '24px', gap: '24px', overflow: 'hidden' }}>
 
-          {/* ── Left Content ── */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          {/* ── Sol içerik ── */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <AnimatePresence mode="wait">
 
-              {/* Dashboard */}
+              {/* Ana Sayfa */}
               {activeTab === 'dashboard' && (
                 <motion.div key="dashboard" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
                   style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -286,59 +382,66 @@ function App() {
                     <motion.img
                       src="logo.png" alt="Logo"
                       initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-                      style={{ width: '110px', marginBottom: '20px', filter: 'drop-shadow(0 0 20px rgba(255,255,255,0.2))' }}
+                      style={{ width: '100px', marginBottom: '16px', filter: 'drop-shadow(0 0 20px rgba(255,255,255,0.2))' }}
                     />
                     <motion.h1
                       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-                      style={{ fontSize: '56px', fontWeight: '900', letterSpacing: '-2px', lineHeight: 1 }}
-                    >HARDSETUPS</motion.h1>
+                      style={{ fontSize: '52px', fontWeight: '900', letterSpacing: '-2px', lineHeight: 1 }}
+                    >HLAUNCHER</motion.h1>
                     <motion.p
                       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }}
-                      style={{ fontSize: '19px', color: 'rgba(255,255,255,0.6)', maxWidth: '560px', marginTop: '12px' }}
+                      style={{ fontSize: '18px', color: 'rgba(255,255,255,0.6)', maxWidth: '560px', marginTop: '12px' }}
                     >
                       {selectedServer
-                        ? `${selectedServer.name || selectedServer.address} sunucusuna bağlanmaya hazır.`
-                        : 'Bir sunucu seç ya da adres gir, sürümünü seç ve oynamaya başla!'}
+                        ? t('dash.subtitle.server', { name: selectedServer.name || selectedServer.address })
+                        : t('dash.subtitle.default')}
                     </motion.p>
                     <motion.div
                       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}
-                      style={{ display: 'flex', gap: '16px', marginTop: '28px' }}
+                      style={{ display: 'flex', gap: '16px', marginTop: '24px', flexWrap: 'wrap' }}
                     >
-                      <div className="stat-card"><Users size={18} color={accent} /><span>{totalOnline} Aktif</span></div>
-                      <div className="stat-card"><Layers size={18} color={accent} /><span>{selectedVersion || '—'}</span></div>
-                      <div className="stat-card"><Zap size={18} color={accent} /><span>{LOADER_LABELS[loaderType]}</span></div>
+                      <div className="stat-card"><Users size={18} color={accent} /><span>{t('dash.stat.active', { count: totalOnline })}</span></div>
+                      <div className="stat-card"><Layers size={18} color={accent} /><span>{displayVersion}</span></div>
+                      <div className="stat-card"><Zap size={18} color={accent} /><span>{displayLoader}</span></div>
                     </motion.div>
 
                     <motion.div
                       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }}
-                      style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '28px', maxWidth: '640px' }}
+                      style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '24px', maxWidth: '640px' }}
                     >
                       <div>
                         <label style={{ fontSize: '12px', fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px', marginBottom: '8px', display: 'block' }}>
-                          BAĞLANILACAK SUNUCU
+                          {t('dash.connect.label')}
                         </label>
                         <input
-                          type="text" value={connectServerIp} onChange={(e) => setConnectServerIp(e.target.value)}
-                          placeholder="Sunucu adresi (örn. mc.example.com) — boş bırakılırsa oyun ana menüde açılır" className="prof-input" style={{ marginTop: 0 }}
+                          type="text" value={connectAddress} onChange={(e) => setConnectAddress(e.target.value)}
+                          placeholder={t('dash.connect.placeholder')} className="prof-input" style={{ marginTop: 0 }}
                         />
                       </div>
                       <div>
-                        <label style={{ fontSize: '12px', fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px', marginBottom: '8px', display: 'block' }}>
-                          SÜRÜM
-                        </label>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <label style={{ fontSize: '12px', fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px' }}>
+                            {t('dash.version.label')} — {activeInstance?.name || ''}
+                          </label>
+                          <button onClick={() => setActiveTab('profiles')} style={{ background: 'none', color: accent, fontSize: '11px', fontWeight: '700', padding: 0 }}>
+                            {t('dash.profile.manage')}
+                          </button>
+                        </div>
                         <VersionPicker
                           accent={accent}
-                          loaderType={loaderType} setLoaderType={setLoaderType}
+                          loaderType={activeInstance?.loader || 'release'}
+                          setLoaderType={(l) => activeInstance && handleUpdateInstance(activeInstance.id, { loader: l })}
                           versionManifest={versionManifest}
                           versionManifestLoading={versionManifestLoading}
                           versionManifestError={versionManifestError}
-                          selectedVersion={selectedVersion} setSelectedVersion={setSelectedVersion}
+                          selectedVersion={activeInstance?.mcVersion || latestVersionId || ''}
+                          setSelectedVersion={(v) => activeInstance && handleUpdateInstance(activeInstance.id, { mcVersion: v })}
                         />
                       </div>
                     </motion.div>
                   </div>
 
-                  {/* Play Button + entegre kurulum/başlatma ilerlemesi */}
+                  {/* Oyna butonu + ilerleme */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '36px' }}>
                     <button
                       onClick={gameRunning ? () => window.electronAPI.stopGame() : handleLaunch}
@@ -361,8 +464,8 @@ function App() {
                     >
                       <Play fill={gameRunning ? '#fff' : onAccent} size={30} />
                       {gameRunning
-                        ? (isHoveringPlay ? 'OYUNU KAPAT' : 'OYUN AÇIK')
-                        : (launching ? 'BAŞLATILIYOR' : 'ŞİMDİ OYNA')}
+                        ? (isHoveringPlay ? t('play.stop') : t('play.running'))
+                        : (launching ? t('play.launching') : t('play.now'))}
                     </button>
 
                     <AnimatePresence>
@@ -379,7 +482,7 @@ function App() {
                             />
                           </div>
                           <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginTop: '8px', fontWeight: 'bold' }}>
-                            {installing && <span style={{ marginRight: '6px' }}>{installStatus.type === 'optifine' ? '✨' : installStatus.type === 'fabric' ? '🧵' : '☕'}</span>}
+                            {installing && <span style={{ marginRight: '6px' }}>{installStatus.type === 'optifine' ? '✨' : ['fabric', 'quilt'].includes(installStatus.type) ? '🧵' : ['forge', 'neoforge'].includes(installStatus.type) ? '⚒️' : '☕'}</span>}
                             {activeLabel.toUpperCase()}{installing ? ` %${activeProgress}` : ''}
                           </span>
                         </motion.div>
@@ -389,7 +492,7 @@ function App() {
                 </motion.div>
               )}
 
-              {/* Servers Tab (full management view) */}
+              {/* Sunucular */}
               {activeTab === 'servers' && (
                 <motion.div key="servers" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
                   style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -402,174 +505,74 @@ function App() {
                     onSelect={(server) => { handleSelectServer(server); setActiveTab('dashboard'); }}
                     onAdd={handleAddServer}
                     onRemove={handleRemoveServer}
+                    onToggleFavorite={handleToggleFavorite}
+                    onApplyManifest={handleApplyManifest}
                   />
                 </motion.div>
               )}
 
-              {/* Profile */}
-              {activeTab === 'profile' && (
-                <motion.div key="profile" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                  <h2 style={{ fontSize: '40px', fontWeight: '800', marginBottom: '32px' }}>PROFİL</h2>
-                  <div className="glass-panel" style={{ padding: '40px', width: '400px' }}>
-                    <div style={{ marginBottom: '24px' }}>
-                      <label style={{ display: 'block', marginBottom: '12px', fontWeight: '600' }}>Kullanıcı Adı</label>
-                      <input id="user-input" type="text" placeholder="Niyazi..." defaultValue={user?.name || ''} className="prof-input" />
-                    </div>
-                    <button
-                      style={{ width: '100%', background: accent, color: onAccent, height: '56px', fontSize: '18px', fontWeight: '700', borderRadius: '14px' }}
-                      onClick={() => {
-                        const name = document.getElementById('user-input').value.trim();
-                        if (name) {
-                          localStorage.setItem('thc_username', name);
-                          setUser({ name });
-                          setActiveTab('dashboard');
-                        }
-                      }}
-                    >Giriş Yap</button>
-                  </div>
-                  {user && (
-                    <div style={{ marginTop: '24px', display: 'flex', alignItems: 'center', gap: '20px' }}>
-                      <img src={`https://minotar.net/avatar/${user.name}/64`} alt="" style={{ borderRadius: '12px', border: `2px solid ${accent}` }} />
-                      <div>
-                        <p style={{ fontWeight: 'bold', fontSize: '20px' }}>{user.name}</p>
-                        <button onClick={() => { localStorage.removeItem('thc_username'); setUser(null); }} style={{ background: 'none', color: '#ef4444', padding: 0 }}>Oturumu Kapat</button>
-                      </div>
-                    </div>
-                  )}
+              {/* Modlar */}
+              {activeTab === 'mods' && (
+                <motion.div key="mods" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+                  style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                  <ModsPanel
+                    instance={activeInstance}
+                    accent={accent}
+                    latestVersionId={latestVersionId}
+                    onError={setErrorMessage}
+                    onNotice={setNotice}
+                    onProfilesRefresh={refreshInstances}
+                  />
                 </motion.div>
               )}
 
-              {/* Settings */}
+              {/* Profiller */}
+              {activeTab === 'profiles' && (
+                <motion.div key="profiles" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+                  style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                  <ProfilesPanel
+                    instances={instances}
+                    activeInstanceId={activeInstanceId}
+                    accent={accent}
+                    versionManifest={versionManifest}
+                    onSetActive={handleSetActiveInstance}
+                    onUpdate={handleUpdateInstance}
+                    onDelete={handleDeleteInstance}
+                    onCreate={handleCreateInstance}
+                  />
+                </motion.div>
+              )}
+
+              {/* Hesap */}
+              {activeTab === 'account' && (
+                <motion.div key="account" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+                  <h2 style={{ fontSize: '40px', fontWeight: '800', marginBottom: '32px' }}>{t('acc.title')}</h2>
+                  <AccountPanel
+                    account={account}
+                    setAccount={setAccount}
+                    accent={accent}
+                    onError={setErrorMessage}
+                  />
+                </motion.div>
+              )}
+
+              {/* Ayarlar */}
               {activeTab === 'settings' && (
                 <motion.div key="settings" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-                  style={{ width: '100%', maxWidth: '700px', overflowY: 'auto', paddingRight: '8px' }}>
-                  <h2 style={{ fontSize: '40px', fontWeight: '800', marginBottom: '32px' }}>AYARLAR</h2>
-
-                  {/* Görünüm / Tema */}
-                  <div className="glass-panel" style={{ padding: '32px', marginBottom: '24px' }}>
-                    <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '24px', color: accent }}>🎨 Görünüm</h3>
-
-                    <label style={{ display: 'block', fontWeight: '600', marginBottom: '14px' }}>Tema Rengi</label>
-                    <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '28px' }}>
-                      {ACCENTS.map((a) => (
-                        <motion.button
-                          key={a.color}
-                          whileHover={{ scale: 1.12 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => setAccent(a.color)}
-                          title={a.name}
-                          style={{
-                            width: '42px', height: '42px', borderRadius: '50%', cursor: 'pointer',
-                            background: a.color, border: accent === a.color ? '3px solid #fff' : '3px solid transparent',
-                            boxShadow: accent === a.color ? `0 0 20px ${a.color}88` : 'none',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          }}
-                        >
-                          {accent === a.color && <Check size={18} color={contrastText(a.color)} strokeWidth={3} />}
-                        </motion.button>
-                      ))}
-                    </div>
-
-                    <label style={{ display: 'block', fontWeight: '600', marginBottom: '14px' }}>Arka Plan</label>
-                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                      {BACKGROUNDS.map((bg) => (
-                        <motion.div
-                          key={bg.file}
-                          whileHover={{ scale: 1.04 }}
-                          whileTap={{ scale: 0.97 }}
-                          onClick={() => setBgImage(bg.file)}
-                          style={{
-                            cursor: 'pointer', borderRadius: '14px', overflow: 'hidden',
-                            border: bgImage === bg.file ? `2px solid ${accent}` : '2px solid rgba(255,255,255,0.1)',
-                            boxShadow: bgImage === bg.file ? `0 6px 24px ${accent}44` : 'none',
-                            position: 'relative',
-                          }}
-                        >
-                          <img src={bg.file} alt={bg.name} style={{ width: '132px', height: '76px', objectFit: 'cover', display: 'block' }} />
-                          <div style={{
-                            position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end',
-                            background: 'linear-gradient(to top, rgba(0,0,0,0.75), transparent 60%)', padding: '6px 10px',
-                          }}>
-                            <span style={{ fontSize: '11px', fontWeight: '700' }}>{bg.name}</span>
-                          </div>
-                          {bgImage === bg.file && (
-                            <div style={{ position: 'absolute', top: '6px', right: '6px', background: accent, borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <Check size={12} color={onAccent} strokeWidth={3} />
-                            </div>
-                          )}
-                        </motion.div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Performans */}
-                  <div className="glass-panel" style={{ padding: '32px', marginBottom: '24px' }}>
-                    <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '24px', color: accent }}>⚡ Performans</h3>
-
-                    <div style={{ marginBottom: '28px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                        <label style={{ fontWeight: '600' }}>RAM Ayırma</label>
-                        <span style={{ background: accent, color: onAccent, padding: '4px 12px', borderRadius: '12px', fontWeight: 'bold', fontSize: '14px' }}>{ramMax} GB</span>
-                      </div>
-                      <input type="range" min="1" max="16" value={ramMax}
-                        onChange={(e) => setRamMax(parseInt(e.target.value))}
-                        className="custom-slider"
-                        style={{ width: '100%', height: '8px', borderRadius: '4px', background: `linear-gradient(to right, ${accent} ${(ramMax / 16) * 100}%, rgba(255,255,255,0.1) ${(ramMax / 16) * 100}%)`, cursor: 'pointer', WebkitAppearance: 'none' }}
-                      />
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: '8px' }}>
-                        <span>1 GB</span><span>Önerilen: 4-8 GB</span><span>16 GB</span>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                      <ToggleCard
-                        label="Tam Ekran" desc="Oyunu tam ekranda başlat"
-                        active={fullscreen} color="#10b981"
-                        onClick={() => setFullscreen(v => !v)}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Java */}
-                  <div className="glass-panel" style={{ padding: '32px', marginBottom: '24px' }}>
-                    <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '24px', color: '#3b82f6' }}>☕ Java Ayarları</h3>
-                    <label style={{ display: 'block', marginBottom: '12px', fontWeight: '600' }}>Java Yolu (Opsiyonel)</label>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <input type="text" value={javaPath} onChange={(e) => setJavaPath(e.target.value)}
-                        placeholder="Otomatik — boş bırakın"
-                        className="prof-input"
-                        style={{ flex: 1, marginTop: '8px' }}
-                      />
-                      <button
-                        onClick={async () => {
-                          const selected = await window.electronAPI.selectJavaPath();
-                          if (selected) setJavaPath(selected);
-                        }}
-                        style={{ marginTop: '8px', padding: '14px 18px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: '600', fontSize: '13px' }}
-                      >
-                        Gözat...
-                      </button>
-                    </div>
-                    {javaPath && (
-                      <button onClick={() => setJavaPath('')} style={{ marginTop: '8px', background: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '12px', padding: '4px 0', border: 'none', cursor: 'pointer' }}>
-                        Temizle (otomatik kullan)
-                      </button>
-                    )}
-                    <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(59,130,246,0.1)', borderRadius: '8px', border: '1px solid rgba(59,130,246,0.2)' }}>
-                      <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>
-                        💡 <strong>İpucu:</strong> Boş bırakırsanız launcher otomatik bulur ve bulamazsa indirir.<br />
-                        • 1.21+ → Java 21 gerektirir<br />
-                        • 1.17 - 1.20 → Java 17 gerektirir
-                      </p>
-                    </div>
-                  </div>
+                  style={{ overflow: 'hidden', display: 'flex' }}>
+                  <SettingsPanel
+                    settings={settings}
+                    updateSetting={updateSetting}
+                    systemInfo={systemInfo}
+                    accent={accent}
+                  />
                 </motion.div>
               )}
 
             </AnimatePresence>
           </div>
 
-          {/* ── Right: Server Selector ── */}
+          {/* ── Sağ sütun ── */}
           <div style={{ width: '320px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <ServerListPanel
               accent={accent}
@@ -580,26 +583,28 @@ function App() {
               onSelect={handleSelectServer}
               onAdd={handleAddServer}
               onRemove={handleRemoveServer}
+              onToggleFavorite={handleToggleFavorite}
+              onApplyManifest={handleApplyManifest}
               onSeeAll={() => setActiveTab('servers')}
             />
 
             <div
               className="glass-panel"
-              onClick={() => setActiveTab('profile')}
-              title="Profili aç"
+              onClick={() => setActiveTab('account')}
+              title={t('nav.account')}
               style={{ marginTop: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', cursor: 'pointer' }}
             >
               <img
-                src={user ? `https://minotar.net/armor/bust/${user.name}/120.png` : 'https://minotar.net/armor/bust/Steve/120.png'}
+                src={account ? `https://minotar.net/armor/bust/${encodeURIComponent(account.name)}/120.png` : 'https://minotar.net/armor/bust/Steve/120.png'}
                 alt="Skin"
                 style={{ width: '120px', filter: 'drop-shadow(0 10px 20px rgba(0,0,0,0.5))' }}
               />
               <div style={{ textAlign: 'center' }}>
-                <p style={{ fontWeight: 'bold' }}>{user?.name || 'Misafir'}</p>
+                <p style={{ fontWeight: 'bold' }}>{account?.name || t('acc.guest')}</p>
                 <div style={{ display: 'flex', gap: '5px', alignItems: 'center', justifyContent: 'center', marginTop: '2px' }}>
-                  <div style={{ width: '6px', height: '6px', background: user ? '#4bff4b' : 'rgba(255,255,255,0.3)', borderRadius: '50%' }} />
-                  <span style={{ fontSize: '10px', color: user ? '#4bff4b' : 'rgba(255,255,255,0.4)', fontWeight: 'bold', letterSpacing: '0.5px' }}>
-                    {user ? 'HAZIR' : 'GİRİŞ YAPILMADI'}
+                  <div style={{ width: '6px', height: '6px', background: account ? '#4bff4b' : 'rgba(255,255,255,0.3)', borderRadius: '50%' }} />
+                  <span style={{ fontSize: '10px', color: account ? '#4bff4b' : 'rgba(255,255,255,0.4)', fontWeight: 'bold', letterSpacing: '0.5px' }}>
+                    {account ? t('acc.ready') : t('acc.none')}
                   </span>
                 </div>
               </div>
@@ -608,52 +613,98 @@ function App() {
         </main>
       </div>
 
-      {/* ── Error Dialog ── */}
+      {/* Meşguliyet göstergesi (manifest kurulumu vb.) */}
+      <AnimatePresence>
+        {globalBusy && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
+            style={{
+              position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
+              background: '#12121c', border: `1px solid ${accent}55`, borderRadius: '14px',
+              padding: '12px 24px', fontSize: '13px', fontWeight: '600', zIndex: 9000,
+              boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+            }}
+          >
+            ⏳ {globalBusy}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Hata */}
       <Modal
         open={!!errorMessage}
         icon="⚠️"
-        title="Hata"
+        title={t('err.title')}
         accentColor="#ef4444"
         footer={
-          <button
-            onClick={() => setErrorMessage(null)}
-            style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: '12px', padding: '14px 32px', fontWeight: '700', cursor: 'pointer', fontSize: '15px' }}
-          >Tamam</button>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+            <button
+              onClick={() => window.electronAPI.openLogs()}
+              style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.7)', border: 'none', borderRadius: '12px', padding: '14px 20px', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}
+            >{t('err.openLogs')}</button>
+            <button
+              onClick={() => setErrorMessage(null)}
+              style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: '12px', padding: '14px 32px', fontWeight: '700', cursor: 'pointer', fontSize: '15px' }}
+            >{t('common.ok')}</button>
+          </div>
         }
       >
-        <p style={{ color: 'rgba(255,255,255,0.85)', marginBottom: '16px', lineHeight: 1.6 }}>{errorMessage}</p>
+        <p style={{ color: 'rgba(255,255,255,0.85)', marginBottom: '16px', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{errorMessage}</p>
       </Modal>
+
+      {/* Bilgi */}
+      <Modal
+        open={!!notice}
+        icon="✅"
+        title={t('common.notice')}
+        accentColor={accent}
+        footer={
+          <button
+            onClick={() => setNotice(null)}
+            style={{ background: accent, color: onAccent, border: 'none', borderRadius: '12px', padding: '14px 32px', fontWeight: '700', cursor: 'pointer', fontSize: '15px' }}
+          >{t('common.ok')}</button>
+        }
+      >
+        <p style={{ color: 'rgba(255,255,255,0.85)', marginBottom: '16px', lineHeight: 1.6 }}>{notice}</p>
+      </Modal>
+
+      {/* İlk açılış sihirbazı */}
+      <AnimatePresence>
+        {!settings.onboarded && (
+          <Onboarding
+            accent={accent}
+            account={account}
+            setAccount={setAccount}
+            systemInfo={systemInfo}
+            updateSetting={updateSetting}
+            onError={setErrorMessage}
+            onFinish={() => setSettingsState((prev) => ({ ...prev, onboarded: true }))}
+          />
+        )}
+      </AnimatePresence>
 
       <style>{`
         .stat-card { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px 20px; border-radius: 30px; font-size: 14px; font-weight: 600; border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(10px); }
         .prof-input { padding: 15px 16px; font-size: 15px; margin-top: 8px; }
         input:focus { border-color: ${accent}88 !important; }
+        select option { background: #12121c; }
         button:hover:not(:disabled) { transform: scale(1.02); }
         button:active:not(:disabled) { transform: scale(0.98); }
         button:disabled { opacity: 0.6; cursor: not-allowed; }
         .bg-zoom { animation: bgZoom 40s ease-in-out infinite alternate; }
         @keyframes bgZoom { from { transform: scale(1); } to { transform: scale(1.08); } }
+        .spin { animation: hlSpin 1s linear infinite; }
+        @keyframes hlSpin { to { transform: rotate(360deg); } }
       `}</style>
     </div>
   );
 }
 
-// ─── Toggle Card Component ────────────────────────────────────────────────────
-
-function ToggleCard({ label, desc, active, color, onClick }) {
+export default function AppRoot() {
+  const [lang, setLang] = useState('tr');
   return (
-    <div onClick={onClick} style={{ flex: '1', minWidth: '200px', background: active ? `${color}22` : 'rgba(255,255,255,0.05)', border: `1px solid ${active ? color : 'rgba(255,255,255,0.1)'}`, borderRadius: '16px', padding: '20px', cursor: 'pointer', transition: 'all 0.3s' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <p style={{ fontWeight: '600', marginBottom: '4px' }}>{label}</p>
-          <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>{desc}</p>
-        </div>
-        <div style={{ width: '48px', height: '26px', background: active ? color : 'rgba(255,255,255,0.2)', borderRadius: '13px', position: 'relative', transition: 'all 0.3s' }}>
-          <div style={{ width: '20px', height: '20px', background: 'white', borderRadius: '50%', position: 'absolute', top: '3px', left: active ? '25px' : '3px', transition: 'all 0.3s' }} />
-        </div>
-      </div>
-    </div>
+    <I18nProvider lang={lang} setLang={setLang}>
+      <App />
+    </I18nProvider>
   );
 }
-
-export default App;
