@@ -211,6 +211,32 @@ test('friendlyError: bağlam ekler', () => {
     assert.ok(friendlyError(new Error('detay'), 'Başlık').startsWith('Başlık'));
 });
 
+// ─── i18n: backend ilerleme anahtarları sözlükte var mı? ────────────────────
+test('i18n: backend be.* anahtarları TR ve EN sözlüklerinde mevcut', () => {
+    const i18nSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'i18n.jsx'), 'utf8');
+    const start = i18nSrc.indexOf('export const DICTS = {');
+    const objText = i18nSrc.slice(start + 'export const '.length, i18nSrc.indexOf('\n};') + 3);
+    const dicts = new Function(`let ${objText}; return DICTS;`)();
+
+    const usedKeys = new Set();
+    const walk = (dir) => {
+        for (const entry of fs.readdirSync(dir)) {
+            const p = path.join(dir, entry);
+            if (fs.statSync(p).isDirectory()) walk(p);
+            else if (p.endsWith('.cjs')) {
+                for (const m of fs.readFileSync(p, 'utf8').matchAll(/key: '(be\.[a-zA-Z]+)'/g)) usedKeys.add(m[1]);
+            }
+        }
+    };
+    walk(path.join(__dirname, '..', 'electron'));
+
+    assert.ok(usedKeys.size >= 10, `beklenenden az be.* anahtarı bulundu: ${usedKeys.size}`);
+    for (const key of usedKeys) {
+        assert.ok(dicts.tr[key], `TR sözlüğünde eksik: ${key}`);
+        assert.ok(dicts.en[key], `EN sözlüğünde eksik: ${key}`);
+    }
+});
+
 // ─── Sonuç ──────────────────────────────────────────────────────────────────
 console.log(`\n${passed} test geçti, ${failed} test kaldı`);
 try { fs.rmSync(tmpAppData, { recursive: true, force: true }); } catch { /* windows kilidi */ }

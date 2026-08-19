@@ -93,7 +93,7 @@ async function installProject({ modsDir, projectIdOrSlug, mcVersion, loader, ver
     const dest = path.join(modsDir, file.filename);
 
     if (!fs.existsSync(dest)) {
-        onProgress({ message: `${file.filename} indiriliyor...` });
+        onProgress({ key: 'be.downloading', params: { name: file.filename } });
         await downloadFile(file.url, dest, { sha1: file.hashes?.sha1 });
         log.info(`[MODRINTH] Kuruldu: ${file.filename}`);
     }
@@ -136,7 +136,7 @@ async function installPerformancePreset({ modsDir, mcVersion, loader, onProgress
     const seen = new Set();
     for (const slug of PERFORMANCE_MODS) {
         try {
-            onProgress({ message: `${slug} kuruluyor...` });
+            onProgress({ key: 'be.installingName', params: { name: slug } });
             const files = await installProject({ modsDir, projectIdOrSlug: slug, mcVersion, loader, onProgress, _seen: seen });
             report.installed.push(...files.map((f) => f.file));
         } catch (err) {

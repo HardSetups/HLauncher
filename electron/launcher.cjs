@@ -115,13 +115,13 @@ const launchGame = async (event, options = {}) => {
     let loaderResult = {};
     if (loader !== 'release') {
         const label = LOADER_LABELS[loader];
-        event.reply('java-status', { type: loader, percent: 0, message: `${label} kontrol ediliyor...` });
+        event.reply('java-status', { type: loader, percent: 0, key: 'be.checking', params: { name: label } });
         try {
             loaderResult = await prepareLoader(loader, rootPath, mcVersion, (p) => event.reply('java-status', p));
-            event.reply('java-status', { type: 'done', percent: 100, message: `${label} hazır!` });
+            event.reply('java-status', { type: 'done', percent: 100, key: 'be.ready', params: { name: label } });
         } catch (err) {
             log.error(`[LAUNCH] ${label} kurulum hatası: ${err.stack || err.message}`);
-            event.reply('java-status', { type: 'done', percent: 100, message: '' });
+            event.reply('java-status', { type: 'done', percent: 100 });
             event.reply('launch-error', friendlyError(err,
                 `${label} bu sürüm için kurulamadı.` +
                 (loader === 'optifine' ? '\nİsterseniz resmi siteden indirdiğiniz OptiFine jar\'ı ile manuel kurulum yapabilir ya da Fabric + performans paketini deneyebilirsiniz.' : '')));

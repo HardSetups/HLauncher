@@ -3,6 +3,7 @@
 ## 1.0.0-alpha.2 (hazırlanıyor)
 
 - **Mod güncelleme denetimi:** Modlar sekmesinde "Güncellemeleri Denetle" — kurulu jar'lar Modrinth'e hash ile sorulur, eski sürümler tek tek veya "Tümünü Güncelle" ile yenilenir (elle eklenen modlara dokunulmaz)
+- **Kurulum mesajları artık çok dilli:** Java/loader/mod indirme-kurulum ilerleme mesajları backend'den çeviri anahtarı olarak gelir; İngilizce arayüzde de İngilizce görünür
 
 ## 1.0.0-alpha.1 — HLauncher (2026-08)
 

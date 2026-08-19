@@ -102,7 +102,7 @@ async function install(rootPath, mcVer, onProgress) {
     const local = findInstalled(rootPath, mcVer);
     if (local) { log.info(`[OPTIFINE] Yerel: ${local}`); return local; }
 
-    onProgress({ type: 'optifine', percent: 0, message: 'OptiFine sürümü kontrol ediliyor...' });
+    onProgress({ type: 'optifine', percent: 0, key: 'be.checkingVersions', params: { name: 'OptiFine' } });
     const best = await fetchBest(mcVer);
     const { type, patch } = best;
 
@@ -111,19 +111,19 @@ async function install(rootPath, mcVer, onProgress) {
     if (fs.existsSync(versionJson)) return fullId;
 
     const tmpJar = path.join(os.tmpdir(), `hl_optifine_${Date.now()}.jar`);
-    onProgress({ type: 'optifine', percent: 5, message: `OptiFine indiriliyor (${type}_${patch})...` });
+    onProgress({ type: 'optifine', percent: 5, key: 'be.downloading', params: { name: `OptiFine ${type}_${patch}` } });
     await downloadFile(`${BMCL_BASE}/${mcVer}/${type}/${patch}`, tmpJar, {
-        onProgress: (pct) => onProgress({ type: 'optifine', percent: 5 + Math.floor(pct * 0.8), message: `OptiFine indiriliyor... %${pct}` }),
+        onProgress: (pct) => onProgress({ type: 'optifine', percent: 5 + Math.floor(pct * 0.8), key: 'be.downloadingPct', params: { name: 'OptiFine', pct } }),
     });
     if (!isValidZip(tmpJar)) {
         try { fs.unlinkSync(tmpJar); } catch { /* temizlik */ }
         throw Object.assign(new Error('İndirilen OptiFine dosyası bozuk'), { code: 'EHASHMISMATCH' });
     }
 
-    onProgress({ type: 'optifine', percent: 88, message: 'Kuruluyor...' });
+    onProgress({ type: 'optifine', percent: 88, key: 'be.installing' });
     const result = finalizeInstall(rootPath, mcVer, type, patch, tmpJar);
     try { fs.unlinkSync(tmpJar); } catch { /* temizlik */ }
-    onProgress({ type: 'optifine', percent: 100, message: `OptiFine ${type}_${patch} hazır!` });
+    onProgress({ type: 'optifine', percent: 100, key: 'be.ready', params: { name: `OptiFine ${type}_${patch}` } });
     return result;
 }
 

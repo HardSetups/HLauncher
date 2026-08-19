@@ -56,7 +56,7 @@ async function fetchManifest(url) {
  * eşitler (manifestten çıkan modlar silinir, yenileri kurulur).
  */
 async function applyManifest(url, onProgress = () => {}) {
-    onProgress({ percent: 0, message: 'Sunucu manifesti alınıyor...' });
+    onProgress({ percent: 0, key: 'be.fetchingManifest' });
     const manifest = await fetchManifest(url);
 
     const instanceId = `srv-${instances.slugify(manifest.address)}`;
@@ -92,7 +92,8 @@ async function applyManifest(url, onProgress = () => {}) {
     for (const mod of mods) {
         onProgress({
             percent: 5 + Math.floor((done / Math.max(mods.length, 1)) * 90),
-            message: `Modlar kuruluyor (${done + 1}/${mods.length})...`,
+            key: 'be.installingMods',
+            params: { i: done + 1, n: mods.length },
         });
         if (mod.type === 'modrinth') {
             const files = await modrinth.installProject({
@@ -101,7 +102,7 @@ async function applyManifest(url, onProgress = () => {}) {
                 mcVersion: manifest.mcVersion,
                 loader: manifest.loader,
                 versionId: mod.versionId || null,
-                onProgress: (p) => onProgress({ percent: null, message: p.message }),
+                onProgress: (p) => onProgress({ ...p, percent: null }),
             });
             managed.push(...files.map((f) => `mods/${f.file}`));
         } else {
@@ -122,7 +123,7 @@ async function applyManifest(url, onProgress = () => {}) {
     }
 
     instances.update(instanceId, { managedFiles: managed });
-    onProgress({ percent: 100, message: `${manifest.name} hazır!` });
+    onProgress({ percent: 100, key: 'be.ready', params: { name: manifest.name } });
     log.info(`[MANIFEST] Uygulandı: ${manifest.name} (${mods.length} mod, ${manifest.loader} ${manifest.mcVersion})`);
 
     return {

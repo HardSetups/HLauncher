@@ -167,6 +167,24 @@ export const DICTS = {
     'err.title': 'Hata',
     'err.selectVersion': 'Lütfen bir sürüm seçin.',
     'err.openLogs': 'Log klasörünü aç',
+
+    // Backend ilerleme mesajları (main süreç key+params gönderir)
+    'be.checking': '{name} kontrol ediliyor...',
+    'be.checkingVersions': '{name} sürümleri kontrol ediliyor...',
+    'be.fetchingInfo': '{name} bilgisi alınıyor...',
+    'be.downloading': '{name} indiriliyor...',
+    'be.downloadingPct': '{name} indiriliyor... %{pct}',
+    'be.downloadingProfile': '{name} profili indiriliyor ({v})...',
+    'be.downloadingFileN': '{file} indiriliyor ({i}/{n})...',
+    'be.extracting': 'Dosyalar çıkarılıyor...',
+    'be.installing': 'Kuruluyor...',
+    'be.installingName': '{name} kuruluyor...',
+    'be.installingMods': 'Modlar kuruluyor ({i}/{n})...',
+    'be.copyingConfigs': 'Yapılandırma dosyaları kopyalanıyor...',
+    'be.creatingProfile': '"{name}" profili oluşturuluyor...',
+    'be.fetchingManifest': 'Sunucu manifesti alınıyor...',
+    'be.notFoundDownloading': '{name} bulunamadı, indiriliyor...',
+    'be.ready': '{name} hazır!',
   },
 
   en: {
@@ -332,6 +350,24 @@ export const DICTS = {
     'err.title': 'Error',
     'err.selectVersion': 'Please select a version.',
     'err.openLogs': 'Open log folder',
+
+    // Backend progress messages (main process sends key+params)
+    'be.checking': 'Checking {name}...',
+    'be.checkingVersions': 'Checking {name} versions...',
+    'be.fetchingInfo': 'Fetching {name} info...',
+    'be.downloading': 'Downloading {name}...',
+    'be.downloadingPct': 'Downloading {name}... {pct}%',
+    'be.downloadingProfile': 'Downloading {name} profile ({v})...',
+    'be.downloadingFileN': 'Downloading {file} ({i}/{n})...',
+    'be.extracting': 'Extracting files...',
+    'be.installing': 'Installing...',
+    'be.installingName': 'Installing {name}...',
+    'be.installingMods': 'Installing mods ({i}/{n})...',
+    'be.copyingConfigs': 'Copying configuration files...',
+    'be.creatingProfile': 'Creating profile "{name}"...',
+    'be.fetchingManifest': 'Fetching server manifest...',
+    'be.notFoundDownloading': '{name} not found, downloading...',
+    'be.ready': '{name} ready!',
   },
 };
 

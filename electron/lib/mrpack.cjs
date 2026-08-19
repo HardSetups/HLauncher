@@ -45,7 +45,7 @@ async function importMrpack(mrpackPath, onProgress = () => {}) {
     }
 
     const name = index.name || path.basename(mrpackPath, '.mrpack');
-    onProgress({ percent: 0, message: `"${name}" profili oluşturuluyor...` });
+    onProgress({ percent: 0, key: 'be.creatingProfile', params: { name } });
     const instance = instances.create({ name, mcVersion, loader, origin: 'mrpack' });
     const instanceDir = getInstanceDir(instance.id);
 
@@ -59,7 +59,8 @@ async function importMrpack(mrpackPath, onProgress = () => {}) {
         const dest = safeJoin(instanceDir, file.path);
         onProgress({
             percent: Math.floor((done / Math.max(files.length, 1)) * 80),
-            message: `${path.basename(file.path)} indiriliyor (${done + 1}/${files.length})...`,
+            key: 'be.downloadingFileN',
+            params: { file: path.basename(file.path), i: done + 1, n: files.length },
         });
         await downloadFile(url, dest, { sha1: file.hashes?.sha1 });
         managedFiles.push(file.path.replace(/\\/g, '/'));
@@ -67,7 +68,7 @@ async function importMrpack(mrpackPath, onProgress = () => {}) {
     }
 
     // overrides/ ve client-overrides/ içeriğini profile kopyala
-    onProgress({ percent: 85, message: 'Yapılandırma dosyaları kopyalanıyor...' });
+    onProgress({ percent: 85, key: 'be.copyingConfigs' });
     for (const overrideDir of ['overrides/', 'client-overrides/']) {
         for (const entry of zip.getEntries()) {
             if (entry.isDirectory || !entry.entryName.startsWith(overrideDir)) continue;
@@ -80,7 +81,7 @@ async function importMrpack(mrpackPath, onProgress = () => {}) {
     }
 
     instances.update(instance.id, { managedFiles });
-    onProgress({ percent: 100, message: `"${name}" hazır!` });
+    onProgress({ percent: 100, key: 'be.ready', params: { name } });
     log.info(`[MRPACK] İçe aktarıldı: ${name} (${files.length} dosya, ${loader} ${mcVersion})`);
     return { instanceId: instance.id, name, mcVersion, loader, fileCount: files.length };
 }

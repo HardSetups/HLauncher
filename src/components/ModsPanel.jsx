@@ -19,7 +19,7 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
   const [installing, setInstalling] = useState(null); // proje id
   const [busyAction, setBusyAction] = useState(null); // 'perf' | 'mrpack'
   const [installedMods, setInstalledMods] = useState([]);
-  const [progressMsg, setProgressMsg] = useState('');
+  const [progressMsg, setProgressMsg] = useState(null);
   const [updates, setUpdates] = useState(null); // null = denetlenmedi
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updatingFile, setUpdatingFile] = useState(null); // dosya adı | 'all'
@@ -35,9 +35,9 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
 
   useEffect(() => { refreshInstalled(); }, [refreshInstalled]);
 
-  // Mod kurulum ilerleme mesajları
+  // Mod kurulum ilerleme mesajları ({key, params} olarak gelir, render'da çevrilir)
   useEffect(() => {
-    window.electronAPI.onModProgress((p) => setProgressMsg(p.message || ''));
+    window.electronAPI.onModProgress((p) => setProgressMsg(p));
   }, []);
 
   const runSearch = useCallback((q) => {
@@ -59,7 +59,7 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
 
   const handleInstall = async (mod) => {
     setInstalling(mod.id);
-    setProgressMsg('');
+    setProgressMsg(null);
     try {
       const res = await window.electronAPI.installMod(instance.id, mod.id);
       if (!res.ok) { onError(res.error); return; }
@@ -67,13 +67,13 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
       refreshInstalled();
     } finally {
       setInstalling(null);
-      setProgressMsg('');
+      setProgressMsg(null);
     }
   };
 
   const handlePerfPreset = async () => {
     setBusyAction('perf');
-    setProgressMsg('');
+    setProgressMsg(null);
     try {
       const res = await window.electronAPI.installPerformancePreset(instance.id);
       if (!res.ok) { onError(res.error); return; }
@@ -82,13 +82,13 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
       refreshInstalled();
     } finally {
       setBusyAction(null);
-      setProgressMsg('');
+      setProgressMsg(null);
     }
   };
 
   const handleMrpack = async () => {
     setBusyAction('mrpack');
-    setProgressMsg('');
+    setProgressMsg(null);
     try {
       const res = await window.electronAPI.importMrpack();
       if (res.canceled) return;
@@ -97,7 +97,7 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
       onProfilesRefresh();
     } finally {
       setBusyAction(null);
-      setProgressMsg('');
+      setProgressMsg(null);
     }
   };
 
@@ -192,7 +192,9 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
           {t('mods.mrpack')}
         </button>
         {progressMsg && (
-          <span style={{ alignSelf: 'center', fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>{progressMsg}</span>
+          <span style={{ alignSelf: 'center', fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>
+            {progressMsg.key ? t(progressMsg.key, progressMsg.params) : (progressMsg.message || '')}
+          </span>
         )}
       </div>
 

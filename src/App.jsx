@@ -157,7 +157,7 @@ function App() {
     });
 
     window.electronAPI.onModProgress((p) => {
-      if (manifestApplyingRef.current) setGlobalBusy(p.message || null);
+      if (manifestApplyingRef.current) setGlobalBusy(p);
     });
 
     return () => window.electronAPI.removeGameListeners();
@@ -260,7 +260,7 @@ function App() {
 
   const handleApplyManifest = useCallback(async (server) => {
     manifestApplyingRef.current = true;
-    setGlobalBusy(t('common.loading'));
+    setGlobalBusy({ key: 'common.loading' });
     try {
       const res = await window.electronAPI.applyServerManifest(server.manifestUrl);
       if (!res.ok) { setErrorMessage(res.error); return; }
@@ -339,10 +339,13 @@ function App() {
   const displayVersion = activeInstance?.mcVersion || latestVersionId || '—';
   const displayLoader = activeInstance ? LOADER_LABELS[activeInstance.loader] : '—';
 
+  // Backend ilerleme nesnesini metne çevirir ({key, params} veya düz {message})
+  const progressText = (d) => (d ? (d.key ? t(d.key, d.params) : (d.message || '')) : '');
+
   const installing = installStatus && installStatus.type !== 'done';
   const activeProgress = installing ? (installStatus.percent || 0) : progress;
   const activeLabel = installing
-    ? (installStatus.message || t('progress.preparing'))
+    ? (progressText(installStatus) || t('progress.preparing'))
     : (progressLabel ? `${t(progressLabel)} %${progress}` : `${t('progress.starting')} %${progress}`);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -625,7 +628,7 @@ function App() {
               boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
             }}
           >
-            ⏳ {globalBusy}
+            ⏳ {progressText(globalBusy)}
           </motion.div>
         )}
       </AnimatePresence>

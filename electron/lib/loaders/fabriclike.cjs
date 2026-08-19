@@ -40,7 +40,7 @@ async function install(kind, rootPath, mcVer, onProgress) {
     const local = findInstalled(kind, rootPath, mcVer);
     if (local) { log.info(`[${label.toUpperCase()}] Yerel: ${local}`); return local; }
 
-    onProgress({ type: kind, percent: 0, message: `${label} sürümleri kontrol ediliyor...` });
+    onProgress({ type: kind, percent: 0, key: 'be.checkingVersions', params: { name: label } });
     const loaders = await httpGetJson(`${meta.base}/versions/loader/${mcVer}`);
     const loaderVersion = pickLoader(kind, loaders);
     if (!loaderVersion) throw new Error(`${mcVer} için ${label} bulunamadı`);
@@ -50,14 +50,14 @@ async function install(kind, rootPath, mcVer, onProgress) {
     const versionJson = path.join(versionDir, `${fullId}.json`);
     if (fs.existsSync(versionJson)) return fullId;
 
-    onProgress({ type: kind, percent: 40, message: `${label} profili indiriliyor (${loaderVersion})...` });
+    onProgress({ type: kind, percent: 40, key: 'be.downloadingProfile', params: { name: label, v: loaderVersion } });
     const profile = await httpGetJson(`${meta.base}/versions/loader/${mcVer}/${loaderVersion}/profile/json`);
     profile.id = fullId;
 
     fs.mkdirSync(versionDir, { recursive: true });
     fs.writeFileSync(versionJson, JSON.stringify(profile, null, 2));
 
-    onProgress({ type: kind, percent: 100, message: `${label} ${loaderVersion} hazır!` });
+    onProgress({ type: kind, percent: 100, key: 'be.ready', params: { name: `${label} ${loaderVersion}` } });
     log.info(`[${label.toUpperCase()}] Kuruldu: ${fullId}`);
     return fullId;
 }

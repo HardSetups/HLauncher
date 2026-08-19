@@ -62,8 +62,8 @@ Hedef: **HLauncher** — oyuncu dostu (kolay kurulum, tek tık mod/performans), 
 
 - ~~Kurulu modların güncelleme denetimi~~ ✅ alpha.2'de (Modrinth hash eşleme, tekli/tümünü güncelle)
 - ~~GitHub Actions CI~~ ✅ (.github/workflows/ci.yml — lint+test+build; v* tag'inde taslak release)
+- ~~Backend ilerleme mesajlarının i18n'i~~ ✅ alpha.2'de (key+params ile; hata metinleri hâlâ TR — TR-öncelikli ürün için bilinçli)
 - CurseForge entegrasyonu (API anahtarı gerekir)
-- Backend'de üretilen ilerleme mesajlarının i18n'i (şu an TR)
 - Skin görüntüleyici (3D), haber beslemesi (launcher geneli), crash raporu toplama (opt-in, backend gerekir)
 - Kademeli TypeScript
 

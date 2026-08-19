@@ -53,7 +53,7 @@ async function resolveNeoForgeVersion(mcVer) {
  */
 async function ensureInstaller(kind, mcVer, onProgress) {
     const label = kind === 'forge' ? 'Forge' : 'NeoForge';
-    onProgress({ type: kind, percent: 0, message: `${label} sürümü kontrol ediliyor...` });
+    onProgress({ type: kind, percent: 0, key: 'be.checkingVersions', params: { name: label } });
 
     let url, fileName;
     if (kind === 'forge') {
@@ -72,11 +72,11 @@ async function ensureInstaller(kind, mcVer, onProgress) {
         return dest;
     }
 
-    onProgress({ type: kind, percent: 10, message: `${label} indiriliyor...` });
+    onProgress({ type: kind, percent: 10, key: 'be.downloading', params: { name: label } });
     await downloadFile(url, dest, {
-        onProgress: (pct) => onProgress({ type: kind, percent: 10 + Math.floor(pct * 0.85), message: `${label} indiriliyor... %${pct}` }),
+        onProgress: (pct) => onProgress({ type: kind, percent: 10 + Math.floor(pct * 0.85), key: 'be.downloadingPct', params: { name: label, pct } }),
     });
-    onProgress({ type: kind, percent: 100, message: `${label} hazır!` });
+    onProgress({ type: kind, percent: 100, key: 'be.ready', params: { name: label } });
     return dest;
 }
 

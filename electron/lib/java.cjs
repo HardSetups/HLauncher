@@ -90,7 +90,7 @@ async function downloadJava(required, rootPath, onProgress) {
     const javaExe = path.join(javaDir, 'bin', 'java.exe');
     if (fs.existsSync(javaExe)) return javaExe;
 
-    onProgress({ type: 'download', percent: 0, message: `Java ${required} bilgisi alınıyor...` });
+    onProgress({ type: 'download', percent: 0, key: 'be.fetchingInfo', params: { name: `Java ${required}` } });
     const assets = await httpGetJson(
         `https://api.adoptium.net/v3/assets/latest/${required}/hotspot?architecture=x64&image_type=jre&os=windows&vendor=eclipse`
     );
@@ -102,10 +102,10 @@ async function downloadJava(required, rootPath, onProgress) {
 
     await downloadFile(pkg.link, zipPath, {
         sha256: pkg.checksum || undefined,
-        onProgress: (pct) => onProgress({ type: 'download', percent: Math.floor(pct * 0.85), message: `Java ${required} indiriliyor... %${pct}` }),
+        onProgress: (pct) => onProgress({ type: 'download', percent: Math.floor(pct * 0.85), key: 'be.downloadingPct', params: { name: `Java ${required}`, pct } }),
     });
 
-    onProgress({ type: 'extract', percent: 88, message: 'Java dosyaları çıkarılıyor...' });
+    onProgress({ type: 'extract', percent: 88, key: 'be.extracting' });
     const tempDir = path.join(runtimeBase, `jre${required}_tmp`);
     if (fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true });
     extractAll(zipPath, tempDir);
@@ -119,7 +119,7 @@ async function downloadJava(required, rootPath, onProgress) {
     try { fs.unlinkSync(zipPath); } catch { /* temizlik */ }
 
     if (!fs.existsSync(javaExe)) throw new Error('Java kurulumu doğrulanamadı (java.exe yok)');
-    onProgress({ type: 'done', percent: 100, message: `Java ${required} hazır!` });
+    onProgress({ type: 'done', percent: 100, key: 'be.ready', params: { name: `Java ${required}` } });
     log.info(`[JAVA] Java ${required} indirildi: ${javaExe}`);
     return javaExe;
 }
@@ -130,7 +130,7 @@ async function ensureJava(baseVersion, rootPath, onProgress) {
     log.info(`[JAVA] MC ${baseVersion} için Java ${required} gerekli`);
     const found = findJava(required, rootPath);
     if (found) return found;
-    onProgress({ type: 'start', percent: 0, message: `Java ${required} bulunamadı, indiriliyor...` });
+    onProgress({ type: 'start', percent: 0, key: 'be.notFoundDownloading', params: { name: `Java ${required}` } });
     return downloadJava(required, rootPath, onProgress);
 }
 
