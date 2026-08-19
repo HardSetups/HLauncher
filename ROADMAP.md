@@ -51,7 +51,7 @@ Hedef: **HLauncher** — oyuncu dostu (kolay kurulum, tek tık mod/performans), 
 
 ## Yayın Öncesi Yapılacaklar (dış bağımlılıklar / kararlar)
 
-1. ~~GitHub publish ayarı~~ ✅ `HardSetups/HLauncher` olarak dolduruldu. Depo GitHub'ta açık değilse aç; sürüm çıkarmak için `v1.0.0-alpha.1` tag'i push'lamak yeterli (CI release taslağını üretir) ya da `npm run dist` çıktısını elle yükle.
+1. ~~GitHub publish ayarı~~ ✅ `HardSetups/HLauncher` — depo **public** (18 Ağu 2026), CI her `v*` tag'inde taslak release + kurulum paketi üretiyor. **Oyunculara güncelleme gitmesi için taslak release'i Publish etmek gerekir** (taslaklar `releases/latest`'te görünmez). Not: public depoda LICENSE dosyası yok — varsayılan "tüm hakları saklıdır"; açık kaynak lisansı istenirse karar verilmeli.
 2. ~~Yeni logo/ikon~~ ✅ `public/logo.ico` (7 boyut, 16-256px) üretildi ve build'e bağlandı. (İleride farklı bir logo tasarımı istenirse aynı yolla .ico yenilenir.)
 3. **Discord uygulaması** oluştur (discord.com/developers) → client ID'yi `electron/lib/discord.cjs` içindeki `DISCORD_CLIENT_ID` sabitine yaz.
 4. **Gerçek makine QA'sı**: `npm run dist:dir` çıktısını temiz bir Windows'ta dene — özellikle Microsoft girişi, OptiFine/Fabric/Forge kurulumları ve eski `.hardsetups` verisinden migrasyon.
