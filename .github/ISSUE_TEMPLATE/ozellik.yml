@@ -1,0 +1,26 @@
+name: Özellik isteği
+description: Yeni bir özellik veya iyileştirme önerisi
+title: "[Özellik] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: sorun
+    attributes:
+      label: Hangi ihtiyacı çözüyor?
+      description: Kullanıcı/sunucu sahibi açısından sorun ne?
+    validations:
+      required: true
+  - type: textarea
+    id: cozum
+    attributes:
+      label: Önerilen çözüm
+  - type: dropdown
+    id: alan
+    attributes:
+      label: Alan
+      options:
+        - Arayüz
+        - Mod sistemi
+        - Sunucu paketi (hlauncher.json)
+        - Başlatma/Java
+        - Diğer

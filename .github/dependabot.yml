@@ -1,0 +1,17 @@
+# Haftada bir bağımlılık güncellemesi PR'ı açar (gruplu, gürültüsüz).
+# PR'ı CI test eder; ikinizden biri onaylayıp merge eder.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      kucuk-guncellemeler:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly

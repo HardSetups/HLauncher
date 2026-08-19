@@ -72,6 +72,19 @@ Aynı anda iki kişi sürüm çıkarmaz — Discord'dan "alpha.N'i ben çıkarı
 7. Doğrula: yeni exe'nin indirme linki çalışıyor mu, `latest.yml` yeni sürümü gösteriyor mu
 8. Kurulu launcher'lar otomatik güncellenir. Oyunculara duyuru: kökteki `news.json`'a kayıt ekleyip push'la
 
+## 4.5 Otomatik kurulu kolaylıklar
+
+- **PR önizleme paketi:** Her PR'da CI kurulum exe'sini derler; PR sayfası →
+  Checks → Artifacts → `HLauncher-PR-onizleme`. Gözden geçiren, kodu çekmeden
+  kurulumu indirip dener.
+- **main koruması:** force-push ve dal silme engelli (normal push serbest).
+- **Merge hijyeni:** merge commit kapalı (Squash veya Rebase seç), merge sonrası
+  dal otomatik silinir, auto-merge açık ("CI bitince birleştir" işaretlenebilir).
+- **Dependabot:** her pazartesi bağımlılık güncellemesi PR'ı açar (gruplu);
+  CI test eder, biriniz onaylar.
+- **Şablonlar:** PR açınca QC kontrol listesi, issue açınca hata/özellik formu
+  otomatik gelir.
+
 ## 5. Sorumluluk paylaşımı önerisi
 
 - İş takibi **GitHub Issues** ile: her iş bir issue, üstlenen kendini atar

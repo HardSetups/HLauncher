@@ -1,0 +1,33 @@
+name: Hata bildirimi
+description: Launcher'da bir şey bozuk
+title: "[Hata] "
+labels: [bug]
+body:
+  - type: textarea
+    id: ne-oldu
+    attributes:
+      label: Ne oldu?
+      description: Ne yapmaya çalışıyordun, ne bekliyordun, ne gördün?
+    validations:
+      required: true
+  - type: textarea
+    id: adimlar
+    attributes:
+      label: Tekrarlama adımları
+      placeholder: |
+        1. Modlar sekmesini aç
+        2. ...
+  - type: input
+    id: surum
+    attributes:
+      label: HLauncher sürümü
+      description: Ayarlar → Genel'in altında yazar
+      placeholder: v1.0.0-alpha.4
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Ayarlar → "Log klasörünü aç" → hlauncher.log'un ilgili kısmını yapıştır
+      render: text
