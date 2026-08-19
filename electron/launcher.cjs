@@ -18,9 +18,11 @@ const discord = require('./lib/discord.cjs');
 
 const launcher = new Client();
 let gameProcess = null;
+let stoppedByUser = false; // kullanıcı kapattıysa "çöktü" uyarısı gösterme
 
 const stopGame = () => {
     if (gameProcess) {
+        stoppedByUser = true;
         gameProcess.kill();
         gameProcess = null;
     }
@@ -100,6 +102,7 @@ async function prepareLoader(loader, rootPath, mcVersion, onProgress) {
  */
 const launchGame = async (event, options = {}) => {
     const startedAt = Date.now();
+    stoppedByUser = false;
     const rootPath = getRootPath();
     const store = getStore();
     const settings = store.get('settings');
@@ -169,6 +172,10 @@ const launchGame = async (event, options = {}) => {
         gameProcess = null;
         discord.clear();
         event.reply('game-closed');
+        // Sıfır dışı çıkış + kullanıcı kapatmadıysa: muhtemel çökme, kullanıcıya söyle
+        if (code && code !== 0 && !stoppedByUser) {
+            event.reply('game-crashed', { code });
+        }
     });
 
     const gameArgs = [];

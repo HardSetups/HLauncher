@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion';
-import { Check, FolderOpen, RefreshCw, RotateCw, Palette, Zap, Coffee, Globe } from 'lucide-react';
+import { Check, FolderOpen, RefreshCw, RotateCw, Palette, Zap, Coffee, Globe, Camera, Trash2 } from 'lucide-react';
 
 const sectionTitleStyle = { fontSize: '17px', fontWeight: '700', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' };
+const utilBtnStyle = { display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.75)', padding: '10px 16px', borderRadius: '10px', fontWeight: '600', fontSize: '13px' };
 import { contrastText } from '../utils/color';
 import { useI18n } from '../i18n.jsx';
 
@@ -51,9 +52,14 @@ function updaterStatusText(t, status) {
   }
 }
 
-function SettingsPanel({ settings, updateSetting, systemInfo, accent, updaterStatus }) {
+function SettingsPanel({ settings, updateSetting, systemInfo, accent, updaterStatus, onNotice }) {
   const { t, lang, setLang } = useI18n();
   const onAccent = contrastText(accent);
+
+  const handleClearCache = async () => {
+    const res = await window.electronAPI.clearCache();
+    onNotice?.(t('set.clearCache.done', { mb: (res.freedBytes / (1024 * 1024)).toFixed(1) }));
+  };
 
   const ramMaxLimit = Math.max(4, (systemInfo.totalMemGb || 16) - 2);
   const ramRecommended = Math.min(8, Math.max(2, Math.floor((systemInfo.totalMemGb || 16) / 2)));
@@ -268,12 +274,17 @@ function SettingsPanel({ settings, updateSetting, systemInfo, accent, updaterSta
           )}
         </div>
 
-        <button
-          onClick={() => window.electronAPI.openLogs()}
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.75)', padding: '10px 16px', borderRadius: '10px', fontWeight: '600', fontSize: '13px' }}
-        >
-          <FolderOpen size={15} /> {t('set.logs')}
-        </button>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button onClick={() => window.electronAPI.openLogs()} style={utilBtnStyle}>
+            <FolderOpen size={15} /> {t('set.logs')}
+          </button>
+          <button onClick={() => window.electronAPI.openScreenshots()} style={utilBtnStyle}>
+            <Camera size={15} /> {t('set.screenshots')}
+          </button>
+          <button onClick={handleClearCache} style={utilBtnStyle} title={t('set.clearCache.desc')}>
+            <Trash2 size={15} /> {t('set.clearCache')}
+          </button>
+        </div>
       </div>
     </div>
   );

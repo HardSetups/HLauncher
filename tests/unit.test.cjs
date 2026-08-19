@@ -196,6 +196,53 @@ test('hashFileSha1: bilinen içerik için doğru özet', () => {
     assert.strictEqual(hashFileSha1(f), require('crypto').createHash('sha1').update('hlauncher').digest('hex'));
 });
 
+// ─── store.cjs güvenlik süzgeçleri ──────────────────────────────────────────
+const { sanitizeSettingsPatch, sanitizeServers } = require('../electron/lib/store.cjs');
+
+test('sanitizeSettingsPatch: bilinmeyen anahtarları atar', () => {
+    const clean = sanitizeSettingsPatch({ ram: 8, evil: 'x', __proto__: { a: 1 }, language: 'en' });
+    assert.deepStrictEqual(Object.keys(clean).sort(), ['language', 'ram']);
+});
+test('sanitizeServers: şemayı zorlar, güvensizleri temizler', () => {
+    const clean = sanitizeServers([
+        { id: 'a', name: 'S', address: ' mc.x.com ', favorite: 'evet', manifestUrl: 'javascript:alert(1)' },
+        { address: '' },
+        'bozuk',
+        { address: 'mc.y.com', manifestUrl: 'https://y.com/hlauncher.json', favorite: true },
+    ]);
+    assert.strictEqual(clean.length, 2);
+    assert.strictEqual(clean[0].address, 'mc.x.com');
+    assert.strictEqual(clean[0].favorite, false);       // 'evet' → false
+    assert.strictEqual(clean[0].manifestUrl, '');        // javascript: reddedildi
+    assert.strictEqual(clean[1].manifestUrl, 'https://y.com/hlauncher.json');
+});
+
+// ─── zip.cjs zip-slip koruması ──────────────────────────────────────────────
+const AdmZip = require('adm-zip');
+const { extractAll } = require('../electron/lib/zip.cjs');
+
+test('extractAll: yol kaçışlı arşiv reddedilir (zip-slip)', () => {
+    // addFile adı temizlediği için gerçek saldırıyı taklit etmek üzere
+    // entryName yazıldıktan sonra elle bozulur (diskte ../ olarak kalır)
+    const evil = new AdmZip();
+    evil.addFile('zararsiz.txt', Buffer.from('zarar'));
+    evil.getEntries()[0].entryName = '../kacak.txt';
+    const zipPath = path.join(tmpAppData, 'evil.zip');
+    evil.writeZip(zipPath);
+    const dest = path.join(tmpAppData, 'extract-dest');
+    assert.throws(() => extractAll(zipPath, dest), /Güvensiz arşiv girdisi/);
+    assert.ok(!fs.existsSync(path.join(tmpAppData, 'kacak.txt')), 'dosya hedef dışına yazıldı!');
+});
+test('extractAll: normal arşiv sorunsuz çıkarılır', () => {
+    const ok = new AdmZip();
+    ok.addFile('klasor/dosya.txt', Buffer.from('merhaba'));
+    const zipPath = path.join(tmpAppData, 'ok.zip');
+    ok.writeZip(zipPath);
+    const dest = path.join(tmpAppData, 'extract-ok');
+    extractAll(zipPath, dest);
+    assert.strictEqual(fs.readFileSync(path.join(dest, 'klasor', 'dosya.txt'), 'utf8'), 'merhaba');
+});
+
 // ─── errors.cjs ─────────────────────────────────────────────────────────────
 const { friendlyError } = require('../electron/lib/errors.cjs');
 

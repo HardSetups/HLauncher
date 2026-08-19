@@ -75,6 +75,36 @@ class Store {
     all() { return this.data; }
 }
 
+// Renderer'dan gelen veriler ana sürece güvenilmeden yazılmaz — saf, testli süzgeçler:
+
+const SETTING_KEYS = new Set(Object.keys(DEFAULTS.settings));
+
+/** settings:patch için yalnızca bilinen anahtarları geçirir. */
+function sanitizeSettingsPatch(patch) {
+    const clean = {};
+    if (!patch || typeof patch !== 'object') return clean;
+    for (const [key, value] of Object.entries(patch)) {
+        if (SETTING_KEYS.has(key)) clean[key] = value;
+    }
+    return clean;
+}
+
+/** servers:set için liste şemasını zorlar. */
+function sanitizeServers(servers) {
+    const crypto = require('crypto');
+    return (Array.isArray(servers) ? servers : [])
+        .slice(0, 20)
+        .map((s) => ({
+            id: String(s?.id || '').slice(0, 60) || crypto.randomUUID(),
+            name: String(s?.name || '').slice(0, 60),
+            address: String(s?.address || '').trim().slice(0, 120),
+            favorite: s?.favorite === true,
+            manifestUrl: /^https?:\/\//.test(String(s?.manifestUrl || '')) ? String(s.manifestUrl).slice(0, 300) : '',
+            addedAt: Number(s?.addedAt) || Date.now(),
+        }))
+        .filter((s) => s.address);
+}
+
 let instance = null;
 function getStore() {
     if (!instance) {
@@ -84,4 +114,4 @@ function getStore() {
     return instance;
 }
 
-module.exports = { getStore, Store, DEFAULTS };
+module.exports = { getStore, Store, DEFAULTS, sanitizeSettingsPatch, sanitizeServers };

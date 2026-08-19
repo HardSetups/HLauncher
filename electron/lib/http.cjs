@@ -26,6 +26,10 @@ function httpGetStream(url, { timeout = DEFAULT_TIMEOUT, headers = {} } = {}, _r
                 let next;
                 try { next = new URL(res.headers.location, url).toString(); }
                 catch { return fail(new Error(`Geçersiz yönlendirme adresi: ${res.headers.location}`)); }
+                // https ile başlayan bir istek http'ye düşürülemez (MITM önlemi)
+                if (url.startsWith('https://') && next.startsWith('http://')) {
+                    return fail(new Error(`Güvensiz yönlendirme engellendi (https→http): ${next}`));
+                }
                 settled = true;
                 return httpGetStream(next, { timeout, headers }, _redirects + 1).then(resolve, reject);
             }

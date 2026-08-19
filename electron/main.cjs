@@ -35,7 +35,7 @@ if (!app.requestSingleInstanceLock()) {
 
 function startApp() {
     const log = require('./lib/logger.cjs');
-    const { getStore } = require('./lib/store.cjs');
+    const { getStore, sanitizeSettingsPatch, sanitizeServers } = require('./lib/store.cjs');
     const { getLogsDir, getRootPath } = require('./lib/paths.cjs');
     const { friendlyError } = require('./lib/errors.cjs');
     const { launchGame, stopGame } = require('./launcher.cjs');
@@ -71,6 +71,22 @@ function startApp() {
             },
         });
         if (saved?.maximized) mainWindow.maximize();
+
+        // Güvenlik: renderer yeni pencere açamaz ve uygulama dışına gezinemez.
+        // https linkler (Discord, haberler) sistem tarayıcısında açılır.
+        mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+            if (/^https:\/\//.test(url)) shell.openExternal(url);
+            return { action: 'deny' };
+        });
+        mainWindow.webContents.on('will-navigate', (e, url) => {
+            const allowed = process.env.NODE_ENV === 'development'
+                ? url.startsWith('http://127.0.0.1:5173')
+                : url.startsWith('file://');
+            if (!allowed) {
+                e.preventDefault();
+                if (/^https:\/\//.test(url)) shell.openExternal(url);
+            }
+        });
 
         // Büyüt/küçült durumunu arayüze bildir (başlık çubuğu simgesi için)
         mainWindow.on('maximize', () => mainWindow.webContents.send('window-maximized', true));
@@ -142,6 +158,43 @@ function startApp() {
 
     ipcMain.handle('system:open-logs', () => shell.openPath(getLogsDir()));
 
+    // Aktif profilin ekran görüntüleri klasörünü aç (yoksa oluştur)
+    ipcMain.handle('system:open-screenshots', () => {
+        const { getInstanceDir } = require('./lib/paths.cjs');
+        const dir = path.join(getInstanceDir(getStore().get('activeInstanceId') || 'default'), 'screenshots');
+        require('fs').mkdirSync(dir, { recursive: true });
+        return shell.openPath(dir);
+    });
+
+    // Önbellek temizliği: manifest/haber önbelleği + installer jar'ları.
+    // Oyun dosyalarına, profillere ve modlara DOKUNMAZ.
+    ipcMain.handle('system:clear-cache', () => {
+        const fs = require('fs');
+        const { getInstallersDir } = require('./lib/paths.cjs');
+        let freed = 0;
+        const targets = [
+            path.join(getRootPath(), 'version_manifest_cache.json'),
+            path.join(getRootPath(), 'news_cache.json'),
+        ];
+        try {
+            for (const f of fs.readdirSync(getInstallersDir())) targets.push(path.join(getInstallersDir(), f));
+        } catch { /* installers klasörü yoksa geç */ }
+        for (const f of targets) {
+            try {
+                freed += fs.statSync(f).size;
+                fs.unlinkSync(f);
+            } catch { /* dosya yoksa geç */ }
+        }
+        log.info(`[MAIN] Önbellek temizlendi: ${Math.round(freed / 1024)} KB`);
+        return { freedBytes: freed };
+    });
+
+    ipcMain.handle('instances:open-dir', (_e, id) => {
+        if (!instances.get(id)) throw new Error(`Profil bulunamadı: ${id}`);
+        const { getInstanceDir } = require('./lib/paths.cjs');
+        return shell.openPath(getInstanceDir(id));
+    });
+
     ipcMain.handle('news:get', () => getNews());
 
     // Launcher'ın kendi güncellemeleri
@@ -158,9 +211,9 @@ function startApp() {
             account: accounts.getCurrent(),
         };
     });
-    ipcMain.handle('settings:patch', (_e, patch) => getStore().patchSettings(patch || {}));
+    ipcMain.handle('settings:patch', (_e, patch) => getStore().patchSettings(sanitizeSettingsPatch(patch)));
     ipcMain.handle('servers:set', (_e, servers) => {
-        getStore().set('servers', Array.isArray(servers) ? servers : []);
+        getStore().set('servers', sanitizeServers(servers));
         return true;
     });
     ipcMain.handle('instances:set-active', (_e, id) => {

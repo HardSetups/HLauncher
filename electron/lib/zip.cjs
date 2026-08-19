@@ -3,10 +3,18 @@ const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
 
-/** Arşivin tamamını hedef klasöre çıkarır. */
+/** Arşivin tamamını hedef klasöre çıkarır (zip-slip korumalı). */
 function extractAll(zipPath, destDir) {
     fs.mkdirSync(destDir, { recursive: true });
-    new AdmZip(zipPath).extractAllTo(destDir, true);
+    const zip = new AdmZip(zipPath);
+    const base = path.resolve(destDir);
+    for (const entry of zip.getEntries()) {
+        const target = path.resolve(destDir, entry.entryName);
+        if (target !== base && !target.startsWith(base + path.sep)) {
+            throw new Error(`Güvensiz arşiv girdisi engellendi: ${entry.entryName}`);
+        }
+    }
+    zip.extractAllTo(destDir, true);
 }
 
 /** Ada göre (klasörden bağımsız) tek bir girdiyi hedef dosyaya çıkarır. */

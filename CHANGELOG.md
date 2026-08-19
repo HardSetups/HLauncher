@@ -1,5 +1,20 @@
 # Değişiklik Günlüğü
 
+## 1.0.0-alpha.4 — 2026-08-18
+
+### Güvenlik sertleştirmesi
+- Dış linkler artık uygulama içinde değil **sistem tarayıcısında** açılıyor; pencere açma ve uygulama dışına gezinme engellendi
+- Paketli sürüme sıkı **Content-Security-Policy** eklendi
+- **Microsoft oturum token'ı** artık Windows DPAPI (safeStorage) ile şifreli saklanıyor (eski kayıtlar ilk kullanımda şifreliye taşınır)
+- ZIP çıkarmada **zip-slip** (yol kaçışı) koruması — testle doğrulandı (adm-zip'in okuma tarafı korumasız çıktı)
+- https→http yönlendirme düşürmesi engellendi; ayar/sunucu verileri IPC'de şema süzgecinden geçiyor
+
+### Yeni
+- **Çökme algılama:** oyun sıfır dışı kodla kapanırsa neden-öneri içeren uyarı (kullanıcı kapatınca gösterilmez)
+- Ayarlar → Genel: **Ekran görüntüleri** kısayolu ve **Önbelleği temizle** (boşaltılan alanı gösterir)
+- Profil kartlarında **klasörü aç** düğmesi
+- Kurulum sihirbazına **tema rengi seçimi** eklendi
+
 ## 1.0.0-alpha.3 — 2026-08-18
 
 - **Yeni görünüm:** HLauncher kimliği — Chakra Petch başlık fontu, keskin köşeli koyu paneller, blok hissi veren Oyna düğmesi, seçili kartlarda vurgu çizgisi; tüm emoji ikonlar gerçek (vektör) ikonlarla değişti

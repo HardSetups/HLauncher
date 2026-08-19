@@ -153,6 +153,10 @@ function App() {
       window.electronAPI.showLauncher();
     });
 
+    window.electronAPI.onGameCrashed((data) => {
+      setErrorMessage(t('game.crashed', { code: data?.code ?? '?' }));
+    });
+
     window.electronAPI.onJavaStatus((data) => {
       setInstallStatus(data);
       if (data.type === 'done') {
@@ -168,6 +172,8 @@ function App() {
     window.electronAPI.getUpdaterStatus().then(setUpdaterStatus).catch(() => {});
 
     return () => window.electronAPI.removeGameListeners();
+  // Dinleyiciler bilinçli olarak bir kez kaydedilir; t yalnızca çökme mesajında kullanılır
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Sürüm listesi ─────────────────────────────────────────────────────────
@@ -581,6 +587,7 @@ function App() {
                     systemInfo={systemInfo}
                     accent={accent}
                     updaterStatus={updaterStatus}
+                    onNotice={setNotice}
                   />
                 </motion.div>
               )}

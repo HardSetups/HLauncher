@@ -5,6 +5,8 @@ import { contrastText } from '../utils/color';
 import { useI18n } from '../i18n.jsx';
 import AccountPanel from './AccountPanel.jsx';
 
+const ACCENT_CHOICES = ['#ff6a3d', '#00f2ff', '#ef4444', '#10b981', '#8b5cf6', '#f59e0b'];
+
 function Onboarding({ accent, account, setAccount, systemInfo, updateSetting, onError, onFinish }) {
   const { t, lang, setLang } = useI18n();
   const [step, setStep] = useState(0);
@@ -40,13 +42,13 @@ function Onboarding({ accent, account, setAccount, systemInfo, updateSetting, on
               <h2 style={{ fontSize: '26px', fontWeight: '800', marginBottom: '12px' }}>{t('ob.welcome')}</h2>
               <p style={{ color: 'rgba(255,255,255,0.6)', marginBottom: '28px', lineHeight: 1.6 }}>{t('ob.welcome.desc')}</p>
 
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '32px' }}>
-                {[{ id: 'tr', label: '🇹🇷 Türkçe' }, { id: 'en', label: '🇬🇧 English' }].map((l) => (
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '24px' }}>
+                {[{ id: 'tr', label: 'Türkçe' }, { id: 'en', label: 'English' }].map((l) => (
                   <button
                     key={l.id}
                     onClick={() => { setLang(l.id); updateSetting('language', l.id); }}
                     style={{
-                      padding: '12px 24px', borderRadius: '12px', fontWeight: '700', fontSize: '14px',
+                      padding: '12px 24px', borderRadius: '10px', fontWeight: '700', fontSize: '14px',
                       background: lang === l.id ? accent : 'rgba(255,255,255,0.06)',
                       color: lang === l.id ? onAccent : 'rgba(255,255,255,0.7)',
                       border: '1px solid rgba(255,255,255,0.08)',
@@ -54,6 +56,24 @@ function Onboarding({ accent, account, setAccount, systemInfo, updateSetting, on
                   >
                     {l.label}
                   </button>
+                ))}
+              </div>
+
+              {/* Tema rengi seçimi */}
+              <p style={{ fontSize: '12px', fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px', marginBottom: '10px' }}>
+                {t('ob.accent')}
+              </p>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '30px' }}>
+                {ACCENT_CHOICES.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => updateSetting('accent', c)}
+                    style={{
+                      width: '32px', height: '32px', borderRadius: '8px', background: c,
+                      border: accent === c ? '2px solid #fff' : '2px solid transparent',
+                      boxShadow: accent === c ? `0 0 14px ${c}88` : 'none',
+                    }}
+                  />
                 ))}
               </div>
               <button onClick={() => setStep(1)} style={btnStyle}>{t('common.continue')}</button>

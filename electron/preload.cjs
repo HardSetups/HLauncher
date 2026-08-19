@@ -17,17 +17,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onLaunchFinished: (cb) => ipcRenderer.on('launch-finished', () => cb()),
     onLaunchError:    (cb) => ipcRenderer.on('launch-error',    (_, err)  => cb(err)),
     onGameClosed:     (cb) => ipcRenderer.on('game-closed',     () => cb()),
+    onGameCrashed:    (cb) => ipcRenderer.on('game-crashed',    (_, data) => cb(data)),
     onJavaStatus:     (cb) => ipcRenderer.on('java-status',     (_, data) => cb(data)),
     onModProgress:    (cb) => ipcRenderer.on('mod-progress',    (_, data) => cb(data)),
 
     removeGameListeners: () => {
-        ['launch-progress', 'launch-finished', 'launch-error', 'game-closed', 'java-status', 'mod-progress']
+        ['launch-progress', 'launch-finished', 'launch-error', 'game-closed', 'game-crashed', 'java-status', 'mod-progress']
             .forEach((ch) => ipcRenderer.removeAllListeners(ch));
     },
 
     // Sistem / ayarlar
     getSystemInfo:  () => ipcRenderer.invoke('system:info'),
     openLogs:       () => ipcRenderer.invoke('system:open-logs'),
+    openScreenshots:() => ipcRenderer.invoke('system:open-screenshots'),
+    clearCache:     () => ipcRenderer.invoke('system:clear-cache'),
+    openInstanceDir:(id) => ipcRenderer.invoke('instances:open-dir', id),
     getStoreData:   () => ipcRenderer.invoke('store:all'),
     getNews:        () => ipcRenderer.invoke('news:get'),
 

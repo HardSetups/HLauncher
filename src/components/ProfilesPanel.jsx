@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Check, Server, Package, Box } from 'lucide-react';
+import { Plus, Trash2, Check, Server, Package, Box, FolderOpen } from 'lucide-react';
 import { contrastText } from '../utils/color';
 import { useI18n } from '../i18n.jsx';
 
@@ -102,6 +102,13 @@ function ProfileCard({ instance, isActive, accent, versionManifest, onSetActive,
             <Check size={15} /> {t('prof.select')}
           </button>
         )}
+        <button
+          onClick={() => window.electronAPI.openInstanceDir(instance.id)}
+          title={t('prof.openFolder')}
+          style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.7)', borderRadius: '10px', padding: '10px 14px' }}
+        >
+          <FolderOpen size={15} />
+        </button>
         {instance.id !== 'default' && (
           <button
             onClick={() => onDelete(instance)}
