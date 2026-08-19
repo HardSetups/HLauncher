@@ -46,7 +46,7 @@ function startApp() {
     const mrpack = require('./lib/mrpack.cjs');
     const servermanifest = require('./lib/servermanifest.cjs');
     const optifineLoader = require('./lib/loaders/optifine.cjs');
-    const { initUpdater } = require('./lib/updater.cjs');
+    const updater = require('./lib/updater.cjs');
     const { getNews } = require('./lib/news.cjs');
 
     process.on('uncaughtException', (err) => log.error(`[MAIN] Yakalanmamış hata: ${err.stack || err.message}`));
@@ -87,7 +87,7 @@ function startApp() {
     app.whenReady().then(() => {
         log.info(`[MAIN] HLauncher ${app.getVersion()} başladı (veri: ${getRootPath()})`);
         createWindow();
-        initUpdater(app, getStore());
+        updater.initUpdater(app, getStore(), mainWindow);
 
         app.on('activate', () => {
             if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -123,6 +123,11 @@ function startApp() {
     ipcMain.handle('system:open-logs', () => shell.openPath(getLogsDir()));
 
     ipcMain.handle('news:get', () => getNews());
+
+    // Launcher'ın kendi güncellemeleri
+    ipcMain.handle('updates:status', () => updater.getStatus());
+    ipcMain.handle('updates:check', () => updater.checkNow());
+    ipcMain.on('updates:install', () => updater.installNow());
 
     ipcMain.handle('store:all', () => {
         const store = getStore();

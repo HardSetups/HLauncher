@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Check, FolderOpen } from 'lucide-react';
+import { Check, FolderOpen, RefreshCw, RotateCw } from 'lucide-react';
 import { contrastText } from '../utils/color';
 import { useI18n } from '../i18n.jsx';
 
@@ -37,7 +37,19 @@ export function ToggleCard({ label, desc, active, color, onClick }) {
   );
 }
 
-function SettingsPanel({ settings, updateSetting, systemInfo, accent }) {
+function updaterStatusText(t, status) {
+  switch (status?.state) {
+    case 'checking': return t('upd.checking');
+    case 'uptodate': return t('upd.uptodate');
+    case 'downloading': return t('upd.downloading', { pct: status.percent ?? 0 });
+    case 'ready': return t('upd.ready', { version: status.version || '' });
+    case 'dev': return t('upd.dev');
+    case 'error': return t('upd.error', { message: status.message || '' });
+    default: return '';
+  }
+}
+
+function SettingsPanel({ settings, updateSetting, systemInfo, accent, updaterStatus }) {
   const { t, lang, setLang } = useI18n();
   const onAccent = contrastText(accent);
 
@@ -224,17 +236,42 @@ function SettingsPanel({ settings, updateSetting, systemInfo, accent }) {
           />
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <button
-            onClick={() => window.electronAPI.openLogs()}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.75)', padding: '10px 16px', borderRadius: '10px', fontWeight: '600', fontSize: '13px' }}
-          >
-            <FolderOpen size={15} /> {t('set.logs')}
-          </button>
-          <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)' }}>
-            {t('set.version', { version: systemInfo.appVersion ? `v${systemInfo.appVersion}` : '' })}
-          </span>
+        {/* Launcher güncellemesi */}
+        <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '16px', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '14px', fontWeight: '700' }}>
+              {t('set.version', { version: systemInfo.appVersion ? `v${systemInfo.appVersion}` : '' })}
+            </span>
+            <button
+              onClick={() => window.electronAPI.checkAppUpdate()}
+              disabled={['checking', 'downloading'].includes(updaterStatus?.state)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.8)', padding: '8px 14px', borderRadius: '10px', fontWeight: '700', fontSize: '12px' }}
+            >
+              <RefreshCw size={13} className={updaterStatus?.state === 'checking' ? 'spin' : undefined} />
+              {t('upd.check')}
+            </button>
+            {updaterStatus?.state === 'ready' && (
+              <button
+                onClick={() => window.electronAPI.installAppUpdate()}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', background: accent, color: onAccent, padding: '8px 14px', borderRadius: '10px', fontWeight: '800', fontSize: '12px' }}
+              >
+                <RotateCw size={13} /> {t('upd.installNow')}
+              </button>
+            )}
+          </div>
+          {updaterStatusText(t, updaterStatus) && (
+            <p style={{ fontSize: '12px', color: updaterStatus?.state === 'error' ? '#ef4444' : 'rgba(255,255,255,0.5)', marginTop: '10px' }}>
+              {updaterStatusText(t, updaterStatus)}
+            </p>
+          )}
         </div>
+
+        <button
+          onClick={() => window.electronAPI.openLogs()}
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.75)', padding: '10px 16px', borderRadius: '10px', fontWeight: '600', fontSize: '13px' }}
+        >
+          <FolderOpen size={15} /> {t('set.logs')}
+        </button>
       </div>
     </div>
   );

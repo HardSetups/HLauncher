@@ -28,6 +28,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openLogs:       () => ipcRenderer.invoke('system:open-logs'),
     getStoreData:   () => ipcRenderer.invoke('store:all'),
     getNews:        () => ipcRenderer.invoke('news:get'),
+
+    // Launcher güncellemeleri
+    getUpdaterStatus: () => ipcRenderer.invoke('updates:status'),
+    checkAppUpdate:   () => ipcRenderer.invoke('updates:check'),
+    installAppUpdate: () => ipcRenderer.send('updates:install'),
+    onUpdaterStatus:  (cb) => ipcRenderer.on('updater-status', (_, data) => cb(data)),
     patchSettings:  (patch) => ipcRenderer.invoke('settings:patch', patch),
     setServers:     (servers) => ipcRenderer.invoke('servers:set', servers),
     selectJavaPath: () => ipcRenderer.invoke('select-java-path'),

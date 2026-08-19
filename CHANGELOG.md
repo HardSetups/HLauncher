@@ -1,6 +1,10 @@
 # Değişiklik Günlüğü
 
-## 1.0.0-alpha.2 (hazırlanıyor)
+## 1.0.0-alpha.3 (hazırlanıyor)
+
+- **Ayarlar → Genel'e launcher güncelleme kartı:** mevcut sürüm + "Güncellemeleri Denetle" düğmesi + canlı durum (denetleniyor / indiriliyor %x / hazır) ve "Yeniden Başlat ve Güncelle" düğmesi
+
+## 1.0.0-alpha.2 — 2026-08-18
 
 - **Mod güncelleme denetimi:** Modlar sekmesinde "Güncellemeleri Denetle" — kurulu jar'lar Modrinth'e hash ile sorulur, eski sürümler tek tek veya "Tümünü Güncelle" ile yenilenir (elle eklenen modlara dokunulmaz)
 - **Kurulum mesajları artık çok dilli:** Java/loader/mod indirme-kurulum ilerleme mesajları backend'den çeviri anahtarı olarak gelir; İngilizce arayüzde de İngilizce görünür

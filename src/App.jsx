@@ -46,6 +46,7 @@ function App() {
   const [globalBusy, setGlobalBusy] = useState(null);
 
   const [news, setNews] = useState([]);
+  const [updaterStatus, setUpdaterStatus] = useState({ state: 'idle' });
   const [versionManifest, setVersionManifest] = useState([]);
   const [versionManifestLoading, setVersionManifestLoading] = useState(true);
   const [versionManifestError, setVersionManifestError] = useState(null);
@@ -162,6 +163,9 @@ function App() {
     window.electronAPI.onModProgress((p) => {
       if (manifestApplyingRef.current) setGlobalBusy(p);
     });
+
+    window.electronAPI.onUpdaterStatus(setUpdaterStatus);
+    window.electronAPI.getUpdaterStatus().then(setUpdaterStatus).catch(() => {});
 
     return () => window.electronAPI.removeGameListeners();
   }, []);
@@ -576,6 +580,7 @@ function App() {
                     updateSetting={updateSetting}
                     systemInfo={systemInfo}
                     accent={accent}
+                    updaterStatus={updaterStatus}
                   />
                 </motion.div>
               )}

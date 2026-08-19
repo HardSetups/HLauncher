@@ -1,7 +1,7 @@
 {
   "name": "hlauncher",
   "private": true,
-  "version": "1.0.0-alpha.2",
+  "version": "1.0.0-alpha.3",
   "main": "electron/main.cjs",
   "author": "HLauncher",
   "description": "HLauncher — oyuncu ve sunucu dostu Minecraft launcher",
