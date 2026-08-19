@@ -17,12 +17,15 @@ Oyuncu dostu ve sunucu dostu Minecraft launcher'ı. Electron + React + Vite; oyu
 ## Geliştirme
 
 ```bash
-npm install
+git clone https://github.com/HardSetups/HLauncher.git   # OneDrive DIŞINA klonla
+npm ci             # kilit dosyasına birebir kurulum
 npm run dev        # Vite + Electron
 npm test           # birim testler
 npm run lint       # ESLint
 npm run dist       # Windows NSIS kurulum paketi (release/)
 ```
+
+**Birden fazla geliştirici mi?** İş akışı, QC kapısı ve sürüm çıkarma prosedürü: [docs/GELISTIRME.md](docs/GELISTIRME.md).
 
 Geliştirme makinesi notu: `ELECTRON_RUN_AS_NODE=1` sistem değişkeni tanımlı olduğundan Electron her zaman `launch-electron.js` üzerinden başlatılır. Mimari ayrıntıları için [CLAUDE.md](CLAUDE.md), yol haritası ve yayın öncesi kontrol listesi için [ROADMAP.md](ROADMAP.md).
 

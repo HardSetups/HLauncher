@@ -1,0 +1,12 @@
+# İki geliştirici arasında satır sonu tutarlılığı: depoda her zaman LF.
+# (Windows'ta checkout'ta da LF kalır; editörler ve araçlar sorunsuz.)
+* text=auto eol=lf
+
+# İkili dosyalar
+*.png binary
+*.jpg binary
+*.ico binary
+*.jar binary
+*.exe binary
+*.woff binary
+*.woff2 binary
