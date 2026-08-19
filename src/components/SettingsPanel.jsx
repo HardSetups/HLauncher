@@ -216,6 +216,14 @@ function SettingsPanel({ settings, updateSetting, systemInfo, accent }) {
           ))}
         </div>
 
+        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '24px' }}>
+          <ToggleCard
+            label={t('set.rpc')} desc={t('set.rpc.desc')}
+            active={settings.rpcEnabled !== false} color="#5865F2"
+            onClick={() => updateSetting('rpcEnabled', settings.rpcEnabled === false)}
+          />
+        </div>
+
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <button
             onClick={() => window.electronAPI.openLogs()}

@@ -14,7 +14,7 @@ const DEFAULTS = {
         connectAddress: '',
         jvmPreset: 'balanced',  // balanced | lowram | zgc | custom
         customJvmArgs: '',
-        discordRpc: false,
+        rpcEnabled: true,   // Discord Rich Presence (client ID discord.cjs'te)
         checkUpdates: true,
         onboarded: false,
     },

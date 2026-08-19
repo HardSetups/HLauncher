@@ -214,7 +214,9 @@ const launchGame = async (event, options = {}) => {
         if (!gameProcess) throw new Error('Oyun süreci başlatılamadı (ayrıntı için loglara bakın)');
         const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
         log.info(`[LAUNCH] Oyun başladı (${seconds} sn)`);
-        discord.setPlaying({ version: mcVersion, serverAddress: serverIp || null });
+        if (settings.rpcEnabled !== false) {
+            discord.setPlaying({ version: mcVersion, serverAddress: serverIp || null });
+        }
         event.reply('launch-finished');
     } catch (err) {
         log.error(`[LAUNCH] Başlatma hatası: ${err.stack || err.message}`);

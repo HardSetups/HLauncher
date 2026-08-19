@@ -2,9 +2,9 @@
 // değilse sessizce devre dışı kalır; launcher'ı asla bloke etmez.
 const log = require('./logger.cjs');
 
-// HLauncher'ın Discord uygulama kimliği. Yayın öncesi discord.com/developers
-// üzerinden oluşturulup buraya yazılmalı; boşsa RPC tamamen kapalıdır.
-const DISCORD_CLIENT_ID = '';
+// HLauncher'ın Discord uygulama kimliği (discord.com/developers).
+// Boşsa veya geçersizse RPC sessizce devre dışı kalır.
+const DISCORD_CLIENT_ID = '1314991416434229319';
 
 let client = null;
 let disabled = false;

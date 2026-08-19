@@ -139,6 +139,8 @@ export const DICTS = {
     'set.updates.desc': 'Yeni sürüm çıktığında arka planda indir',
     'set.logs': 'Log klasörünü aç',
     'set.version': 'HLauncher {version}',
+    'set.rpc': 'Discord Rich Presence',
+    'set.rpc.desc': 'Discord\'da "Minecraft oynuyor" durumunu göster',
 
     'acc.title': 'HESAP',
     'acc.microsoft': 'Microsoft ile Giriş Yap',
@@ -325,6 +327,8 @@ export const DICTS = {
     'set.updates.desc': 'Download new versions in the background',
     'set.logs': 'Open log folder',
     'set.version': 'HLauncher {version}',
+    'set.rpc': 'Discord Rich Presence',
+    'set.rpc.desc': 'Show "playing Minecraft" status on Discord',
 
     'acc.title': 'ACCOUNT',
     'acc.microsoft': 'Sign in with Microsoft',

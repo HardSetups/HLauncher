@@ -3,7 +3,8 @@
 const https = require('https');
 const http = require('http');
 
-const USER_AGENT = 'HLauncher/1.0';
+// Modrinth vb. API'ler iletişim bilgili UA ister; bloklanmamak için önemli.
+const USER_AGENT = 'HLauncher/1.0 (github.com/HardSetups/HLauncher)';
 const MAX_REDIRECTS = 5;
 const DEFAULT_TIMEOUT = 20000;
 const MAX_TEXT_BYTES = 10 * 1024 * 1024; // JSON/metin yanıtları için üst sınır

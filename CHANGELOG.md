@@ -6,6 +6,11 @@
 - **Kurulum mesajları artık çok dilli:** Java/loader/mod indirme-kurulum ilerleme mesajları backend'den çeviri anahtarı olarak gelir; İngilizce arayüzde de İngilizce görünür
 - **Haber beslemesi:** ana ekranda launcher haberleri (depodaki `news.json`, 30 dk önbellek) ve aktif sunucu profilinin duyuruları gösterilir
 - **3D skin görüntüleyici:** ana ekran ve Hesap sekmesinde dönen, fareyle çevrilebilen 3D karakter modeli (skinview3d); WebGL yoksa 2D görsele düşer
+- **Discord Rich Presence:** oyun açıkken Discord'da "X sunucusunda / Minecraft {sürüm}" durumu; Ayarlar → Genel'den kapatılabilir
+
+### Düzeltmeler
+- **Mod kurulumu sessizce başarısız oluyordu:** profil sürümü "En yeni" bırakıldığında "Kur" düğmesi hiçbir şey yapmıyordu. Artık "En yeni" güncel release'e çözümleniyor ve mod işlemlerindeki her hata kullanıcıya açıkça gösteriliyor
+- Modrinth istekleri iletişim bilgili User-Agent ile yapılıyor (bloklanma önlemi)
 
 ## 1.0.0-alpha.1 — HLauncher (2026-08)
 

@@ -39,7 +39,7 @@ function startApp() {
     const { getLogsDir, getRootPath } = require('./lib/paths.cjs');
     const { friendlyError } = require('./lib/errors.cjs');
     const { launchGame, stopGame } = require('./launcher.cjs');
-    const { getRecentReleaseVersions } = require('./lib/versions.cjs');
+    const { getRecentReleaseVersions, getLatestRelease } = require('./lib/versions.cjs');
     const instances = require('./lib/instances.cjs');
     const accounts = require('./lib/accounts.cjs');
     const modrinth = require('./lib/modrinth.cjs');
@@ -201,18 +201,17 @@ function startApp() {
         modrinth.removeModFile(instances.getModsDir(instanceId), fileName));
 
     ipcMain.handle('mods:install', async (event, { instanceId, projectId }) => {
-        const instance = instances.get(instanceId);
-        if (!instance) throw new Error(`Profil bulunamadı: ${instanceId}`);
-        if (!['fabric', 'quilt', 'forge', 'neoforge'].includes(instance.loader)) {
-            throw new Error('Mod kurmak için profil bir mod loader kullanmalı (Fabric, Quilt, Forge, NeoForge)');
-        }
-        const mcVersion = instance.mcVersion;
-        if (!mcVersion) throw new Error('Önce profile bir Minecraft sürümü seçin');
         try {
+            const instance = instances.get(instanceId);
+            if (!instance) throw new Error(`Profil bulunamadı: ${instanceId}`);
+            if (!['fabric', 'quilt', 'forge', 'neoforge'].includes(instance.loader)) {
+                throw new Error('Mod kurmak için profil bir mod loader kullanmalı (Fabric, Quilt, Forge, NeoForge)');
+            }
             const files = await modrinth.installProject({
                 modsDir: instances.getModsDir(instanceId),
                 projectIdOrSlug: projectId,
-                mcVersion,
+                // "En yeni" seçiliyse (null) güncel release'e çözümle
+                mcVersion: instance.mcVersion || await getLatestRelease(),
                 loader: instance.loader,
                 onProgress: modProgress(event),
             });
@@ -224,13 +223,12 @@ function startApp() {
     });
 
     ipcMain.handle('mods:check-updates', async (_e, instanceId) => {
-        const instance = instances.get(instanceId);
-        if (!instance) throw new Error(`Profil bulunamadı: ${instanceId}`);
-        if (!instance.mcVersion) throw new Error('Önce profile bir Minecraft sürümü seçin');
         try {
+            const instance = instances.get(instanceId);
+            if (!instance) throw new Error(`Profil bulunamadı: ${instanceId}`);
             const result = await modrinth.checkUpdates({
                 modsDir: instances.getModsDir(instanceId),
-                mcVersion: instance.mcVersion,
+                mcVersion: instance.mcVersion || await getLatestRelease(),
                 loader: instance.loader,
             });
             return { ok: true, ...result };
@@ -251,17 +249,18 @@ function startApp() {
     });
 
     ipcMain.handle('mods:performance-preset', async (event, instanceId) => {
-        const instance = instances.get(instanceId);
-        if (!instance) throw new Error(`Profil bulunamadı: ${instanceId}`);
         try {
+            const instance = instances.get(instanceId);
+            if (!instance) throw new Error(`Profil bulunamadı: ${instanceId}`);
             const report = await modrinth.installPerformancePreset({
                 modsDir: instances.getModsDir(instanceId),
-                mcVersion: instance.mcVersion,
+                mcVersion: instance.mcVersion || await getLatestRelease(),
                 loader: instance.loader,
                 onProgress: modProgress(event),
             });
             return { ok: true, ...report };
         } catch (err) {
+            log.error(`[MAIN] Performans preset hatası: ${err.stack || err.message}`);
             return { ok: false, error: friendlyError(err) };
         }
     });

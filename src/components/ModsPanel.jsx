@@ -57,6 +57,10 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
     return () => clearTimeout(searchTimer.current);
   }, [query, canMod, mcVersion, runSearch]);
 
+  // IPC çağrısı beklenmedik şekilde reddedilirse bile kullanıcı MUTLAKA hata
+  // görsün — sessiz başarısızlık yok (alpha.1'deki "mod inmiyor" bug'ının dersi).
+  const surfaceError = (err) => onError(String(err?.message || err));
+
   const handleInstall = async (mod) => {
     setInstalling(mod.id);
     setProgressMsg(null);
@@ -65,6 +69,8 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
       if (!res.ok) { onError(res.error); return; }
       onNotice(t('mods.installedOk', { name: mod.title, count: res.installed.length }));
       refreshInstalled();
+    } catch (err) {
+      surfaceError(err);
     } finally {
       setInstalling(null);
       setProgressMsg(null);
@@ -80,6 +86,8 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
       const skipped = res.skipped.length ? t('mods.perf.skippedSuffix', { count: res.skipped.length }) : '';
       onNotice(t('mods.perf.done', { count: res.installed.length, skipped }));
       refreshInstalled();
+    } catch (err) {
+      surfaceError(err);
     } finally {
       setBusyAction(null);
       setProgressMsg(null);
@@ -95,6 +103,8 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
       if (!res.ok) { onError(res.error); return; }
       onNotice(t('mods.mrpack.done', { name: res.name, count: res.fileCount }));
       onProfilesRefresh();
+    } catch (err) {
+      surfaceError(err);
     } finally {
       setBusyAction(null);
       setProgressMsg(null);
@@ -102,9 +112,13 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
   };
 
   const handleRemove = async (fileName) => {
-    await window.electronAPI.removeMod(instance.id, fileName);
-    setUpdates((prev) => prev?.filter((u) => u.oldFile !== fileName) ?? null);
-    refreshInstalled();
+    try {
+      await window.electronAPI.removeMod(instance.id, fileName);
+      setUpdates((prev) => prev?.filter((u) => u.oldFile !== fileName) ?? null);
+      refreshInstalled();
+    } catch (err) {
+      surfaceError(err);
+    }
   };
 
   const handleCheckUpdates = async () => {
@@ -114,6 +128,8 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
       if (!res.ok) { onError(res.error); return; }
       setUpdates(res.updates);
       if (!res.updates.length) onNotice(t('mods.upToDate', { count: res.checked }));
+    } catch (err) {
+      surfaceError(err);
     } finally {
       setCheckingUpdates(false);
     }
@@ -131,6 +147,8 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
     try {
       if (await applyOneUpdate(update)) onNotice(t('mods.updated', { file: update.filename }));
       refreshInstalled();
+    } catch (err) {
+      surfaceError(err);
     } finally {
       setUpdatingFile(null);
     }
@@ -145,6 +163,8 @@ function ModsPanel({ instance, accent, latestVersionId, onError, onNotice, onPro
       }
       refreshInstalled();
       onNotice(t('mods.updatedAll', { count: done }));
+    } catch (err) {
+      surfaceError(err);
     } finally {
       setUpdatingFile(null);
     }
