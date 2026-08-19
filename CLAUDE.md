@@ -51,5 +51,6 @@ npm run dist:dir     # Build + unpacked dir (faster, for QA)
 ## Testing / QC
 
 - `npm test` — pure-function tests with APPDATA redirected to a temp dir (never touches real user data)
+- `npm run test:integration` — REAL network calls: installs Fabric/Quilt/OptiFine, downloads Forge installer, applies the repo's example server manifest end-to-end (mods included). Run before releases; not in CI (depends on external services)
 - i18n key consistency: every `t('...')` key must exist in both dicts in `src/i18n.jsx`
 - After renderer changes run `npm run lint && npm run build`; after electron changes also `npm test`

@@ -10,6 +10,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "test": "node tests/unit.test.cjs",
+    "test:integration": "node tests/integration.test.cjs",
     "preview": "vite preview",
     "electron": "electron .",
     "dist": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --publish never",
