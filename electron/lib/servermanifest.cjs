@@ -122,7 +122,13 @@ async function applyManifest(url, onProgress = () => {}) {
         }
     }
 
-    instances.update(instanceId, { managedFiles: managed });
+    // Duyuruları profilde sakla — ana ekranda gösterilir
+    const announcements = (manifest.announcements || [])
+        .filter((a) => a && typeof a.text === 'string')
+        .slice(0, 10)
+        .map((a) => ({ date: typeof a.date === 'string' ? a.date.slice(0, 20) : '', text: a.text.trim().slice(0, 300) }));
+
+    instances.update(instanceId, { managedFiles: managed, announcements });
     onProgress({ percent: 100, key: 'be.ready', params: { name: manifest.name } });
     log.info(`[MANIFEST] Uygulandı: ${manifest.name} (${mods.length} mod, ${manifest.loader} ${manifest.mcVersion})`);
 
@@ -134,7 +140,7 @@ async function applyManifest(url, onProgress = () => {}) {
         loader: manifest.loader,
         modCount: mods.length,
         recommendedRam: manifest.recommendedRam || null,
-        announcements: (manifest.announcements || []).slice(0, 10),
+        announcements,
     };
 }
 

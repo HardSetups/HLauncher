@@ -211,6 +211,27 @@ test('friendlyError: bağlam ekler', () => {
     assert.ok(friendlyError(new Error('detay'), 'Başlık').startsWith('Başlık'));
 });
 
+// ─── news.cjs ───────────────────────────────────────────────────────────────
+const { sanitizeNews } = require('../electron/lib/news.cjs');
+
+test('sanitizeNews: geçerli girdileri kırparak alır', () => {
+    const items = sanitizeNews([
+        { date: '2026-08-18', title: '  Merhaba  ', text: 'Detay', url: 'https://ornek.com/x' },
+        { title: 'Sadece başlık' },
+        { text: 'başlıksız — atlanır' },
+        'düz metin — atlanır',
+    ]);
+    assert.strictEqual(items.length, 2);
+    assert.strictEqual(items[0].title, 'Merhaba');
+    assert.strictEqual(items[0].url, 'https://ornek.com/x');
+    assert.strictEqual(items[1].text, undefined);
+});
+test('sanitizeNews: http URL reddedilir, dizi olmayan girdi null döner', () => {
+    const items = sanitizeNews([{ title: 'X', url: 'http://guvensiz.com' }]);
+    assert.strictEqual(items[0].url, undefined);
+    assert.strictEqual(sanitizeNews({ hatali: true }), null);
+});
+
 // ─── i18n: backend ilerleme anahtarları sözlükte var mı? ────────────────────
 test('i18n: backend be.* anahtarları TR ve EN sözlüklerinde mevcut', () => {
     const i18nSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'i18n.jsx'), 'utf8');

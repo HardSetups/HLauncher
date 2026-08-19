@@ -9,6 +9,7 @@ import ModsPanel from './components/ModsPanel';
 import SettingsPanel from './components/SettingsPanel';
 import AccountPanel from './components/AccountPanel';
 import Onboarding from './components/Onboarding';
+import NewsPanel from './components/NewsPanel';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Layers, Users, Zap } from 'lucide-react';
 import { contrastText } from './utils/color';
@@ -43,6 +44,7 @@ function App() {
   const [selectedServerId, setSelectedServerId] = useState(null);
   const [globalBusy, setGlobalBusy] = useState(null);
 
+  const [news, setNews] = useState([]);
   const [versionManifest, setVersionManifest] = useState([]);
   const [versionManifestLoading, setVersionManifestLoading] = useState(true);
   const [versionManifestError, setVersionManifestError] = useState(null);
@@ -183,6 +185,11 @@ function App() {
       });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Haber beslemesi ───────────────────────────────────────────────────────
+  useEffect(() => {
+    window.electronAPI.getNews().then(setNews).catch(() => {});
   }, []);
 
   // ── connectAddress kalıcılığı ─────────────────────────────────────────────
@@ -589,6 +596,13 @@ function App() {
               onToggleFavorite={handleToggleFavorite}
               onApplyManifest={handleApplyManifest}
               onSeeAll={() => setActiveTab('servers')}
+            />
+
+            <NewsPanel
+              accent={accent}
+              news={news}
+              serverAnnouncements={activeInstance?.origin === 'server' ? activeInstance.announcements : null}
+              serverName={activeInstance?.origin === 'server' ? activeInstance.name : null}
             />
 
             <div

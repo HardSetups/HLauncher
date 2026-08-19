@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getSystemInfo:  () => ipcRenderer.invoke('system:info'),
     openLogs:       () => ipcRenderer.invoke('system:open-logs'),
     getStoreData:   () => ipcRenderer.invoke('store:all'),
+    getNews:        () => ipcRenderer.invoke('news:get'),
     patchSettings:  (patch) => ipcRenderer.invoke('settings:patch', patch),
     setServers:     (servers) => ipcRenderer.invoke('servers:set', servers),
     selectJavaPath: () => ipcRenderer.invoke('select-java-path'),

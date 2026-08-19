@@ -64,7 +64,8 @@ Hedef: **HLauncher** — oyuncu dostu (kolay kurulum, tek tık mod/performans), 
 - ~~GitHub Actions CI~~ ✅ (.github/workflows/ci.yml — lint+test+build; v* tag'inde taslak release)
 - ~~Backend ilerleme mesajlarının i18n'i~~ ✅ alpha.2'de (key+params ile; hata metinleri hâlâ TR — TR-öncelikli ürün için bilinçli)
 - CurseForge entegrasyonu (API anahtarı gerekir)
-- Skin görüntüleyici (3D), haber beslemesi (launcher geneli), crash raporu toplama (opt-in, backend gerekir)
+- ~~Haber beslemesi~~ ✅ alpha.2'de (repo kökündeki `news.json` → ana ekran; sunucu duyuruları profilde saklanıp gösteriliyor)
+- Skin görüntüleyici (3D), crash raporu toplama (opt-in, backend gerekir)
 - Kademeli TypeScript
 
 ## Bilinen Sınırlamalar

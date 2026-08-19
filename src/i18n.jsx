@@ -168,6 +168,9 @@ export const DICTS = {
     'err.selectVersion': 'Lütfen bir sürüm seçin.',
     'err.openLogs': 'Log klasörünü aç',
 
+    'news.title': 'HABERLER',
+    'news.server': 'Sunucu duyurusu',
+
     // Backend ilerleme mesajları (main süreç key+params gönderir)
     'be.checking': '{name} kontrol ediliyor...',
     'be.checkingVersions': '{name} sürümleri kontrol ediliyor...',
@@ -350,6 +353,9 @@ export const DICTS = {
     'err.title': 'Error',
     'err.selectVersion': 'Please select a version.',
     'err.openLogs': 'Open log folder',
+
+    'news.title': 'NEWS',
+    'news.server': 'Server announcement',
 
     // Backend progress messages (main process sends key+params)
     'be.checking': 'Checking {name}...',

@@ -47,6 +47,7 @@ function startApp() {
     const servermanifest = require('./lib/servermanifest.cjs');
     const optifineLoader = require('./lib/loaders/optifine.cjs');
     const { initUpdater } = require('./lib/updater.cjs');
+    const { getNews } = require('./lib/news.cjs');
 
     process.on('uncaughtException', (err) => log.error(`[MAIN] Yakalanmamış hata: ${err.stack || err.message}`));
     process.on('unhandledRejection', (reason) => log.error(`[MAIN] İşlenmemiş promise reddi: ${reason}`));
@@ -120,6 +121,8 @@ function startApp() {
     }));
 
     ipcMain.handle('system:open-logs', () => shell.openPath(getLogsDir()));
+
+    ipcMain.handle('news:get', () => getNews());
 
     ipcMain.handle('store:all', () => {
         const store = getStore();
