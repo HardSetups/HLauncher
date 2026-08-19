@@ -55,18 +55,34 @@ function startApp() {
     let mainWindow;
 
     function createWindow() {
+        const saved = getStore().get('windowBounds');
         mainWindow = new BrowserWindow({
-            width: 1200,
-            height: 800,
+            width: saved?.width || 1200,
+            height: saved?.height || 800,
+            ...(Number.isFinite(saved?.x) && Number.isFinite(saved?.y) ? { x: saved.x, y: saved.y } : {}),
             minWidth: 980,
             minHeight: 640,
             frame: false,
-            backgroundColor: '#0a0a0c',
+            backgroundColor: '#0b0c0f',
             webPreferences: {
                 preload: path.join(__dirname, 'preload.cjs'),
                 nodeIntegration: false,
                 contextIsolation: true,
             },
+        });
+        if (saved?.maximized) mainWindow.maximize();
+
+        // Büyüt/küçült durumunu arayüze bildir (başlık çubuğu simgesi için)
+        mainWindow.on('maximize', () => mainWindow.webContents.send('window-maximized', true));
+        mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-maximized', false));
+
+        // Pencere boyut/konumunu kapanışta hatırla
+        mainWindow.on('close', () => {
+            try {
+                const maximized = mainWindow.isMaximized();
+                const bounds = maximized ? mainWindow.getNormalBounds() : mainWindow.getBounds();
+                getStore().set('windowBounds', { ...bounds, maximized });
+            } catch { /* pencere çoktan yok olduysa geç */ }
         });
 
         if (process.env.NODE_ENV === 'development') {
@@ -101,6 +117,10 @@ function startApp() {
     // ── Pencere / uygulama ──────────────────────────────────────────────────
     ipcMain.on('close-app', () => app.quit());
     ipcMain.on('minimize-app', () => mainWindow.minimize());
+    ipcMain.on('toggle-maximize', () => {
+        if (mainWindow.isMaximized()) mainWindow.unmaximize();
+        else mainWindow.maximize();
+    });
     ipcMain.on('hide-launcher', () => mainWindow.hide());
     ipcMain.on('show-launcher', () => { mainWindow.show(); mainWindow.focus(); });
 

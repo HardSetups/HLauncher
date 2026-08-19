@@ -1,14 +1,25 @@
 :root {
-  --text: #ffffff;
-  --text-muted: rgba(255, 255, 255, 0.55);
-  --glass: rgba(255, 255, 255, 0.04);
-  --glass-border: rgba(255, 255, 255, 0.07);
+  --text: #f2f3f5;
+  --text-muted: rgba(242, 243, 245, 0.55);
 
-  font-family: 'Segoe UI Variable Display', 'Segoe UI', -apple-system, 'Inter', system-ui, sans-serif;
+  /* Yüzeyler: cam yerine koyu, kenarlıklı, keskin paneller */
+  --surface: rgba(16, 17, 21, 0.88);
+  --surface-raised: rgba(24, 25, 31, 0.92);
+  --surface-border: rgba(255, 255, 255, 0.09);
+
+  /* Köşe ölçeği: launcher kimliği keskin köşelerde */
+  --radius-panel: 12px;
+  --radius-control: 8px;
+  --radius-chip: 6px;
+
+  --font-display: 'Chakra Petch', 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+  --font-body: 'Segoe UI Variable Display', 'Segoe UI', -apple-system, 'Inter', system-ui, sans-serif;
+
+  font-family: var(--font-body);
   line-height: 1.5;
   font-weight: 400;
   color: var(--text);
-  background: #0a0a0c;
+  background: #0b0c0f;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -30,7 +41,7 @@ body {
   overflow: hidden;
   height: 100vh;
   width: 100vw;
-  background: #0a0a0c;
+  background: #0b0c0f;
 }
 
 #root {
@@ -38,35 +49,43 @@ body {
   width: 100%;
 }
 
+/* Başlıklar ve düğmeler display fontla — markanın ana kimlik taşıyıcısı */
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  letter-spacing: 0.3px;
+}
+
 .glass-panel {
-  background: var(--glass);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid var(--glass-border);
-  border-radius: 20px;
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-panel);
 }
 
 button {
   cursor: pointer;
   border: none;
   outline: none;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  font-family: inherit;
-  border-radius: 10px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  border-radius: var(--radius-control);
   background: none;
   color: inherit;
 }
 
-input {
+input, select {
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-control);
   padding: 12px;
   color: white;
   width: 100%;
   outline: none;
-  transition: border-color 0.25s, background 0.25s;
-  font-family: inherit;
+  transition: border-color 0.2s, background 0.2s;
+  font-family: var(--font-body);
 }
 
 input::placeholder {
@@ -112,9 +131,9 @@ input[type="range"] {
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
   background: white;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
@@ -122,15 +141,24 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 input[type="range"]::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
+  transform: scale(1.12);
 }
 
 input[type="range"]::-moz-range-thumb {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
   background: white;
   cursor: pointer;
   border: none;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* Hareket azaltma tercihi: animasyonları kapat */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

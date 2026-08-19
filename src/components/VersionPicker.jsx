@@ -46,7 +46,7 @@ function VersionPicker({ accent, loaderType, setLoaderType, versionManifest, ver
     <div style={{ display: 'flex', gap: '12px', alignItems: 'stretch', flexWrap: 'wrap' }}>
 
       {/* Loader segmented control */}
-      <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '14px', padding: '4px', border: '1px solid rgba(255,255,255,0.08)', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', background: 'rgba(16,17,21,0.75)', borderRadius: '10px', padding: '4px', border: '1px solid rgba(255,255,255,0.09)', flexWrap: 'wrap' }}>
         {LOADERS.map((l) => (
           <button
             key={l.id}
@@ -63,7 +63,7 @@ function VersionPicker({ accent, loaderType, setLoaderType, versionManifest, ver
               <motion.div
                 layoutId="loader-pill"
                 transition={{ type: 'spring', stiffness: 500, damping: 35 }}
-                style={{ position: 'absolute', inset: 0, background: accent, borderRadius: '10px', zIndex: 0 }}
+                style={{ position: 'absolute', inset: 0, background: accent, borderRadius: '7px', zIndex: 0 }}
               />
             )}
             <span style={{ position: 'relative', zIndex: 1 }}>
@@ -81,8 +81,8 @@ function VersionPicker({ accent, loaderType, setLoaderType, versionManifest, ver
           disabled={versionManifestLoading || !!versionManifestError}
           style={{
             width: '100%', height: '100%', minHeight: '46px',
-            background: 'rgba(255,255,255,0.05)', border: `1px solid ${open ? accent : 'rgba(255,255,255,0.1)'}`,
-            borderRadius: '14px', padding: '0 16px', color: '#fff', fontSize: '15px', fontWeight: '600',
+            background: 'rgba(16,17,21,0.75)', border: `1px solid ${open ? accent : 'rgba(255,255,255,0.1)'}`,
+            borderRadius: '10px', padding: '0 16px', color: '#fff', fontSize: '15px', fontWeight: '600',
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px',
             transition: 'border-color 0.2s',
           }}
@@ -107,8 +107,8 @@ function VersionPicker({ accent, loaderType, setLoaderType, versionManifest, ver
               transition={{ duration: 0.18 }}
               style={{
                 position: 'absolute', top: 'calc(100% + 8px)', left: 0, right: 0, zIndex: 100,
-                background: '#12121c', border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+                background: '#101115', border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>

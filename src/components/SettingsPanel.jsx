@@ -1,5 +1,7 @@
 import { motion } from 'framer-motion';
-import { Check, FolderOpen, RefreshCw, RotateCw } from 'lucide-react';
+import { Check, FolderOpen, RefreshCw, RotateCw, Palette, Zap, Coffee, Globe } from 'lucide-react';
+
+const sectionTitleStyle = { fontSize: '17px', fontWeight: '700', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' };
 import { contrastText } from '../utils/color';
 import { useI18n } from '../i18n.jsx';
 
@@ -62,7 +64,7 @@ function SettingsPanel({ settings, updateSetting, systemInfo, accent, updaterSta
 
       {/* Görünüm */}
       <div className="glass-panel" style={{ padding: '32px', marginBottom: '24px' }}>
-        <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '24px', color: accent }}>{t('set.appearance')}</h3>
+        <h3 style={{ ...sectionTitleStyle, color: accent }}><Palette size={17} /> {t('set.appearance')}</h3>
 
         <label style={{ display: 'block', fontWeight: '600', marginBottom: '14px' }}>{t('set.accent')}</label>
         <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '28px' }}>
@@ -119,7 +121,7 @@ function SettingsPanel({ settings, updateSetting, systemInfo, accent, updaterSta
 
       {/* Performans */}
       <div className="glass-panel" style={{ padding: '32px', marginBottom: '24px' }}>
-        <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '24px', color: accent }}>{t('set.performance')}</h3>
+        <h3 style={{ ...sectionTitleStyle, color: accent }}><Zap size={17} /> {t('set.performance')}</h3>
 
         <div style={{ marginBottom: '28px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
@@ -178,7 +180,7 @@ function SettingsPanel({ settings, updateSetting, systemInfo, accent, updaterSta
 
       {/* Java */}
       <div className="glass-panel" style={{ padding: '32px', marginBottom: '24px' }}>
-        <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '24px', color: '#3b82f6' }}>{t('set.java')}</h3>
+        <h3 style={{ ...sectionTitleStyle, color: '#3b82f6' }}><Coffee size={17} /> {t('set.java')}</h3>
         <label style={{ display: 'block', marginBottom: '12px', fontWeight: '600' }}>{t('set.java.label')}</label>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <input type="text" value={settings.javaPath} onChange={(e) => updateSetting('javaPath', e.target.value)}
@@ -208,7 +210,7 @@ function SettingsPanel({ settings, updateSetting, systemInfo, accent, updaterSta
 
       {/* Genel */}
       <div className="glass-panel" style={{ padding: '32px', marginBottom: '24px' }}>
-        <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '24px', color: accent }}>{t('set.general')}</h3>
+        <h3 style={{ ...sectionTitleStyle, color: accent }}><Globe size={17} /> {t('set.general')}</h3>
 
         <label style={{ display: 'block', fontWeight: '600', marginBottom: '12px' }}>{t('set.language')}</label>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>

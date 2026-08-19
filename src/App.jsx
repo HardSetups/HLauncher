@@ -12,7 +12,7 @@ import Onboarding from './components/Onboarding';
 import NewsPanel from './components/NewsPanel';
 import SkinViewer3D from './components/SkinViewer3D';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Layers, Users, Zap } from 'lucide-react';
+import { Play, Layers, Users, Zap, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { contrastText } from './utils/color';
 import { I18nProvider, useI18n } from './i18n.jsx';
 
@@ -464,17 +464,18 @@ function App() {
                       onMouseEnter={() => setIsHoveringPlay(true)}
                       onMouseLeave={() => setIsHoveringPlay(false)}
                       style={{
-                        width: '400px', height: '76px', borderRadius: '38px', border: 'none',
+                        width: '400px', height: '74px', borderRadius: '14px', border: 'none',
                         background: gameRunning
                           ? (isHoveringPlay ? '#ef4444' : 'rgba(255,255,255,0.1)')
-                          : `linear-gradient(135deg, ${accent}, ${accent}cc)`,
+                          : accent,
                         color: gameRunning ? '#fff' : onAccent,
-                        fontSize: '25px', fontWeight: '800', letterSpacing: '0.5px', cursor: 'pointer',
+                        fontSize: '22px', fontWeight: '700', letterSpacing: '2px', cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px',
-                        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                        // Blok hissi: alt kenarda sert gölge + yumuşak dış parıltı
                         boxShadow: gameRunning
-                          ? (isHoveringPlay ? '0 10px 40px rgba(239,68,68,0.4)' : 'none')
-                          : `0 12px 44px ${accent}55, inset 0 1px 0 rgba(255,255,255,0.25)`,
+                          ? (isHoveringPlay ? '0 10px 40px rgba(239,68,68,0.4), inset 0 -4px 0 rgba(0,0,0,0.3)' : 'inset 0 -4px 0 rgba(0,0,0,0.3)')
+                          : `0 10px 36px ${accent}45, inset 0 -4px 0 rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.25)`,
                       }}
                     >
                       <Play fill={gameRunning ? '#fff' : onAccent} size={30} />
@@ -496,8 +497,7 @@ function App() {
                               style={{ height: '100%', background: `linear-gradient(90deg, ${accent}, ${accent}aa)` }}
                             />
                           </div>
-                          <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginTop: '8px', fontWeight: 'bold' }}>
-                            {installing && <span style={{ marginRight: '6px' }}>{installStatus.type === 'optifine' ? '✨' : ['fabric', 'quilt'].includes(installStatus.type) ? '🧵' : ['forge', 'neoforge'].includes(installStatus.type) ? '⚒️' : '☕'}</span>}
+                          <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginTop: '8px', fontWeight: 'bold', letterSpacing: '0.5px', fontFamily: 'var(--font-display)' }}>
                             {activeLabel.toUpperCase()}{installing ? ` %${activeProgress}` : ''}
                           </span>
                         </motion.div>
@@ -646,7 +646,8 @@ function App() {
               boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
             }}
           >
-            ⏳ {progressText(globalBusy)}
+            <Loader2 size={14} className="spin" style={{ marginRight: '8px', verticalAlign: '-2px', display: 'inline-block' }} />
+            {progressText(globalBusy)}
           </motion.div>
         )}
       </AnimatePresence>
@@ -654,7 +655,7 @@ function App() {
       {/* Hata */}
       <Modal
         open={!!errorMessage}
-        icon="⚠️"
+        icon={<AlertTriangle size={40} color="#ef4444" />}
         title={t('err.title')}
         accentColor="#ef4444"
         footer={
@@ -676,7 +677,7 @@ function App() {
       {/* Bilgi */}
       <Modal
         open={!!notice}
-        icon="✅"
+        icon={<CheckCircle2 size={40} color={accent} />}
         title={t('common.notice')}
         accentColor={accent}
         footer={
@@ -705,7 +706,7 @@ function App() {
       </AnimatePresence>
 
       <style>{`
-        .stat-card { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px 20px; border-radius: 30px; font-size: 14px; font-weight: 600; border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(10px); }
+        .stat-card { display: flex; align-items: center; gap: 10px; background: rgba(16,17,21,0.75); padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; font-family: var(--font-display); letter-spacing: 0.5px; border: 1px solid rgba(255,255,255,0.09); }
         .prof-input { padding: 15px 16px; font-size: 15px; margin-top: 8px; }
         input:focus { border-color: ${accent}88 !important; }
         select option { background: #12121c; }

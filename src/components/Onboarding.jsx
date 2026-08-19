@@ -31,7 +31,7 @@ function Onboarding({ accent, account, setAccount, systemInfo, updateSetting, on
     >
       <motion.div
         initial={{ scale: 0.94, y: 16 }} animate={{ scale: 1, y: 0 }}
-        style={{ background: '#0f0f1a', border: `1px solid ${accent}4d`, borderRadius: '24px', padding: '44px', maxWidth: '540px', width: '100%' }}
+        style={{ background: '#101115', border: `1px solid ${accent}4d`, borderTop: `3px solid ${accent}`, borderRadius: '14px', padding: '44px', maxWidth: '540px', width: '100%' }}
       >
         <AnimatePresence mode="wait">
           {step === 0 && (

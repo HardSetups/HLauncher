@@ -88,7 +88,9 @@ function ProfileCard({ instance, isActive, accent, versionManifest, onSetActive,
       </div>
 
       {instance.serverAddress && (
-        <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>🖥️ {instance.serverAddress}</p>
+        <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Server size={11} /> {instance.serverAddress}
+        </p>
       )}
 
       <div style={{ display: 'flex', gap: '8px', marginTop: 'auto' }}>

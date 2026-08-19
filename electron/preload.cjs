@@ -2,10 +2,12 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
     // Pencere
-    closeApp:     () => ipcRenderer.send('close-app'),
-    minimizeApp:  () => ipcRenderer.send('minimize-app'),
-    hideLauncher: () => ipcRenderer.send('hide-launcher'),
-    showLauncher: () => ipcRenderer.send('show-launcher'),
+    closeApp:       () => ipcRenderer.send('close-app'),
+    minimizeApp:    () => ipcRenderer.send('minimize-app'),
+    toggleMaximize: () => ipcRenderer.send('toggle-maximize'),
+    onWindowMaximized: (cb) => ipcRenderer.on('window-maximized', (_, v) => cb(v)),
+    hideLauncher:   () => ipcRenderer.send('hide-launcher'),
+    showLauncher:   () => ipcRenderer.send('show-launcher'),
 
     // Oyun
     launchGame: (options) => ipcRenderer.send('launch-game', options),

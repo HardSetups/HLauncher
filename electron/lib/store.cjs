@@ -21,6 +21,7 @@ const DEFAULTS = {
     account: null,              // { type:'offline', name } | { type:'microsoft', name, uuid, refresh }
     servers: [],                // [{ id, name, address, favorite, manifestUrl?, addedAt }]
     activeInstanceId: 'default',
+    windowBounds: null,         // { width, height, x, y, maximized }
 };
 
 function deepMerge(base, extra) {

@@ -1,8 +1,11 @@
 # Değişiklik Günlüğü
 
-## 1.0.0-alpha.3 (hazırlanıyor)
+## 1.0.0-alpha.3 — 2026-08-18
 
+- **Yeni görünüm:** HLauncher kimliği — Chakra Petch başlık fontu, keskin köşeli koyu paneller, blok hissi veren Oyna düğmesi, seçili kartlarda vurgu çizgisi; tüm emoji ikonlar gerçek (vektör) ikonlarla değişti
+- **Pencere modu:** başlık çubuğuna büyüt/küçült düğmesi; pencere boyutu ve konumu artık hatırlanıyor
 - **Ayarlar → Genel'e launcher güncelleme kartı:** mevcut sürüm + "Güncellemeleri Denetle" düğmesi + canlı durum (denetleniyor / indiriliyor %x / hazır) ve "Yeniden Başlat ve Güncelle" düğmesi
+- Hareket azaltma (prefers-reduced-motion) tercihi destekleniyor
 
 ## 1.0.0-alpha.2 — 2026-08-18
 

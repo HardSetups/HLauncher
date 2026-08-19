@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, Plus, Trash2, Users, Star, PackageCheck } from 'lucide-react';
+import { ChevronRight, Plus, Trash2, Users, Star, PackageCheck, Server } from 'lucide-react';
 import { contrastText } from '../utils/color';
 import { useI18n } from '../i18n.jsx';
 
@@ -34,7 +34,8 @@ function ServerCard({ accent, server, status, selected, compact, index, onSelect
         background: selected ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.03)',
         border: `1px solid ${selected ? accent : 'rgba(255,255,255,0.06)'}`,
         boxShadow: selected ? `0 8px 30px ${accent}22` : 'none',
-        borderRadius: '20px',
+        borderLeft: `3px solid ${selected ? accent : 'transparent'}`,
+        borderRadius: '12px',
         padding: compact ? '14px 16px' : '20px',
         cursor: 'pointer',
         display: 'flex',
@@ -51,7 +52,7 @@ function ServerCard({ accent, server, status, selected, compact, index, onSelect
       }}>
         {status?.icon
           ? <img src={status.icon} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          : <span style={{ fontSize: compact ? '16px' : '20px' }}>🖥️</span>}
+          : <Server size={compact ? 16 : 20} color="rgba(255,255,255,0.35)" />}
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
