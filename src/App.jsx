@@ -10,6 +10,7 @@ import SettingsPanel from './components/SettingsPanel';
 import AccountPanel from './components/AccountPanel';
 import Onboarding from './components/Onboarding';
 import NewsPanel from './components/NewsPanel';
+import SkinViewer3D from './components/SkinViewer3D';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Layers, Users, Zap } from 'lucide-react';
 import { contrastText } from './utils/color';
@@ -607,16 +608,14 @@ function App() {
 
             <div
               className="glass-panel"
-              onClick={() => setActiveTab('account')}
-              title={t('nav.account')}
-              style={{ marginTop: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', cursor: 'pointer' }}
+              style={{ marginTop: 'auto', padding: '16px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}
             >
-              <img
-                src={account ? `https://minotar.net/armor/bust/${encodeURIComponent(account.name)}/120.png` : 'https://minotar.net/armor/bust/Steve/120.png'}
-                alt="Skin"
-                style={{ width: '120px', filter: 'drop-shadow(0 10px 20px rgba(0,0,0,0.5))' }}
-              />
-              <div style={{ textAlign: 'center' }}>
+              <SkinViewer3D account={account} width={150} height={185} />
+              <div
+                onClick={() => setActiveTab('account')}
+                title={t('nav.account')}
+                style={{ textAlign: 'center', cursor: 'pointer' }}
+              >
                 <p style={{ fontWeight: 'bold' }}>{account?.name || t('acc.guest')}</p>
                 <div style={{ display: 'flex', gap: '5px', alignItems: 'center', justifyContent: 'center', marginTop: '2px' }}>
                   <div style={{ width: '6px', height: '6px', background: account ? '#4bff4b' : 'rgba(255,255,255,0.3)', borderRadius: '50%' }} />

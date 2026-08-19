@@ -5,6 +5,7 @@
 - **Mod güncelleme denetimi:** Modlar sekmesinde "Güncellemeleri Denetle" — kurulu jar'lar Modrinth'e hash ile sorulur, eski sürümler tek tek veya "Tümünü Güncelle" ile yenilenir (elle eklenen modlara dokunulmaz)
 - **Kurulum mesajları artık çok dilli:** Java/loader/mod indirme-kurulum ilerleme mesajları backend'den çeviri anahtarı olarak gelir; İngilizce arayüzde de İngilizce görünür
 - **Haber beslemesi:** ana ekranda launcher haberleri (depodaki `news.json`, 30 dk önbellek) ve aktif sunucu profilinin duyuruları gösterilir
+- **3D skin görüntüleyici:** ana ekran ve Hesap sekmesinde dönen, fareyle çevrilebilen 3D karakter modeli (skinview3d); WebGL yoksa 2D görsele düşer
 
 ## 1.0.0-alpha.1 — HLauncher (2026-08)
 

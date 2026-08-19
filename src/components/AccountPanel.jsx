@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { LogIn, LogOut, Loader2, User } from 'lucide-react';
 import { contrastText } from '../utils/color';
 import { useI18n } from '../i18n.jsx';
+import SkinViewer3D from './SkinViewer3D.jsx';
 
 function AccountPanel({ account, setAccount, accent, onError, onDone }) {
   const { t } = useI18n();
@@ -36,26 +37,22 @@ function AccountPanel({ account, setAccount, accent, onError, onDone }) {
 
   if (account) {
     return (
-      <div className="glass-panel" style={{ padding: '32px', maxWidth: '440px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <img
-            src={`https://minotar.net/avatar/${encodeURIComponent(account.name)}/64`}
-            alt=""
-            style={{ borderRadius: '12px', border: `2px solid ${accent}`, width: '64px', height: '64px' }}
-          />
+      <div className="glass-panel" style={{ padding: '32px', maxWidth: '480px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+          <SkinViewer3D account={account} width={140} height={210} />
           <div style={{ flex: 1 }}>
-            <p style={{ fontWeight: 'bold', fontSize: '22px' }}>{account.name}</p>
-            <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>
+            <p style={{ fontWeight: 'bold', fontSize: '24px' }}>{account.name}</p>
+            <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', marginTop: '4px' }}>
               {account.type === 'microsoft' ? t('acc.type.microsoft') : t('acc.type.offline')}
             </p>
+            <button
+              onClick={handleLogout}
+              style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', padding: '12px 18px', borderRadius: '12px', fontWeight: '700', fontSize: '14px' }}
+            >
+              <LogOut size={16} /> {t('acc.logout')}
+            </button>
           </div>
         </div>
-        <button
-          onClick={handleLogout}
-          style={{ marginTop: '24px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', padding: '12px 18px', borderRadius: '12px', fontWeight: '700', fontSize: '14px' }}
-        >
-          <LogOut size={16} /> {t('acc.logout')}
-        </button>
       </div>
     );
   }

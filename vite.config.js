@@ -18,7 +18,9 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    emptyOutDir: true
+    emptyOutDir: true,
+    // three.js (skinview3d) tek parçada ~700KB; masaüstü uygulamada sorun değil
+    chunkSizeWarningLimit: 1200
   }
 })
 

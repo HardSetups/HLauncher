@@ -65,7 +65,8 @@ Hedef: **HLauncher** — oyuncu dostu (kolay kurulum, tek tık mod/performans), 
 - ~~Backend ilerleme mesajlarının i18n'i~~ ✅ alpha.2'de (key+params ile; hata metinleri hâlâ TR — TR-öncelikli ürün için bilinçli)
 - CurseForge entegrasyonu (API anahtarı gerekir)
 - ~~Haber beslemesi~~ ✅ alpha.2'de (repo kökündeki `news.json` → ana ekran; sunucu duyuruları profilde saklanıp gösteriliyor)
-- Skin görüntüleyici (3D), crash raporu toplama (opt-in, backend gerekir)
+- ~~Skin görüntüleyici (3D)~~ ✅ alpha.2'de (skinview3d; Microsoft hesabında UUID→Crafatar, offline'da Minotar; WebGL yedekli)
+- Crash raporu toplama (opt-in, backend gerekir)
 - Kademeli TypeScript
 
 ## Bilinen Sınırlamalar
