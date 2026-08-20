@@ -106,6 +106,23 @@ function startApp() {
         } else {
             mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
         }
+
+        // Tanıtım görseli modu (site/dokümantasyon için): HL_SCREENSHOT=<png yolu>
+        // Pencere yüklendikten ~6.5 sn sonra (sunucu durumları gelsin diye) kare alır ve çıkar.
+        if (process.env.HL_SCREENSHOT) {
+            mainWindow.webContents.once('did-finish-load', () => {
+                setTimeout(async () => {
+                    try {
+                        const img = await mainWindow.webContents.capturePage();
+                        require('fs').writeFileSync(process.env.HL_SCREENSHOT, img.toPNG());
+                        log.info(`[MAIN] Ekran görüntüsü kaydedildi: ${process.env.HL_SCREENSHOT}`);
+                    } catch (err) {
+                        log.error(`[MAIN] Ekran görüntüsü hatası: ${err.message}`);
+                    }
+                    app.quit();
+                }, parseInt(process.env.HL_SCREENSHOT_DELAY || '6500', 10));
+            });
+        }
     }
 
     app.on('second-instance', () => {

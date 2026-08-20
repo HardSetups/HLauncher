@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HLauncher Gizlilik Bildirimi</title>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    :root { --ana:#ff6a3d; --zemin:#101115; --cetvel:#26272d; --metin:#f2f3f5; --soluk:#9a9ca3; --r:2px; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:var(--zemin); color:var(--metin); font-family:'IBM Plex Sans',sans-serif; line-height:1.6; }
+    .foy { max-width:760px; margin:0 auto; padding:40px 24px 64px; }
+    h1 { font-family:'Chakra Petch',sans-serif; font-size:34px; letter-spacing:1px; padding-bottom:14px; border-bottom:3px solid var(--ana); }
+    .rev { font-size:13px; color:var(--soluk); margin-top:10px; }
+    h2 { font-family:'Chakra Petch',sans-serif; font-size:15px; letter-spacing:2px; color:var(--soluk); margin:34px 0 8px; padding-bottom:8px; border-bottom:1px solid var(--cetvel); }
+    p { color:var(--soluk); margin-top:8px; }
+    a { color:var(--ana); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+  </style>
+</head>
+<body>
+  <div class="foy">
+    <h1>GİZLİLİK BİLDİRİMİ</h1>
+    <p class="rev">Belge HL-GZ-01 · Rev 18.08.2026</p>
+
+    <h2>1. TOPLADIĞIMIZ VERİ: YOK</h2>
+    <p>HLauncher'ın kendi sunucusu, analitik altyapısı veya telemetrisi yoktur. Hesap bilgisi, kullanım istatistiği veya kimlik verisi hiçbir yere gönderilmez ve bizde tutulmaz.</p>
+
+    <h2>2. CİHAZINDA TUTULANLAR</h2>
+    <p>Ayarların, profillerin ve loglar yalnızca kendi bilgisayarında, %APPDATA%\.hlauncher klasöründe durur. Microsoft girişi kullanırsan oturum yenileme anahtarı aynı klasörde Windows DPAPI ile şifrelenmiş olarak saklanır; düz metin tutulmaz.</p>
+
+    <h2>3. UYGULAMANIN KONUŞTUĞU SERVİSLER</h2>
+    <p>Launcher işlevi gereği şu servislere istek atar: Mojang (oyun dosyaları ve sürüm listesi), Microsoft (yalnızca sen giriş başlatırsan), Adoptium (Java), Modrinth (mod arama ve indirme), BMCL (OptiFine), GitHub (güncellemeler ve haberler), mcstatus.io (eklediğin sunucuların durumu), minotar.net ve crafatar.com (skin görselleri). Bu isteklerde IP adresin doğal olarak ilgili servise görünür; her servis kendi gizlilik politikasına tabidir.</p>
+
+    <h2>4. SİLME</h2>
+    <p>Uygulamayı kaldırıp %APPDATA%\.hlauncher klasörünü sildiğinde HLauncher'a ait hiçbir veri kalmaz.</p>
+
+    <p style="margin-top:36px"><a href="index.html">← Veri föyüne dön</a></p>
+  </div>
+</body>
+</html>

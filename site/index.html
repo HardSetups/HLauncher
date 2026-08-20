@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HLauncher, Minecraft launcher'ı veri föyü</title>
+  <meta name="description" content="HLauncher: Windows için oyuncu ve sunucu dostu Minecraft launcher'ı. Profiller, 6 loader, tek tık mod kurulumu, sunucu paketleri. Ücretsiz indir." />
+  <link rel="icon" href="assets/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ana: #ff6a3d;
+      --zemin: #101115;
+      --zemin2: #17181d;
+      --cetvel: #26272d;
+      --metin: #f2f3f5;
+      --soluk: #9a9ca3;
+      --r: 2px;
+      --disp: 'Chakra Petch', sans-serif;
+      --govde: 'IBM Plex Sans', sans-serif;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--zemin);
+      color: var(--metin);
+      font-family: var(--govde);
+      font-size: 16px;
+      line-height: 1.55;
+    }
+    a { color: var(--ana); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .foy { max-width: 960px; margin: 0 auto; padding: 0 24px 64px; }
+
+    /* Belge üst şeridi */
+    .serit {
+      display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+      padding: 14px 0; border-bottom: 1px solid var(--cetvel);
+      font-family: var(--disp); font-size: 12px; letter-spacing: 1.5px; color: var(--soluk);
+    }
+    .serit b { color: var(--ana); font-weight: 600; }
+
+    /* Başlık bloğu */
+    .baslik { padding: 44px 0 28px; border-bottom: 3px solid var(--ana); }
+    .baslik h1 {
+      font-family: var(--disp); font-weight: 700; font-size: clamp(44px, 9vw, 84px);
+      letter-spacing: 2px; line-height: 0.95;
+    }
+    .baslik p { margin-top: 12px; font-size: 18px; color: var(--soluk); max-width: 620px; }
+
+    /* Şekil */
+    figure { margin: 36px 0 0; }
+    figure img {
+      width: 100%; display: block;
+      border: 1px solid var(--cetvel); border-radius: var(--r);
+    }
+    figcaption {
+      padding: 10px 2px; font-size: 13px; color: var(--soluk);
+      border-bottom: 1px solid var(--cetvel);
+    }
+
+    /* Tedarik satırı */
+    .tedarik {
+      margin-top: 36px; border: 1px solid var(--ana); border-radius: var(--r);
+      display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+      padding: 20px 22px; background: var(--zemin2);
+    }
+    .tedarik .etiket { font-family: var(--disp); font-size: 13px; letter-spacing: 2px; color: var(--ana); }
+    .tedarik .dosya { flex: 1; min-width: 240px; }
+    .tedarik .dosya strong { font-weight: 600; }
+    .tedarik .dosya small { display: block; color: var(--soluk); margin-top: 2px; }
+    .indir {
+      font-family: var(--disp); font-weight: 700; font-size: 17px; letter-spacing: 1.5px;
+      background: var(--ana); color: #1d0d06; padding: 15px 30px; border-radius: var(--r);
+      display: inline-block;
+    }
+    .indir:hover { text-decoration: none; filter: brightness(1.07); }
+    .tedarik-alt { padding: 10px 2px 0; font-size: 13px; color: var(--soluk); }
+
+    /* Bölüm başlığı */
+    h2 {
+      font-family: var(--disp); font-size: 14px; font-weight: 600; letter-spacing: 3px;
+      color: var(--soluk); margin: 52px 0 0; padding-bottom: 10px;
+      border-bottom: 1px solid var(--cetvel);
+    }
+
+    /* İşlev satırları */
+    .islev { display: flex; gap: 22px; padding: 20px 2px; border-bottom: 1px solid var(--cetvel); }
+    .islev .no {
+      font-family: var(--disp); font-weight: 700; font-size: 22px; color: var(--ana);
+      min-width: 44px; line-height: 1.2;
+    }
+    .islev h3 { font-family: var(--disp); font-size: 17px; font-weight: 600; letter-spacing: 0.5px; }
+    .islev p { margin-top: 4px; color: var(--soluk); font-size: 15px; max-width: 700px; }
+
+    /* Teknik veriler tablosu */
+    table { width: 100%; border-collapse: collapse; }
+    td { padding: 12px 2px; border-bottom: 1px solid var(--cetvel); vertical-align: top; font-size: 15px; }
+    td:first-child {
+      font-family: var(--disp); font-size: 13px; letter-spacing: 1px; color: var(--soluk);
+      width: 220px; padding-right: 16px;
+    }
+
+    /* Sunucu sahibi bloğu */
+    .sunucu { border-left: 3px solid var(--ana); padding: 6px 0 6px 20px; margin-top: 24px; }
+    .sunucu p { color: var(--soluk); max-width: 700px; }
+    .sunucu code {
+      font-family: Consolas, monospace; font-size: 14px; color: var(--metin);
+      background: var(--zemin2); padding: 1px 6px; border-radius: var(--r);
+    }
+
+    footer {
+      margin-top: 56px; padding-top: 18px; border-top: 3px solid var(--ana);
+      display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+      font-size: 13px; color: var(--soluk);
+    }
+    footer nav { display: flex; gap: 18px; flex-wrap: wrap; }
+    @media (max-width: 640px) {
+      .islev { flex-direction: column; gap: 6px; }
+      td:first-child { width: 140px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="foy">
+
+    <div class="serit">
+      <span>BELGE <b>HL-DF-01</b></span>
+      <span>ÜRÜN VERİ FÖYÜ</span>
+      <span>REV <b>2026-08-18</b> · v1.0.0-alpha.4</span>
+    </div>
+
+    <header class="baslik">
+      <h1>HLAUNCHER</h1>
+      <p>Windows için Minecraft launcher'ı. Sürümünü seç, modunu tek tıkla kur, sunucuna bağlan. Oyuncuya kurulum derdi bırakmaz, sunucu sahibine mod dağıtma derdi bırakmaz.</p>
+    </header>
+
+    <figure>
+      <img src="assets/ekran.png" alt="HLauncher ana ekranı: sunucu listesi, sürüm ve loader seçimi, haberler ve 3D karakter görünümü" width="1200" height="800" />
+      <figcaption>Şekil 1: Ana ekran. Sürüm 1.0.0-alpha.4, Windows 11. Canlı sunucu durumu (Hypixel, 18.500 oyuncu), haber akışı ve 3D karakter görünümü.</figcaption>
+    </figure>
+
+    <div class="tedarik">
+      <span class="etiket">TEDARİK</span>
+      <span class="dosya">
+        <strong>HLauncher-Kurulum-1.0.0-alpha.4.exe</strong>
+        <small>104 MB · Windows 10/11 x64 · ücretsiz · 18.08.2026</small>
+      </span>
+      <a class="indir" href="https://github.com/HardSetups/HLauncher/releases/download/v1.0.0-alpha.4/HLauncher-Kurulum-1.0.0-alpha.4.exe">KURULUMU İNDİR</a>
+    </div>
+    <p class="tedarik-alt">Alpha sürümü henüz imzasız: Windows SmartScreen uyarısında "Ek bilgi", ardından "Yine de çalıştır" seçilir. Kurulum sonrası güncellemeler arka planda otomatik gelir. Eski sürümler ve kaynak kod: <a href="https://github.com/HardSetups/HLauncher/releases">GitHub Releases</a>.</p>
+
+    <h2>İŞLEV LİSTESİ</h2>
+
+    <div class="islev"><span class="no">01</span><div>
+      <h3>PROFİL SİSTEMİ</h3>
+      <p>Her profilin kendi Minecraft sürümü, mod loader'ı, RAM ayarı ve mod klasörü vardır. Skyblock için Fabric 1.21.4, eski sunucun için Forge 1.12.2, ikisi yan yana yaşar.</p>
+    </div></div>
+
+    <div class="islev"><span class="no">02</span><div>
+      <h3>6 LOADER, SIFIR KURULUM</h3>
+      <p>Vanilla, OptiFine, Fabric, Quilt, Forge ve NeoForge. Seçersin, launcher kurar. Java'yı da sürüme göre (8, 17 veya 21) kendisi bulur ya da doğrulanmış olarak indirir.</p>
+    </div></div>
+
+    <div class="islev"><span class="no">03</span><div>
+      <h3>TEK TIK MOD KURULUMU</h3>
+      <p>Modrinth araması launcher'ın içinde: "Kur" dersin, zorunlu bağımlılıklarıyla iner. Performans Paketi tek tıkta Sodium, Lithium, FerriteCore, ImmediatelyFast ve EntityCulling kurar. Kurulu modların güncellemesi de tek tıktır.</p>
+    </div></div>
+
+    <div class="islev"><span class="no">04</span><div>
+      <h3>SUNUCU PAKETİ</h3>
+      <p>Sunucu sahibi tek bir hlauncher.json yayınlar; oyuncu sunucuyu ekleyip paket düğmesine basar. Doğru sürüm, doğru loader ve tüm mod seti kendiliğinden kurulur. Test kaydı: 2 modluk örnek paket 2,5 saniyede kuruldu (18.08.2026).</p>
+    </div></div>
+
+    <div class="islev"><span class="no">05</span><div>
+      <h3>HESAP</h3>
+      <p>Microsoft girişiyle premium hesabın ve gerçek skinin; istersen yalnızca kullanıcı adıyla çevrimdışı giriş. Oturum anahtarı diskte Windows DPAPI ile şifreli tutulur.</p>
+    </div></div>
+
+    <div class="islev"><span class="no">06</span><div>
+      <h3>DOĞRULAMALI İNDİRME</h3>
+      <p>Java, mod ve paket indirmelerinin tümü SHA-1/SHA-256 özetiyle doğrulanır, bozuk inen dosya reddedilip 3 kez yeniden denenir. Arşiv çıkarmada yol kaçışı koruması vardır.</p>
+    </div></div>
+
+    <div class="islev"><span class="no">07</span><div>
+      <h3>OTOMATİK GÜNCELLEME</h3>
+      <p>Yeni sürüm çıktığında launcher arka planda indirir, kapanışta kurar. 18.08.2026 itibarıyla dört sürüm bu kanaldan dağıtıldı (alpha.1'den alpha.4'e).</p>
+    </div></div>
+
+    <h2>TEKNİK VERİLER</h2>
+    <table>
+      <tr><td>SÜRÜM</td><td>1.0.0-alpha.4 (yayın: 18.08.2026)</td></tr>
+      <tr><td>PLATFORM</td><td>Windows 10 / 11, x64</td></tr>
+      <tr><td>PAKET</td><td>NSIS kurulum, 104 MB</td></tr>
+      <tr><td>MINECRAFT ARALIĞI</td><td>1.8'den 1.21.4'e (son 3 yılın tüm release'leri listede)</td></tr>
+      <tr><td>DİL</td><td>Türkçe ve İngilizce arayüz</td></tr>
+      <tr><td>TEST</td><td>49 birim testi, 10 gerçek ağ entegrasyon testi, her sürümde CI</td></tr>
+      <tr><td>VERİ KONUMU</td><td>%APPDATA%\.hlauncher (ayarlar, profiller, loglar)</td></tr>
+      <tr><td>KAYNAK</td><td><a href="https://github.com/HardSetups/HLauncher">github.com/HardSetups/HLauncher</a> (herkese açık)</td></tr>
+    </table>
+
+    <h2>SUNUCU SAHİPLERİ İÇİN</h2>
+    <div class="sunucu">
+      <p>Sunucunun mod setini oyunculara dağıtmak için web sitene tek bir <code>hlauncher.json</code> dosyası koyman yeterli. Şema, alan listesi ve örnek dosya: <a href="https://github.com/HardSetups/HLauncher/blob/main/docs/SERVER-MANIFEST.md">SERVER-MANIFEST.md</a>. Mod listeni güncellediğinde oyuncuların kurulumu bir sonraki hazırlıkta kendiliğinden eşitlenir.</p>
+    </div>
+
+    <footer>
+      <nav>
+        <a href="sartlar.html">Kullanım Şartları</a>
+        <a href="gizlilik.html">Gizlilik</a>
+        <a href="https://github.com/HardSetups/HLauncher">GitHub</a>
+      </nav>
+      <span>© 2026 HardSetups. HLauncher, Mojang veya Microsoft ile bağlantılı değildir.</span>
+    </footer>
+
+  </div>
+</body>
+</html>
