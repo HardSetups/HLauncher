@@ -1,6 +1,6 @@
 # Değişiklik Günlüğü
 
-## Yayımlanmadı
+## 1.0.0-alpha.5 — 2026-09-23
 
 ### Profil merkezli yeni arayüz
 - Tek bir "Oyna" yok: profil seçilir, profil sayfasından oynanır. Sol rayda profiller (son oynanan üstte), ana sayfada **Kaldığın yerden devam** + **Kütüphane**
