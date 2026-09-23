@@ -1,5 +1,49 @@
 # Değişiklik Günlüğü
 
+## Yayımlanmadı
+
+### Profil merkezli yeni arayüz
+- Tek bir "Oyna" yok: profil seçilir, profil sayfasından oynanır. Sol rayda profiller (son oynanan üstte), ana sayfada **Kaldığın yerden devam** + **Kütüphane**
+- Profil sayfası: **Modlar / Kaynak paketleri / Shaderlar / Ayarlar** sekmeleri
+- Her içerik için **aç/kapat** (dosya `.disabled` olur), **sil** (onaylı), **güncelle** / **tümünü güncelle**, arama ve Açık/Kapalı filtresi; Modrinth'teki dosyalar ad, ikon ve sürümle görünür
+- **Keşfet:** Modrinth'te mod, kaynak paketi, shader ve modpack ara; hedef profil seç, tek tıkla kur, kurulu olanlar işaretli. Modpack kurulumu yeni profil oluşturur
+- Sunucular sayfası: canlı durum, **hangi profille oynanacağını** seçme, sunucu paketi kurulumu
+- Profil ayarları: ad, sürüm/loader, bellek, **otomatik bağlanılacak sunucu**, klasör, silme
+- Profiller için Minecraft tarzı **piksel ikonlar** (profil kimliğinden türetilir)
+- Tasarım baştan: nötr grafit palet, tek vurgu rengi, sade tipografi, satır düzeninde ayarlar
+
+### Hesap ve skinler
+- Hesap sayfası baştan: büyük 3D önizleme (bekle/yürü/koş/el salla/eğil animasyonları), hesap kartı, UUID kopyalama
+- **Skin kütüphanesi:** PNG dosyasından ya da oyuncu adından skin ekle, 3D önizle, klasik/ince kol seç, yeniden adlandır, sil
+- **Skin değiştirme** (Microsoft hesabı): kütüphaneden tek tıkla uygula, varsayılan skine dön, **pelerin seç/gizle**
+- Çevrimdışı hesaplarda kütüphane çalışır; skinin oyunda görünmediği açıkça belirtilir
+
+### İndirmeler
+- Sağ altta **indirme paneli**: mod/paket/shader/modpack kurulumu, performans paketi, sunucu paketi ve oyun hazırlığı yüzde ilerlemeyle görünür
+- Kurulumlar sayfadan çıkınca **kaybolmuyor**, arka planda sürüp sonucu panelde gösteriyor
+- Kurulum sırasında sayfanın aşağı yukarı zıplaması giderildi (üst bant kalktı, düğmeler sabit genişlikte, yeniden aramada liste yerinde kalıyor)
+
+### Profil ayarları
+- Kart bölümler; loader'lar açıklamalı kartlarla, sürüm için "her zaman en yeni" seçeneği
+- **RAM:** "genel ayar / bu profile özel" seçimi, işaretli kaydırıcı, +/− düğmeleri, önerilen değer çizgisi, sistem belleğine göre uyarı
+- Otomatik bağlanma: kayıtlı sunuculardan seç ya da adres yaz
+
+### Otomatik güncelleme
+- Launcher açık kaldığı sürece **3 saatte bir** GitHub Releases'ı denetler (önceden yalnızca açılışta)
+- Yeni sürüm arka planda iner, ilerlemesi indirme panelinde görünür
+- İnince **sürüm notlarıyla** bir pencere açılır: "Şimdi yeniden başlat" ya da "Sonra" (launcher kapanırken sessizce kurulur); üst barda "Güncelleme hazır" düğmesi kalır
+- Oyun açıkken yeniden başlatma engellenir; Ayarlar'daki "Otomatik güncelleme" anahtarı artık yeniden başlatmadan etkili
+
+### Arayüz
+- Menüler, sürüm seçici, formlar, silinen satırlar ve sekme alt çizgisi artık animasyonlu
+
+### Düzeltmeler
+- **Microsoft girişi paketlenmiş sürümde çalışmıyordu:** giriş kütüphanesi (msmc) kurulum paketine girmiyordu
+- Mod aç/kapat animasyonu satır yeniden oluştuğu için görünmüyordu
+- IPC dinleyicileri artık birikmiyor; boş/kırık durumlarda kullanıcıya hata gösteriliyor
+- Türkçe büyük harf (İ/ı), yarım kalan çeviriler, 980×640'ta taşan/kesilen alanlar
+- Renderer'dan gelen profil güncellemeleri beyaz listeden geçiyor
+
 ## 1.0.0-alpha.4 — 2026-08-18
 
 ### Güvenlik sertleştirmesi

@@ -1,57 +1,66 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import TitleBar from './components/TitleBar';
-import Sidebar from './components/Sidebar';
-import Modal from './components/Modal';
-import ServerListPanel from './components/ServerListPanel';
-import VersionPicker from './components/VersionPicker';
-import ProfilesPanel from './components/ProfilesPanel';
-import ModsPanel from './components/ModsPanel';
-import SettingsPanel from './components/SettingsPanel';
-import AccountPanel from './components/AccountPanel';
-import Onboarding from './components/Onboarding';
-import NewsPanel from './components/NewsPanel';
-import SkinViewer3D from './components/SkinViewer3D';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Layers, Users, Zap, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Trash2 } from 'lucide-react';
+import Rail from './components/Rail';
+import TopBar from './components/TopBar';
+import HomePage from './components/HomePage';
+import InstancePage from './components/InstancePage';
+import BrowsePage from './components/BrowsePage';
+import ServersPage from './components/ServersPage';
+import SettingsPage from './components/SettingsPage';
+import AccountPage from './components/AccountPage';
+import DownloadBar from './components/DownloadBar';
+import UpdateModal from './components/UpdateModal';
+import CreateInstanceModal from './components/CreateInstanceModal';
+import Modal from './components/Modal';
+import Onboarding from './components/Onboarding';
 import { contrastText } from './utils/color';
 import { I18nProvider, useI18n } from './i18n.jsx';
+import { TaskProvider, useTasks } from './tasks.jsx';
 
 const MAX_SERVERS = 20;
-const LOADER_LABELS = { release: 'Release', optifine: 'OptiFine', fabric: 'Fabric', quilt: 'Quilt', forge: 'Forge', neoforge: 'NeoForge' };
+const PROGRESS_KEYS = { assets: 'progress.assets', classes: 'progress.classes', libraries: 'progress.libraries', natives: 'progress.natives' };
 
 function App() {
   const { t, setLang } = useI18n();
+  const { tasks, runTask } = useTasks();
+  const api = window.electronAPI;
 
   // ── Boot verisi (main süreçteki store'dan) ────────────────────────────────
   const [settings, setSettingsState] = useState(null);
   const [servers, setServersState] = useState([]);
   const [account, setAccount] = useState(null);
   const [instances, setInstances] = useState([]);
-  const [activeInstanceId, setActiveInstanceIdState] = useState('default');
   const [systemInfo, setSystemInfo] = useState({ totalMemGb: 16, appVersion: '', logsDir: '' });
 
-  // ── UI durumu ─────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [launching, setLaunching] = useState(false);
-  const [gameRunning, setGameRunning] = useState(false);
+  // ── Gezinme ───────────────────────────────────────────────────────────────
+  // view: { page: 'home' | 'instance' | 'browse' | 'servers' | 'settings' | 'account', id?, tab?, instanceId?, type? }
+  const [view, setView] = useState({ page: 'home' });
+  const navigate = useCallback((next) => setView(next), []);
+  const openInstance = useCallback((id, tab = 'mod') => setView({ page: 'instance', id, tab }), []);
+
+  // ── Oyun durumu ───────────────────────────────────────────────────────────
+  // launchingId: hazırlanan profil; runningId: açık oyunun profili (aynı anda tek oyun)
+  const [launch, setLaunch] = useState({ launchingId: null, runningId: null, serverAddress: null });
+  const launchRef = useRef(launch);
+  useEffect(() => { launchRef.current = launch; }, [launch]);
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('');
   const [installStatus, setInstallStatus] = useState(null);
+
   const [errorMessage, setErrorMessage] = useState(null);
   const [notice, setNotice] = useState(null);
-  const [isHoveringPlay, setIsHoveringPlay] = useState(false);
-  const [connectAddress, setConnectAddress] = useState('');
   const [serverStatuses, setServerStatuses] = useState({});
-  const [selectedServerId, setSelectedServerId] = useState(null);
-  const [globalBusy, setGlobalBusy] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null);
 
   const [news, setNews] = useState([]);
   const [updaterStatus, setUpdaterStatus] = useState({ state: 'idle' });
+  const [updateOpen, setUpdateOpen] = useState(false);
+  const promptedVersion = useRef(null);
   const [versionManifest, setVersionManifest] = useState([]);
   const [versionManifestLoading, setVersionManifestLoading] = useState(true);
   const [versionManifestError, setVersionManifestError] = useState(null);
-
-  const manifestApplyingRef = useRef(false);
 
   // ── Ayar yazımı (debounce ile main sürece) ────────────────────────────────
   const pendingPatch = useRef({});
@@ -72,23 +81,16 @@ function App() {
     window.electronAPI.setServers(next);
   }, []);
 
-  const refreshInstances = useCallback(() => {
-    return window.electronAPI.listInstances().then(setInstances);
-  }, []);
+  const refreshInstances = useCallback(() => window.electronAPI.listInstances().then(setInstances), []);
+  const surfaceError = useCallback((err) => setErrorMessage(String(err?.message || err)), []);
 
-  // ── Boot: store + sistem bilgisi + profiller ──────────────────────────────
+  // ── Boot ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    Promise.all([
-      window.electronAPI.getStoreData(),
-      window.electronAPI.getSystemInfo(),
-      window.electronAPI.listInstances(),
-    ]).then(([store, sys, insts]) => {
+    Promise.all([api.getStoreData(), api.getSystemInfo(), api.listInstances()]).then(([store, sys, insts]) => {
       setServersState(store.servers || []);
       setAccount(store.account);
-      setActiveInstanceIdState(store.activeInstanceId || 'default');
       setSystemInfo(sys);
       setInstances(insts);
-      setConnectAddress(store.settings.connectAddress || '');
       setLang(store.settings.language || 'tr');
 
       // Eski sürümden (localStorage) tek seferlik migrasyon
@@ -96,18 +98,16 @@ function App() {
       if (!store.settings.onboarded && legacyName) {
         const patch = { onboarded: true };
         const accent = localStorage.getItem('thc_accent');
-        const bg = localStorage.getItem('thc_bg');
         if (accent) patch.accent = accent;
-        if (bg) patch.bgImage = bg;
-        window.electronAPI.patchSettings(patch);
-        window.electronAPI.loginOffline(legacyName).then((res) => { if (res.ok) setAccount(res.account); });
+        api.patchSettings(patch);
+        api.loginOffline(legacyName).then((res) => { if (res.ok) setAccount(res.account); });
         try {
           const legacyServers = JSON.parse(localStorage.getItem('thc_servers') || '[]')
             .slice(0, MAX_SERVERS)
             .map((s) => ({ ...s, favorite: false, manifestUrl: '' }));
           if (legacyServers.length) {
             setServersState(legacyServers);
-            window.electronAPI.setServers(legacyServers);
+            api.setServers(legacyServers);
           }
         } catch { /* eski liste bozuksa atla */ }
         ['thc_username', 'thc_servers', 'thc_accent', 'thc_bg', 'thc_loader_type', 'thc_selected_version', 'thc_connect_address'].forEach((k) => localStorage.removeItem(k));
@@ -116,77 +116,69 @@ function App() {
         setSettingsState(store.settings);
       }
     }).catch((err) => {
-      setSettingsState({ language: 'tr', accent: '#ff6a3d', bgImage: 'bg.png', ram: 4, fullscreen: false, javaPath: '', jvmPreset: 'balanced', customJvmArgs: '', checkUpdates: true, onboarded: true });
-      setErrorMessage(String(err?.message || err));
+      setSettingsState({ language: 'tr', accent: '#ff6a3d', ram: 4, fullscreen: false, javaPath: '', jvmPreset: 'balanced', customJvmArgs: '', checkUpdates: true, onboarded: true });
+      surfaceError(err);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Dinleyiciler bir kez kaydedilir; güncel dili ref üzerinden okurlar
+  const tRef = useRef(t);
+  useEffect(() => { tRef.current = t; }, [t]);
 
   // ── IPC dinleyicileri (bir kez) ───────────────────────────────────────────
   useEffect(() => {
-    window.electronAPI.onLaunchProgress((data) => {
-      const pct = Math.floor(((data.task || 0) / (data.total || 100)) * 100);
-      setProgress(pct);
-      const keys = { assets: 'progress.assets', classes: 'progress.classes', libraries: 'progress.libraries', natives: 'progress.natives' };
-      setProgressLabel(keys[data.type] || 'progress.preparing');
-    });
-
-    window.electronAPI.onLaunchFinished(() => {
-      setProgress(100);
-      setGameRunning(true);
-      window.electronAPI.hideLauncher();
-    });
-
-    window.electronAPI.onLaunchError((err) => {
-      setLaunching(false);
-      setGameRunning(false);
+    const clearLaunch = () => {
+      setLaunch({ launchingId: null, runningId: null, serverAddress: null });
       setProgress(0);
       setInstallStatus(null);
-      const msg = typeof err === 'string' ? err : (err?.error || err?.message || 'Bilinmeyen bir hata oluştu');
-      setErrorMessage(msg);
-    });
+    };
+    const unsubs = [
+      api.onLaunchProgress((data) => {
+        setProgress(Math.floor(((data.task || 0) / (data.total || 100)) * 100));
+        setProgressLabel(PROGRESS_KEYS[data.type] || 'progress.preparing');
+      }),
+      api.onLaunchFinished(() => {
+        setLaunch((prev) => ({ ...prev, launchingId: null, runningId: prev.launchingId }));
+        setProgress(100);
+        refreshInstances(); // son oynama zamanı güncellensin
+        api.hideLauncher();
+      }),
+      api.onLaunchError((err) => {
+        clearLaunch();
+        setErrorMessage(typeof err === 'string' ? err : (err?.error || err?.message || tRef.current('err.unknown')));
+      }),
+      api.onGameClosed(() => {
+        clearLaunch();
+        api.showLauncher();
+      }),
+      api.onGameCrashed((data) => setErrorMessage(tRef.current('game.crashed', { code: data?.code ?? '?' }))),
+      api.onJavaStatus((data) => {
+        setInstallStatus(data);
+        if (data.type === 'done') setTimeout(() => setInstallStatus(null), 1200);
+      }),
+      api.onUpdaterStatus(setUpdaterStatus),
+    ];
+    api.getUpdaterStatus().then(setUpdaterStatus).catch(() => {});
+    return () => unsubs.forEach((off) => off?.());
+  }, [api, refreshInstances]);
 
-    window.electronAPI.onGameClosed(() => {
-      setLaunching(false);
-      setGameRunning(false);
-      setProgress(0);
-      window.electronAPI.showLauncher();
-    });
+  // Güncelleme indirildiğinde her sürüm için bir kez sor; oyun açıksa üst bardaki düğme bekler
+  useEffect(() => {
+    if (updaterStatus.state !== 'ready' || promptedVersion.current === updaterStatus.version) return;
+    if (launchRef.current.launchingId || launchRef.current.runningId) return;
+    promptedVersion.current = updaterStatus.version;
+    setUpdateOpen(true);
+  }, [updaterStatus]);
 
-    window.electronAPI.onGameCrashed((data) => {
-      setErrorMessage(t('game.crashed', { code: data?.code ?? '?' }));
-    });
-
-    window.electronAPI.onJavaStatus((data) => {
-      setInstallStatus(data);
-      if (data.type === 'done') {
-        setTimeout(() => setInstallStatus(null), 1200);
-      }
-    });
-
-    window.electronAPI.onModProgress((p) => {
-      if (manifestApplyingRef.current) setGlobalBusy(p);
-    });
-
-    window.electronAPI.onUpdaterStatus(setUpdaterStatus);
-    window.electronAPI.getUpdaterStatus().then(setUpdaterStatus).catch(() => {});
-
-    return () => window.electronAPI.removeGameListeners();
-  // Dinleyiciler bilinçli olarak bir kez kaydedilir; t yalnızca çökme mesajında kullanılır
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ── Sürüm listesi ─────────────────────────────────────────────────────────
+  // ── Sürüm listesi + haberler ──────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
-    window.electronAPI.getVersionManifest()
+    api.getVersionManifest()
       .then((res) => {
         if (cancelled) return;
         setVersionManifestLoading(false);
-        if (res.error || !res.versions?.length) {
-          setVersionManifestError(res.error || t('vp.error'));
-          return;
-        }
+        if (res.error || !res.versions?.length) { setVersionManifestError(res.error || tRef.current('vp.error')); return; }
         setVersionManifest(res.versions);
       })
       .catch((err) => {
@@ -194,24 +186,25 @@ function App() {
         setVersionManifestLoading(false);
         setVersionManifestError(err.message);
       });
+    api.getNews().then((n) => { if (!cancelled) setNews(n); }).catch(() => {});
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ── Haber beslemesi ───────────────────────────────────────────────────────
-  useEffect(() => {
-    window.electronAPI.getNews().then(setNews).catch(() => {});
-  }, []);
-
-  // ── connectAddress kalıcılığı ─────────────────────────────────────────────
-  useEffect(() => {
-    if (settings) updateSetting('connectAddress', connectAddress);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectAddress]);
+  }, [api]);
 
   // ── Canlı sunucu durumu (mcstatus.io, 30sn) ───────────────────────────────
+  // Yalnızca id/adres kümesi değişince yeniden kurulur.
+  const pollKey = servers.map((s) => `${s.id}|${s.address}`).join(',');
   useEffect(() => {
     let cancelled = false;
+    const polled = pollKey ? pollKey.split(',').map((p) => {
+      const [id, ...rest] = p.split('|');
+      return { id, address: rest.join('|') };
+    }) : [];
+
+    setServerStatuses((prev) => {
+      const next = {};
+      for (const s of polled) next[s.id] = prev[s.id] || { state: 'loading' };
+      return next;
+    });
 
     const fetchStatus = async (server) => {
       try {
@@ -229,475 +222,335 @@ function App() {
             motd: data.motd?.clean || null,
             icon: data.icon || null,
             version: data.version?.name_clean || null,
-            fetchedAt: Date.now(),
           },
         }));
       } catch {
-        if (cancelled) return;
-        setServerStatuses((prev) => ({ ...prev, [server.id]: { state: 'offline', players: null, motd: null, icon: null, version: null, fetchedAt: Date.now() } }));
+        if (!cancelled) setServerStatuses((prev) => ({ ...prev, [server.id]: { state: 'offline' } }));
       }
     };
 
-    const pollAll = () => {
-      servers.forEach((server, i) => {
-        setTimeout(() => { if (!cancelled) fetchStatus(server); }, i * 300);
-      });
-    };
-
+    const timers = [];
+    const pollAll = () => polled.forEach((s, i) => timers.push(setTimeout(() => { if (!cancelled) fetchStatus(s); }, i * 300)));
     pollAll();
     const id = setInterval(pollAll, 30000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [servers]);
+    return () => { cancelled = true; clearInterval(id); timers.forEach(clearTimeout); };
+  }, [pollKey]);
 
-  // ── Sunucu listesi işlemleri ──────────────────────────────────────────────
+  // ── Sunucu işlemleri ──────────────────────────────────────────────────────
   const handleAddServer = useCallback((name, address, manifestUrl) => {
-    if (servers.length >= MAX_SERVERS) {
-      setErrorMessage(t('srv.max', { max: MAX_SERVERS }));
-      return;
-    }
-    if (servers.some((s) => s.address.toLowerCase() === address.toLowerCase())) {
-      setErrorMessage(t('srv.dup'));
-      return;
-    }
+    if (servers.length >= MAX_SERVERS) { setErrorMessage(t('srv.max', { max: MAX_SERVERS })); return false; }
+    if (servers.some((s) => s.address.toLowerCase() === address.toLowerCase())) { setErrorMessage(t('srv.dup')); return false; }
     saveServers([...servers, { id: crypto.randomUUID(), name, address, manifestUrl: manifestUrl || '', favorite: false, addedAt: Date.now() }]);
+    return true;
   }, [servers, saveServers, t]);
 
-  const handleRemoveServer = useCallback((id) => {
-    saveServers(servers.filter((s) => s.id !== id));
-    setSelectedServerId((prev) => (prev === id ? null : prev));
-  }, [servers, saveServers]);
+  const handleRemoveServer = useCallback((id) => saveServers(servers.filter((s) => s.id !== id)), [servers, saveServers]);
+  const handleToggleFavorite = useCallback((id) => saveServers(servers.map((s) => (s.id === id ? { ...s, favorite: !s.favorite } : s))), [servers, saveServers]);
 
-  const handleToggleFavorite = useCallback((id) => {
-    saveServers(servers.map((s) => (s.id === id ? { ...s, favorite: !s.favorite } : s)));
-  }, [servers, saveServers]);
-
-  const handleSelectServer = useCallback((server) => {
-    setSelectedServerId(server.id);
-    setConnectAddress(server.address);
-  }, []);
-
+  // Uzun işlemler görev olarak yürür: ilerleme indirme panelinde, sayfadan çıkınca kaybolmaz
   const handleApplyManifest = useCallback(async (server) => {
-    manifestApplyingRef.current = true;
-    setGlobalBusy({ key: 'common.loading' });
-    try {
-      const res = await window.electronAPI.applyServerManifest(server.manifestUrl);
-      if (!res.ok) { setErrorMessage(res.error); return; }
-      await refreshInstances();
-      await window.electronAPI.setActiveInstance(res.instanceId);
-      setActiveInstanceIdState(res.instanceId);
-      setConnectAddress(res.address);
-      setNotice(t('srv.manifestApplied', { name: res.name, count: res.modCount }));
-    } finally {
-      manifestApplyingRef.current = false;
-      setGlobalBusy(null);
-    }
-  }, [refreshInstances, t]);
+    const res = await runTask(
+      { kind: 'manifest', title: server.name || server.address, subtitle: t('srv.applyManifest') },
+      (taskId) => api.applyServerManifest(server.manifestUrl, taskId),
+    );
+    if (!res?.ok) return;
+    await refreshInstances();
+    openInstance(res.instanceId);
+  }, [api, runTask, refreshInstances, openInstance, t]);
 
   // ── Profil işlemleri ──────────────────────────────────────────────────────
-  const activeInstance = instances.find((i) => i.id === activeInstanceId) || instances[0] || null;
-
-  const handleSetActiveInstance = useCallback((id) => {
-    window.electronAPI.setActiveInstance(id).then(() => setActiveInstanceIdState(id));
-  }, []);
-
   const handleUpdateInstance = useCallback((id, patch) => {
-    window.electronAPI.updateInstance(id, patch).then(refreshInstances).catch((err) => setErrorMessage(err.message));
-  }, [refreshInstances]);
+    api.updateInstance(id, patch).then(refreshInstances).catch(surfaceError);
+  }, [api, refreshInstances, surfaceError]);
 
-  const handleDeleteInstance = useCallback((instance) => {
-    if (!window.confirm(t('prof.deleteConfirm', { name: instance.name }))) return;
-    window.electronAPI.deleteInstance(instance.id).then(() => {
-      if (activeInstanceId === instance.id) setActiveInstanceIdState('default');
-      refreshInstances();
-    });
-  }, [activeInstanceId, refreshInstances, t]);
+  const handleCreateInstance = useCallback(async (data) => {
+    try {
+      const inst = await api.createInstance(data);
+      await refreshInstances();
+      openInstance(inst.id);
+      return true;
+    } catch (err) {
+      surfaceError(err);
+      return false;
+    }
+  }, [api, refreshInstances, openInstance, surfaceError]);
 
-  const handleCreateInstance = useCallback((data) => {
-    window.electronAPI.createInstance(data)
-      .then((inst) => refreshInstances().then(() => handleSetActiveInstance(inst.id)))
-      .catch((err) => setErrorMessage(err.message));
-  }, [refreshInstances, handleSetActiveInstance]);
+  const handleImportMrpack = useCallback(async () => {
+    const res = await runTask(
+      { kind: 'mrpack', title: t('mods.mrpack'), subtitle: '.mrpack' },
+      (taskId) => api.importMrpack(taskId),
+    );
+    if (!res?.ok) return false;
+    await refreshInstances();
+    openInstance(res.instanceId);
+    return true;
+  }, [api, runTask, refreshInstances, openInstance, t]);
+
+  const confirmDeleteInstance = useCallback(() => {
+    const instance = pendingDelete;
+    setPendingDelete(null);
+    if (!instance) return;
+    api.deleteInstance(instance.id)
+      .then(() => { setView({ page: 'home' }); return refreshInstances(); })
+      .catch(surfaceError);
+  }, [api, pendingDelete, refreshInstances, surfaceError]);
 
   // ── Başlatma ──────────────────────────────────────────────────────────────
-  const doLaunch = useCallback(() => {
-    setLaunching(true);
-    setProgress(0);
-    setProgressLabel('');
-    window.electronAPI.launchGame({
-      instanceId: activeInstanceId,
-      serverIp: connectAddress.trim(),
-    });
-  }, [activeInstanceId, connectAddress]);
-
-  const handleLaunch = useCallback(() => {
+  const launchInstance = useCallback((instance, serverAddress) => {
     if (!account) {
-      setActiveTab('account');
+      setView({ page: 'account' });
       setErrorMessage(t('acc.required'));
       return;
     }
-    doLaunch();
-  }, [account, doLaunch, t]);
+    const cur = launchRef.current;
+    if (cur.launchingId || cur.runningId) return; // tek oyun
+    const serverIp = (serverAddress ?? instance.serverAddress ?? '').trim();
+    setLaunch({ launchingId: instance.id, runningId: null, serverAddress: serverIp || null });
+    setProgress(0);
+    setProgressLabel('');
+    api.launchGame({ instanceId: instance.id, serverIp });
+  }, [account, api, t]);
+
+  const stopGame = useCallback(() => api.stopGame(), [api]);
 
   // ── Türetilmiş değerler ───────────────────────────────────────────────────
   if (!settings) {
-    return (
-      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0a0c', color: 'rgba(255,255,255,0.4)' }}>
-        {t('common.loading')}
-      </div>
-    );
+    return <div className="boot">{t('common.loading')}</div>;
   }
 
   const accent = settings.accent;
-  const bgImage = settings.bgImage;
   const onAccent = contrastText(accent);
-  const selectedServer = servers.find((s) => s.id === selectedServerId);
-  const totalOnline = Object.values(serverStatuses).reduce((sum, s) => sum + (s.state === 'online' ? (s.players?.online || 0) : 0), 0);
-
   const latestVersionId = versionManifest[0]?.id;
-  const displayVersion = activeInstance?.mcVersion || latestVersionId || '—';
-  const displayLoader = activeInstance ? LOADER_LABELS[activeInstance.loader] : '—';
+  const sortedInstances = [...instances].sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0) || a.name.localeCompare(b.name, 'tr'));
+  const findInstance = (id) => instances.find((i) => i.id === id);
 
-  // Backend ilerleme nesnesini metne çevirir ({key, params} veya düz {message})
   const progressText = (d) => (d ? (d.key ? t(d.key, d.params) : (d.message || '')) : '');
-
   const installing = installStatus && installStatus.type !== 'done';
-  const activeProgress = installing ? (installStatus.percent || 0) : progress;
+  const activePct = installing ? (installStatus.percent || 0) : progress;
   const activeLabel = installing
     ? (progressText(installStatus) || t('progress.preparing'))
-    : (progressLabel ? `${t(progressLabel)} %${progress}` : `${t('progress.starting')} %${progress}`);
+    : t(progressLabel || 'progress.starting');
+
+  const launchingInst = findInstance(launch.launchingId);
+  const runningInst = findInstance(launch.runningId);
+  const launchTask = launchingInst ? {
+    id: 'launch',
+    kind: 'launch',
+    status: 'running',
+    title: launchingInst.name,
+    pct: activePct,
+    progress: { message: activeLabel },
+  } : null;
+
+  // Launcher güncellemesi: iniyorsa indirme panelinde bir satır
+  const updateTask = updaterStatus.state === 'downloading' ? {
+    id: 'app-update',
+    kind: 'update',
+    status: 'running',
+    title: t('upd.task', { version: updaterStatus.version || '' }),
+    pct: updaterStatus.percent ?? null,
+    progress: { message: t('upd.task.detail') },
+  } : null;
+  const updateReady = updaterStatus.state === 'ready';
+  const gameBusy = !!(launch.launchingId || launch.runningId);
+
+  const topStatus = runningInst
+    ? { kind: 'running', name: runningInst.name }
+    : launchingInst ? { kind: 'launching', name: launchingInst.name, pct: activePct } : null;
+
+  // Görünümdeki profil silindiyse ana sayfaya düş
+  const viewInstance = view.page === 'instance' ? findInstance(view.id) : null;
+  const page = view.page === 'instance' && !viewInstance && instances.length ? 'home' : view.page;
+
+  const crumbs = (() => {
+    const home = { label: t('nav.home'), onClick: () => navigate({ page: 'home' }) };
+    switch (page) {
+      case 'instance': return [{ label: t('home.library'), onClick: home.onClick }, { label: viewInstance?.name || '' }];
+      case 'browse': {
+        const target = view.instanceId && findInstance(view.instanceId);
+        return target
+          ? [{ label: target.name, onClick: () => openInstance(target.id, view.type) }, { label: t('browse.title') }]
+          : [{ label: t('browse.title') }];
+      }
+      case 'servers': return [{ label: t('nav.servers') }];
+      case 'settings': return [{ label: t('nav.settings') }];
+      case 'account': return [{ label: t('nav.account') }];
+      default: return [{ label: t('nav.home') }];
+    }
+  })();
+
+  const pageMotion = { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0 }, transition: { duration: 0.14 } };
+  const pageKey = page === 'instance' ? `inst-${view.id}` : page === 'browse' ? `browse-${view.instanceId || ''}-${view.type || ''}` : page;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ height: '100%', display: 'flex', position: 'relative', background: '#0a0a0c', color: '#fff', overflow: 'hidden' }}>
+    <div className="app-shell" style={{ '--accent': accent, '--on-accent': onAccent }}>
+      <Rail
+        view={view}
+        navigate={navigate}
+        instances={sortedInstances}
+        runningId={launch.runningId}
+        account={account}
+        onCreateInstance={() => setCreating(true)}
+      />
 
-      {/* Arka plan */}
-      <AnimatePresence>
-        <motion.div
-          key={bgImage}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 0.45 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 1 }}
-          className="bg-zoom"
-          style={{ position: 'absolute', inset: 0, background: `url(${bgImage}) center/cover no-repeat`, zIndex: 0 }}
-        />
-      </AnimatePresence>
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(10,10,12,0.5) 0%, transparent 30%, rgba(10,10,12,0.85) 100%), radial-gradient(circle at center, transparent, rgba(0,0,0,0.65))', zIndex: 1, pointerEvents: 'none' }} />
+      <div className="app-column">
+        <TopBar crumbs={crumbs} status={topStatus} onStop={stopGame} updateReady={updateReady} onOpenUpdate={() => setUpdateOpen(true)} />
 
-      <TitleBar />
-
-      <div style={{ display: 'flex', flex: 1, position: 'relative', zIndex: 2, height: '100%' }}>
-        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} accent={accent} copyText={connectAddress.trim()} />
-
-        <main style={{ flex: 1, marginTop: '32px', display: 'flex', padding: '24px', gap: '24px', overflow: 'hidden' }}>
-
-          {/* ── Sol içerik ── */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <AnimatePresence mode="wait">
-
-              {/* Ana Sayfa */}
-              {activeTab === 'dashboard' && (
-                <motion.div key="dashboard" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-                  style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ marginBottom: 'auto' }}>
-                    <motion.img
-                      src="logo.png" alt="Logo"
-                      initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-                      style={{ width: '100px', marginBottom: '16px', filter: 'drop-shadow(0 0 20px rgba(255,255,255,0.2))' }}
-                    />
-                    <motion.h1
-                      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-                      style={{ fontSize: '52px', fontWeight: '900', letterSpacing: '-2px', lineHeight: 1 }}
-                    >HLAUNCHER</motion.h1>
-                    <motion.p
-                      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }}
-                      style={{ fontSize: '18px', color: 'rgba(255,255,255,0.6)', maxWidth: '560px', marginTop: '12px' }}
-                    >
-                      {selectedServer
-                        ? t('dash.subtitle.server', { name: selectedServer.name || selectedServer.address })
-                        : t('dash.subtitle.default')}
-                    </motion.p>
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}
-                      style={{ display: 'flex', gap: '16px', marginTop: '24px', flexWrap: 'wrap' }}
-                    >
-                      <div className="stat-card"><Users size={18} color={accent} /><span>{t('dash.stat.active', { count: totalOnline })}</span></div>
-                      <div className="stat-card"><Layers size={18} color={accent} /><span>{displayVersion}</span></div>
-                      <div className="stat-card"><Zap size={18} color={accent} /><span>{displayLoader}</span></div>
-                    </motion.div>
-
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }}
-                      style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '24px', maxWidth: '640px' }}
-                    >
-                      <div>
-                        <label style={{ fontSize: '12px', fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px', marginBottom: '8px', display: 'block' }}>
-                          {t('dash.connect.label')}
-                        </label>
-                        <input
-                          type="text" value={connectAddress} onChange={(e) => setConnectAddress(e.target.value)}
-                          placeholder={t('dash.connect.placeholder')} className="prof-input" style={{ marginTop: 0 }}
-                        />
-                      </div>
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                          <label style={{ fontSize: '12px', fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px' }}>
-                            {t('dash.version.label')} — {activeInstance?.name || ''}
-                          </label>
-                          <button onClick={() => setActiveTab('profiles')} style={{ background: 'none', color: accent, fontSize: '11px', fontWeight: '700', padding: 0 }}>
-                            {t('dash.profile.manage')}
-                          </button>
-                        </div>
-                        <VersionPicker
-                          accent={accent}
-                          loaderType={activeInstance?.loader || 'release'}
-                          setLoaderType={(l) => activeInstance && handleUpdateInstance(activeInstance.id, { loader: l })}
-                          versionManifest={versionManifest}
-                          versionManifestLoading={versionManifestLoading}
-                          versionManifestError={versionManifestError}
-                          selectedVersion={activeInstance?.mcVersion || latestVersionId || ''}
-                          setSelectedVersion={(v) => activeInstance && handleUpdateInstance(activeInstance.id, { mcVersion: v })}
-                        />
-                      </div>
-                    </motion.div>
-                  </div>
-
-                  {/* Oyna butonu + ilerleme */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '36px' }}>
-                    <button
-                      onClick={gameRunning ? () => window.electronAPI.stopGame() : handleLaunch}
-                      disabled={launching && !gameRunning}
-                      onMouseEnter={() => setIsHoveringPlay(true)}
-                      onMouseLeave={() => setIsHoveringPlay(false)}
-                      style={{
-                        width: '400px', height: '74px', borderRadius: '14px', border: 'none',
-                        background: gameRunning
-                          ? (isHoveringPlay ? '#ef4444' : 'rgba(255,255,255,0.1)')
-                          : accent,
-                        color: gameRunning ? '#fff' : onAccent,
-                        fontSize: '22px', fontWeight: '700', letterSpacing: '2px', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px',
-                        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                        // Blok hissi: alt kenarda sert gölge + yumuşak dış parıltı
-                        boxShadow: gameRunning
-                          ? (isHoveringPlay ? '0 10px 40px rgba(239,68,68,0.4), inset 0 -4px 0 rgba(0,0,0,0.3)' : 'inset 0 -4px 0 rgba(0,0,0,0.3)')
-                          : `0 10px 36px ${accent}45, inset 0 -4px 0 rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.25)`,
-                      }}
-                    >
-                      <Play fill={gameRunning ? '#fff' : onAccent} size={30} />
-                      {gameRunning
-                        ? (isHoveringPlay ? t('play.stop') : t('play.running'))
-                        : (launching ? t('play.launching') : t('play.now'))}
-                    </button>
-
-                    <AnimatePresence>
-                      {launching && !gameRunning && (
-                        <motion.div
-                          initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}
-                        >
-                          <div style={{ width: '400px', height: '5px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', marginTop: '16px', overflow: 'hidden' }}>
-                            <motion.div
-                              animate={{ width: `${activeProgress}%` }}
-                              transition={{ duration: 0.35 }}
-                              style={{ height: '100%', background: `linear-gradient(90deg, ${accent}, ${accent}aa)` }}
-                            />
-                          </div>
-                          <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginTop: '8px', fontWeight: 'bold', letterSpacing: '0.5px', fontFamily: 'var(--font-display)' }}>
-                            {activeLabel.toUpperCase()}{installing ? ` %${activeProgress}` : ''}
-                          </span>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                </motion.div>
+        {/* İndirme paneli açıkken sayfaların altı boşalır: panel düğmeleri örtmesin */}
+        <main className={`app-main${tasks.length || launch.launchingId || updaterStatus.state === 'downloading' ? ' has-dl' : ''}`}>
+          <AnimatePresence mode="wait">
+            <motion.div key={pageKey} className="page" {...pageMotion}>
+              {page === 'home' && (
+                <HomePage
+                  instances={sortedInstances}
+                  latestVersionId={latestVersionId}
+                  account={account}
+                  servers={servers}
+                  statuses={serverStatuses}
+                  news={news}
+                  launch={launch}
+                  onPlay={(inst) => launchInstance(inst)}
+                  onOpenInstance={openInstance}
+                  onCreateInstance={() => setCreating(true)}
+                  navigate={navigate}
+                />
               )}
 
-              {/* Sunucular */}
-              {activeTab === 'servers' && (
-                <motion.div key="servers" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-                  style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                  <ServerListPanel
-                    accent={accent}
-                    variant="grid"
-                    servers={servers}
-                    statuses={serverStatuses}
-                    selectedServerId={selectedServerId}
-                    onSelect={(server) => { handleSelectServer(server); setActiveTab('dashboard'); }}
-                    onAdd={handleAddServer}
-                    onRemove={handleRemoveServer}
-                    onToggleFavorite={handleToggleFavorite}
-                    onApplyManifest={handleApplyManifest}
-                  />
-                </motion.div>
+              {page === 'instance' && viewInstance && (
+                <InstancePage
+                  instance={viewInstance}
+                  tab={view.tab || 'mod'}
+                  setTab={(tab) => setView((v) => ({ ...v, tab }))}
+                  latestVersionId={latestVersionId}
+                  versionManifest={versionManifest}
+                  versionManifestLoading={versionManifestLoading}
+                  versionManifestError={versionManifestError}
+                  launch={launch}
+                  launchPct={activePct}
+                  systemInfo={systemInfo}
+                  globalRam={settings.ram}
+                  servers={servers}
+                  statuses={serverStatuses}
+                  onPlay={(inst) => launchInstance(inst)}
+                  onStop={stopGame}
+                  onUpdate={handleUpdateInstance}
+                  onDelete={() => setPendingDelete(viewInstance)}
+                  onError={setErrorMessage}
+                  onNotice={setNotice}
+                  onAddContent={(instanceId, type) => navigate({ page: 'browse', instanceId, type })}
+                />
               )}
 
-              {/* Modlar */}
-              {activeTab === 'mods' && (
-                <motion.div key="mods" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-                  style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                  <ModsPanel
-                    instance={activeInstance}
-                    accent={accent}
-                    latestVersionId={latestVersionId}
-                    onError={setErrorMessage}
-                    onNotice={setNotice}
-                    onProfilesRefresh={refreshInstances}
-                  />
-                </motion.div>
+              {page === 'browse' && (
+                <BrowsePage
+                  instances={sortedInstances}
+                  initialInstanceId={view.instanceId}
+                  initialType={view.type}
+                  latestVersionId={latestVersionId}
+                  onError={setErrorMessage}
+                  onInstancesRefresh={refreshInstances}
+                />
               )}
 
-              {/* Profiller */}
-              {activeTab === 'profiles' && (
-                <motion.div key="profiles" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-                  style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                  <ProfilesPanel
-                    instances={instances}
-                    activeInstanceId={activeInstanceId}
-                    accent={accent}
-                    versionManifest={versionManifest}
-                    onSetActive={handleSetActiveInstance}
-                    onUpdate={handleUpdateInstance}
-                    onDelete={handleDeleteInstance}
-                    onCreate={handleCreateInstance}
-                  />
-                </motion.div>
+              {page === 'servers' && (
+                <ServersPage
+                  servers={servers}
+                  statuses={serverStatuses}
+                  instances={sortedInstances}
+                  latestVersionId={latestVersionId}
+                  launch={launch}
+                  onAdd={handleAddServer}
+                  onRemove={handleRemoveServer}
+                  onToggleFavorite={handleToggleFavorite}
+                  onApplyManifest={handleApplyManifest}
+                  onPlayServer={(server, inst) => launchInstance(inst, server.address)}
+                />
               )}
 
-              {/* Hesap */}
-              {activeTab === 'account' && (
-                <motion.div key="account" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                  <h2 style={{ fontSize: '40px', fontWeight: '800', marginBottom: '32px' }}>{t('acc.title')}</h2>
-                  <AccountPanel
-                    account={account}
-                    setAccount={setAccount}
-                    accent={accent}
-                    onError={setErrorMessage}
-                  />
-                </motion.div>
+              {page === 'settings' && (
+                <SettingsPage
+                  settings={settings}
+                  updateSetting={updateSetting}
+                  systemInfo={systemInfo}
+                  accent={accent}
+                  updaterStatus={updaterStatus}
+                  onNotice={setNotice}
+                  onError={setErrorMessage}
+                />
               )}
 
-              {/* Ayarlar */}
-              {activeTab === 'settings' && (
-                <motion.div key="settings" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-                  style={{ overflow: 'hidden', display: 'flex' }}>
-                  <SettingsPanel
-                    settings={settings}
-                    updateSetting={updateSetting}
-                    systemInfo={systemInfo}
-                    accent={accent}
-                    updaterStatus={updaterStatus}
-                    onNotice={setNotice}
-                  />
-                </motion.div>
+              {page === 'account' && (
+                <AccountPage
+                  account={account}
+                  setAccount={setAccount}
+                  onError={setErrorMessage}
+                />
               )}
-
-            </AnimatePresence>
-          </div>
-
-          {/* ── Sağ sütun ── */}
-          <div style={{ width: '320px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <ServerListPanel
-              accent={accent}
-              variant="compact"
-              servers={servers}
-              statuses={serverStatuses}
-              selectedServerId={selectedServerId}
-              onSelect={handleSelectServer}
-              onAdd={handleAddServer}
-              onRemove={handleRemoveServer}
-              onToggleFavorite={handleToggleFavorite}
-              onApplyManifest={handleApplyManifest}
-              onSeeAll={() => setActiveTab('servers')}
-            />
-
-            <NewsPanel
-              accent={accent}
-              news={news}
-              serverAnnouncements={activeInstance?.origin === 'server' ? activeInstance.announcements : null}
-              serverName={activeInstance?.origin === 'server' ? activeInstance.name : null}
-            />
-
-            <div
-              className="glass-panel"
-              style={{ marginTop: 'auto', padding: '16px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}
-            >
-              <SkinViewer3D account={account} width={150} height={185} />
-              <div
-                onClick={() => setActiveTab('account')}
-                title={t('nav.account')}
-                style={{ textAlign: 'center', cursor: 'pointer' }}
-              >
-                <p style={{ fontWeight: 'bold' }}>{account?.name || t('acc.guest')}</p>
-                <div style={{ display: 'flex', gap: '5px', alignItems: 'center', justifyContent: 'center', marginTop: '2px' }}>
-                  <div style={{ width: '6px', height: '6px', background: account ? '#4bff4b' : 'rgba(255,255,255,0.3)', borderRadius: '50%' }} />
-                  <span style={{ fontSize: '10px', color: account ? '#4bff4b' : 'rgba(255,255,255,0.4)', fontWeight: 'bold', letterSpacing: '0.5px' }}>
-                    {account ? t('acc.ready') : t('acc.none')}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
 
-      {/* Meşguliyet göstergesi (manifest kurulumu vb.) */}
-      <AnimatePresence>
-        {globalBusy && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
-            style={{
-              position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
-              background: '#12121c', border: `1px solid ${accent}55`, borderRadius: '14px',
-              padding: '12px 24px', fontSize: '13px', fontWeight: '600', zIndex: 9000,
-              boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
-            }}
-          >
-            <Loader2 size={14} className="spin" style={{ marginRight: '8px', verticalAlign: '-2px', display: 'inline-block' }} />
-            {progressText(globalBusy)}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <DownloadBar extraTasks={[launchTask, updateTask].filter(Boolean)} />
 
-      {/* Hata */}
+      <UpdateModal open={updateOpen && updateReady} status={updaterStatus} gameBusy={gameBusy} onClose={() => setUpdateOpen(false)} />
+
+      <CreateInstanceModal
+        open={creating}
+        onClose={() => setCreating(false)}
+        versionManifest={versionManifest}
+        versionManifestLoading={versionManifestLoading}
+        versionManifestError={versionManifestError}
+        onCreate={handleCreateInstance}
+        onImportMrpack={handleImportMrpack}
+        onBrowseModpacks={() => navigate({ page: 'browse', type: 'modpack' })}
+      />
+
+      <Modal
+        open={!!pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        icon={<Trash2 size={18} />}
+        tone="danger"
+        title={t('prof.deleteTitle')}
+        footer={
+          <>
+            <button className="btn-ghost" onClick={() => setPendingDelete(null)}>{t('common.cancel')}</button>
+            <button className="btn-danger" onClick={confirmDeleteInstance} autoFocus>{t('common.delete')}</button>
+          </>
+        }
+      >
+        <p className="modal-text">{pendingDelete ? t('prof.deleteConfirm', { name: pendingDelete.name }) : ''}</p>
+      </Modal>
+
       <Modal
         open={!!errorMessage}
-        icon={<AlertTriangle size={40} color="#ef4444" />}
+        onClose={() => setErrorMessage(null)}
+        icon={<AlertTriangle size={18} />}
+        tone="danger"
         title={t('err.title')}
-        accentColor="#ef4444"
         footer={
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-            <button
-              onClick={() => window.electronAPI.openLogs()}
-              style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.7)', border: 'none', borderRadius: '12px', padding: '14px 20px', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}
-            >{t('err.openLogs')}</button>
-            <button
-              onClick={() => setErrorMessage(null)}
-              style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: '12px', padding: '14px 32px', fontWeight: '700', cursor: 'pointer', fontSize: '15px' }}
-            >{t('common.ok')}</button>
-          </div>
+          <>
+            <button className="btn-ghost" onClick={() => api.openLogs()}>{t('err.openLogs')}</button>
+            <button className="btn-primary" onClick={() => setErrorMessage(null)} autoFocus>{t('common.ok')}</button>
+          </>
         }
       >
-        <p style={{ color: 'rgba(255,255,255,0.85)', marginBottom: '16px', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{errorMessage}</p>
+        <p className="modal-text" style={{ whiteSpace: 'pre-wrap' }}>{errorMessage}</p>
       </Modal>
 
-      {/* Bilgi */}
+      {/* Bilgi: hata açıksa üst üste binmesin */}
       <Modal
-        open={!!notice}
-        icon={<CheckCircle2 size={40} color={accent} />}
+        open={!!notice && !errorMessage}
+        onClose={() => setNotice(null)}
+        icon={<CheckCircle2 size={18} />}
+        tone="success"
         title={t('common.notice')}
-        accentColor={accent}
-        footer={
-          <button
-            onClick={() => setNotice(null)}
-            style={{ background: accent, color: onAccent, border: 'none', borderRadius: '12px', padding: '14px 32px', fontWeight: '700', cursor: 'pointer', fontSize: '15px' }}
-          >{t('common.ok')}</button>
-        }
+        footer={<button className="btn-primary" onClick={() => setNotice(null)} autoFocus>{t('common.ok')}</button>}
       >
-        <p style={{ color: 'rgba(255,255,255,0.85)', marginBottom: '16px', lineHeight: 1.6 }}>{notice}</p>
+        <p className="modal-text">{notice}</p>
       </Modal>
 
-      {/* İlk açılış sihirbazı */}
       <AnimatePresence>
         {!settings.onboarded && (
           <Onboarding
@@ -711,20 +564,6 @@ function App() {
           />
         )}
       </AnimatePresence>
-
-      <style>{`
-        .stat-card { display: flex; align-items: center; gap: 10px; background: rgba(16,17,21,0.75); padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; font-family: var(--font-display); letter-spacing: 0.5px; border: 1px solid rgba(255,255,255,0.09); }
-        .prof-input { padding: 15px 16px; font-size: 15px; margin-top: 8px; }
-        input:focus { border-color: ${accent}88 !important; }
-        select option { background: #12121c; }
-        button:hover:not(:disabled) { transform: scale(1.02); }
-        button:active:not(:disabled) { transform: scale(0.98); }
-        button:disabled { opacity: 0.6; cursor: not-allowed; }
-        .bg-zoom { animation: bgZoom 40s ease-in-out infinite alternate; }
-        @keyframes bgZoom { from { transform: scale(1); } to { transform: scale(1.08); } }
-        .spin { animation: hlSpin 1s linear infinite; }
-        @keyframes hlSpin { to { transform: rotate(360deg); } }
-      `}</style>
     </div>
   );
 }
@@ -733,7 +572,9 @@ export default function AppRoot() {
   const [lang, setLang] = useState('tr');
   return (
     <I18nProvider lang={lang} setLang={setLang}>
-      <App />
+      <TaskProvider>
+        <App />
+      </TaskProvider>
     </I18nProvider>
   );
 }

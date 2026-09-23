@@ -43,6 +43,8 @@ function startApp() {
     const instances = require('./lib/instances.cjs');
     const accounts = require('./lib/accounts.cjs');
     const modrinth = require('./lib/modrinth.cjs');
+    const content = require('./lib/content.cjs');
+    const skins = require('./lib/skins.cjs');
     const mrpack = require('./lib/mrpack.cjs');
     const servermanifest = require('./lib/servermanifest.cjs');
     const optifineLoader = require('./lib/loaders/optifine.cjs');
@@ -154,12 +156,20 @@ function startApp() {
         if (mainWindow.isMaximized()) mainWindow.unmaximize();
         else mainWindow.maximize();
     });
+    // Başlık çubuğu ilk açılışta sorar (pencere büyütülmüş açılmış olabilir)
+    ipcMain.handle('window:is-maximized', () => !!mainWindow?.isMaximized());
     ipcMain.on('hide-launcher', () => mainWindow.hide());
     ipcMain.on('show-launcher', () => { mainWindow.show(); mainWindow.focus(); });
 
     // ── Oyun ────────────────────────────────────────────────────────────────
     ipcMain.on('launch-game', (event, options) => {
-        launchGame(event, options || {}).catch((err) => {
+        const opts = options || {};
+        // "Kaldığın yerden devam" sırası + son seçilen profil
+        if (opts.instanceId && instances.get(opts.instanceId)) {
+            instances.markPlayed(opts.instanceId);
+            getStore().set('activeInstanceId', opts.instanceId);
+        }
+        launchGame(event, opts).catch((err) => {
             log.error(`[MAIN] launch-game hatası: ${err.stack || err.message}`);
             event.reply('launch-error', friendlyError(err));
         });
@@ -228,7 +238,12 @@ function startApp() {
             account: accounts.getCurrent(),
         };
     });
-    ipcMain.handle('settings:patch', (_e, patch) => getStore().patchSettings(sanitizeSettingsPatch(patch)));
+    ipcMain.handle('settings:patch', (_e, patch) => {
+        const clean = sanitizeSettingsPatch(patch);
+        // Otomatik güncelleme anahtarı yeniden başlatmadan etkili olsun
+        if (typeof clean.checkUpdates === 'boolean') updater.setEnabled(clean.checkUpdates);
+        return getStore().patchSettings(clean);
+    });
     ipcMain.handle('servers:set', (_e, servers) => {
         getStore().set('servers', sanitizeServers(servers));
         return true;
@@ -278,8 +293,12 @@ function startApp() {
 
     // ── Profiller ───────────────────────────────────────────────────────────
     ipcMain.handle('instances:list', () => instances.list());
-    ipcMain.handle('instances:create', (_e, data) => instances.create(data || {}));
-    ipcMain.handle('instances:update', (_e, id, patch) => instances.update(id, patch || {}));
+    // Renderer yalnızca kullanıcı alanlarını yazabilir (origin/managedFiles vb. korunur)
+    ipcMain.handle('instances:create', (_e, data) => {
+        const clean = instances.sanitizeInstancePatch(data);
+        return instances.create({ ...clean, name: clean.name || '', loader: clean.loader || 'release' });
+    });
+    ipcMain.handle('instances:update', (_e, id, patch) => instances.update(id, instances.sanitizeInstancePatch(patch)));
     ipcMain.handle('instances:delete', (_e, id) => {
         const removed = instances.remove(id);
         if (getStore().get('activeInstanceId') === id) getStore().set('activeInstanceId', 'default');
@@ -287,63 +306,78 @@ function startApp() {
     });
 
     // ── Modlar ──────────────────────────────────────────────────────────────
-    const modProgress = (event) => (p) => event.sender.send('mod-progress', p);
+    // Uzun işlemlerin ilerlemesi renderer'daki indirme çubuğuna gider; taskId
+    // sayesinde aynı anda süren işlemler birbirine karışmaz.
+    const modProgress = (event, taskId = null) => (p) => {
+        if (!event.sender.isDestroyed()) event.sender.send('mod-progress', { ...p, taskId });
+    };
 
-    ipcMain.handle('mods:search', (_e, params) => modrinth.search(params || {}));
-    ipcMain.handle('mods:list', (_e, instanceId) =>
-        modrinth.listModFiles(instances.getModsDir(instanceId)));
-    ipcMain.handle('mods:remove', (_e, instanceId, fileName) =>
-        modrinth.removeModFile(instances.getModsDir(instanceId), fileName));
-
-    ipcMain.handle('mods:install', async (event, { instanceId, projectId }) => {
+    // ── Profil içeriği (mod / kaynak paketi / shader) ──────────────────────
+    // Hepsi {ok, ...} | {ok:false, error} döndürür — IPC üzerinden hata fırlatmaz.
+    const contentCall = (label, fn) => async (event, ...args) => {
         try {
-            const instance = instances.get(instanceId);
-            if (!instance) throw new Error(`Profil bulunamadı: ${instanceId}`);
-            if (!['fabric', 'quilt', 'forge', 'neoforge'].includes(instance.loader)) {
-                throw new Error('Mod kurmak için profil bir mod loader kullanmalı (Fabric, Quilt, Forge, NeoForge)');
-            }
-            const files = await modrinth.installProject({
-                modsDir: instances.getModsDir(instanceId),
-                projectIdOrSlug: projectId,
-                // "En yeni" seçiliyse (null) güncel release'e çözümle
-                mcVersion: instance.mcVersion || await getLatestRelease(),
-                loader: instance.loader,
-                onProgress: modProgress(event),
-            });
-            return { ok: true, installed: files.map((f) => f.file) };
+            return { ok: true, ...(await fn(event, ...args)) };
         } catch (err) {
-            log.error(`[MAIN] Mod kurulum hatası: ${err.stack || err.message}`);
+            log.error(`[MAIN] ${label}: ${err.stack || err.message}`);
             return { ok: false, error: friendlyError(err) };
         }
-    });
+    };
+    const resolveVersion = async (instance) => instance.mcVersion || await getLatestRelease();
+    const requireInstance = (id) => {
+        const inst = instances.get(id);
+        if (!inst) throw new Error(`Profil bulunamadı: ${id}`);
+        return inst;
+    };
 
-    ipcMain.handle('mods:check-updates', async (_e, instanceId) => {
-        try {
-            const instance = instances.get(instanceId);
-            if (!instance) throw new Error(`Profil bulunamadı: ${instanceId}`);
-            const result = await modrinth.checkUpdates({
-                modsDir: instances.getModsDir(instanceId),
-                mcVersion: instance.mcVersion || await getLatestRelease(),
-                loader: instance.loader,
-            });
-            return { ok: true, ...result };
-        } catch (err) {
-            log.error(`[MAIN] Güncelleme denetimi hatası: ${err.stack || err.message}`);
-            return { ok: false, error: friendlyError(err) };
+    // opts.meta === false → yalnızca yerel dosyalar (ağsız, sayım için hızlı)
+    ipcMain.handle('content:list', contentCall('İçerik listesi', async (_e, instanceId, type, opts) => {
+        const dir = instances.getContentDir(instanceId, type);
+        return { items: opts?.meta === false ? content.listEntries(dir, type) : await content.listContent(dir, type) };
+    }));
+    ipcMain.handle('content:toggle', contentCall('İçerik aç/kapat', (_e, instanceId, type, file, enabled) => ({
+        file: content.setEnabled(instances.getContentDir(instanceId, type), file, !!enabled),
+    })));
+    ipcMain.handle('content:remove', contentCall('İçerik silme', (_e, instanceId, type, file) => ({
+        removed: content.removeContent(instances.getContentDir(instanceId, type), file),
+    })));
+    ipcMain.handle('content:open-dir', contentCall('Klasör açma', async (_e, instanceId, type) => ({
+        error: await shell.openPath(instances.getContentDir(instanceId, type)) || undefined,
+    })));
+    ipcMain.handle('content:search', contentCall('Modrinth araması', (_e, params) => content.search(params || {})));
+    ipcMain.handle('content:install', contentCall('İçerik kurulumu', async (event, instanceId, type, projectId, taskId) => {
+        const instance = requireInstance(instanceId);
+        if (type === 'mod' && !['fabric', 'quilt', 'forge', 'neoforge'].includes(instance.loader)) {
+            throw new Error('Mod kurmak için profil bir mod loader kullanmalı (Fabric, Quilt, Forge, NeoForge)');
         }
-    });
+        const files = await content.installProject({
+            dir: instances.getContentDir(instanceId, type),
+            type,
+            projectId,
+            mcVersion: await resolveVersion(instance),
+            loader: instance.loader,
+            onProgress: modProgress(event, taskId),
+        });
+        return { installed: files.map((f) => f.file) };
+    }));
+    ipcMain.handle('content:check-updates', contentCall('Güncelleme denetimi', async (_e, instanceId, type) => {
+        const instance = requireInstance(instanceId);
+        return content.checkUpdates({
+            dir: instances.getContentDir(instanceId, type),
+            type,
+            mcVersion: await resolveVersion(instance),
+            loader: instance.loader,
+        });
+    }));
+    ipcMain.handle('content:apply-update', contentCall('İçerik güncelleme', async (_e, instanceId, type, update) => ({
+        file: await content.applyUpdate(instances.getContentDir(instanceId, type), update || {}),
+    })));
+    ipcMain.handle('modpack:install', contentCall('Modpack kurulumu', async (event, projectId, taskId) => {
+        const summary = await content.installModpack(String(projectId || ''), modProgress(event, taskId));
+        if (summary.iconUrl) instances.update(summary.instanceId, { iconUrl: summary.iconUrl });
+        return summary;
+    }));
 
-    ipcMain.handle('mods:apply-update', async (_e, instanceId, update) => {
-        try {
-            const file = await modrinth.applyUpdate(instances.getModsDir(instanceId), update || {});
-            return { ok: true, file };
-        } catch (err) {
-            log.error(`[MAIN] Mod güncelleme hatası: ${err.stack || err.message}`);
-            return { ok: false, error: friendlyError(err) };
-        }
-    });
-
-    ipcMain.handle('mods:performance-preset', async (event, instanceId) => {
+    ipcMain.handle('mods:performance-preset', async (event, instanceId, taskId) => {
         try {
             const instance = instances.get(instanceId);
             if (!instance) throw new Error(`Profil bulunamadı: ${instanceId}`);
@@ -351,7 +385,7 @@ function startApp() {
                 modsDir: instances.getModsDir(instanceId),
                 mcVersion: instance.mcVersion || await getLatestRelease(),
                 loader: instance.loader,
-                onProgress: modProgress(event),
+                onProgress: modProgress(event, taskId),
             });
             return { ok: true, ...report };
         } catch (err) {
@@ -360,7 +394,7 @@ function startApp() {
         }
     });
 
-    ipcMain.handle('mrpack:import', async (event) => {
+    ipcMain.handle('mrpack:import', async (event, taskId) => {
         const result = await dialog.showOpenDialog(mainWindow, {
             title: 'Modrinth Modpack Seç',
             filters: [{ name: 'Modrinth Modpack', extensions: ['mrpack'] }],
@@ -368,7 +402,7 @@ function startApp() {
         });
         if (result.canceled || !result.filePaths.length) return { ok: false, canceled: true };
         try {
-            const summary = await mrpack.importMrpack(result.filePaths[0], modProgress(event));
+            const summary = await mrpack.importMrpack(result.filePaths[0], modProgress(event, taskId));
             return { ok: true, ...summary };
         } catch (err) {
             log.error(`[MAIN] mrpack hatası: ${err.stack || err.message}`);
@@ -376,10 +410,35 @@ function startApp() {
         }
     });
 
+    // ── Skinler ───────────────────────────────────────────────────────────
+    const skinCall = (label, fn) => contentCall(label, fn);
+    const withToken = async (fn) => fn(await accounts.getMinecraftToken());
+
+    ipcMain.handle('skins:list', skinCall('Skin listesi', () => ({ skins: skins.listLibrary() })));
+    ipcMain.handle('skins:import-file', skinCall('Skin içe aktarma', async () => {
+        const result = await dialog.showOpenDialog(mainWindow, {
+            title: 'Skin dosyası seç (PNG, 64×64)',
+            filters: [{ name: 'Minecraft skin', extensions: ['png'] }],
+            properties: ['openFile'],
+        });
+        if (result.canceled || !result.filePaths.length) return { canceled: true };
+        return { skin: skins.importFile(result.filePaths[0]) };
+    }));
+    ipcMain.handle('skins:import-username', skinCall('Kullanıcı adından skin', async (_e, name) => ({
+        skin: await skins.importFromUsername(name),
+    })));
+    ipcMain.handle('skins:update', skinCall('Skin düzenleme', (_e, id, patch) => ({ skin: skins.updateEntry(String(id), patch || {}) })));
+    ipcMain.handle('skins:remove', skinCall('Skin silme', (_e, id) => ({ removed: skins.removeEntry(String(id)) })));
+    ipcMain.handle('skins:profile', skinCall('Skin profili', () => withToken(async (token) => ({ profile: await skins.getProfile(token) }))));
+    ipcMain.handle('skins:apply', skinCall('Skin uygulama', (_e, id) => withToken(async (token) => ({ profile: await skins.applySkin(token, String(id)) }))));
+    ipcMain.handle('skins:reset', skinCall('Skin sıfırlama', () => withToken(async (token) => ({ profile: await skins.resetSkin(token) }))));
+    ipcMain.handle('skins:cape', skinCall('Pelerin seçimi', (_e, capeId) => withToken(async (token) => ({ profile: await skins.setCape(token, capeId || null) }))));
+    ipcMain.handle('skins:save-current', skinCall('Skin kaydetme', () => withToken(async (token) => ({ skin: await skins.saveCurrent(token) }))));
+
     // ── Sunucu manifesti ────────────────────────────────────────────────────
-    ipcMain.handle('server:apply-manifest', async (event, url) => {
+    ipcMain.handle('server:apply-manifest', async (event, url, taskId) => {
         try {
-            const summary = await servermanifest.applyManifest(url, modProgress(event));
+            const summary = await servermanifest.applyManifest(url, modProgress(event, taskId));
             return { ok: true, ...summary };
         } catch (err) {
             log.error(`[MAIN] Manifest hatası: ${err.stack || err.message}`);

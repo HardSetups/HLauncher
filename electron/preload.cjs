@@ -1,11 +1,21 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Olay aboneliği: dinleyiciyi kaydeder ve kaldırma fonksiyonu döndürür.
+// Bileşenler unmount olurken bunu çağırmalı — aksi halde her sekme ziyaretinde
+// dinleyiciler birikir (MaxListenersExceeded + ölü bileşene setState).
+function subscribe(channel, cb) {
+    const handler = (_, data) => cb(data);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.removeListener(channel, handler);
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
     // Pencere
     closeApp:       () => ipcRenderer.send('close-app'),
     minimizeApp:    () => ipcRenderer.send('minimize-app'),
     toggleMaximize: () => ipcRenderer.send('toggle-maximize'),
-    onWindowMaximized: (cb) => ipcRenderer.on('window-maximized', (_, v) => cb(v)),
+    onWindowMaximized: (cb) => subscribe('window-maximized', cb),
+    isMaximized:    () => ipcRenderer.invoke('window:is-maximized'),
     hideLauncher:   () => ipcRenderer.send('hide-launcher'),
     showLauncher:   () => ipcRenderer.send('show-launcher'),
 
@@ -13,18 +23,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     launchGame: (options) => ipcRenderer.send('launch-game', options),
     stopGame:   () => ipcRenderer.send('stop-game'),
 
-    onLaunchProgress: (cb) => ipcRenderer.on('launch-progress', (_, data) => cb(data)),
-    onLaunchFinished: (cb) => ipcRenderer.on('launch-finished', () => cb()),
-    onLaunchError:    (cb) => ipcRenderer.on('launch-error',    (_, err)  => cb(err)),
-    onGameClosed:     (cb) => ipcRenderer.on('game-closed',     () => cb()),
-    onGameCrashed:    (cb) => ipcRenderer.on('game-crashed',    (_, data) => cb(data)),
-    onJavaStatus:     (cb) => ipcRenderer.on('java-status',     (_, data) => cb(data)),
-    onModProgress:    (cb) => ipcRenderer.on('mod-progress',    (_, data) => cb(data)),
-
-    removeGameListeners: () => {
-        ['launch-progress', 'launch-finished', 'launch-error', 'game-closed', 'game-crashed', 'java-status', 'mod-progress']
-            .forEach((ch) => ipcRenderer.removeAllListeners(ch));
-    },
+    onLaunchProgress: (cb) => subscribe('launch-progress', cb),
+    onLaunchFinished: (cb) => subscribe('launch-finished', cb),
+    onLaunchError: (cb) => subscribe('launch-error', cb),
+    onGameClosed: (cb) => subscribe('game-closed', cb),
+    onGameCrashed: (cb) => subscribe('game-crashed', cb),
+    onJavaStatus: (cb) => subscribe('java-status', cb),
+    onModProgress: (cb) => subscribe('mod-progress', cb),
 
     // Sistem / ayarlar
     getSystemInfo:  () => ipcRenderer.invoke('system:info'),
@@ -39,7 +44,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getUpdaterStatus: () => ipcRenderer.invoke('updates:status'),
     checkAppUpdate:   () => ipcRenderer.invoke('updates:check'),
     installAppUpdate: () => ipcRenderer.send('updates:install'),
-    onUpdaterStatus:  (cb) => ipcRenderer.on('updater-status', (_, data) => cb(data)),
+    onUpdaterStatus: (cb) => subscribe('updater-status', cb),
     patchSettings:  (patch) => ipcRenderer.invoke('settings:patch', patch),
     setServers:     (servers) => ipcRenderer.invoke('servers:set', servers),
     selectJavaPath: () => ipcRenderer.invoke('select-java-path'),
@@ -57,17 +62,32 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deleteInstance:   (id) => ipcRenderer.invoke('instances:delete', id),
     setActiveInstance:(id) => ipcRenderer.invoke('instances:set-active', id),
 
-    // Modlar
-    searchMods:       (params) => ipcRenderer.invoke('mods:search', params),
-    listMods:         (instanceId) => ipcRenderer.invoke('mods:list', instanceId),
-    removeMod:        (instanceId, fileName) => ipcRenderer.invoke('mods:remove', instanceId, fileName),
-    installMod:       (instanceId, projectId) => ipcRenderer.invoke('mods:install', { instanceId, projectId }),
-    installPerformancePreset: (instanceId) => ipcRenderer.invoke('mods:performance-preset', instanceId),
-    checkModUpdates:  (instanceId) => ipcRenderer.invoke('mods:check-updates', instanceId),
-    applyModUpdate:   (instanceId, update) => ipcRenderer.invoke('mods:apply-update', instanceId, update),
-    importMrpack:     () => ipcRenderer.invoke('mrpack:import'),
+    // Profil içeriği: type = 'mod' | 'resourcepack' | 'shader'
+    listContent:      (instanceId, type, opts) => ipcRenderer.invoke('content:list', instanceId, type, opts),
+    toggleContent:    (instanceId, type, file, enabled) => ipcRenderer.invoke('content:toggle', instanceId, type, file, enabled),
+    removeContent:    (instanceId, type, file) => ipcRenderer.invoke('content:remove', instanceId, type, file),
+    openContentDir:   (instanceId, type) => ipcRenderer.invoke('content:open-dir', instanceId, type),
+    searchContent:    (params) => ipcRenderer.invoke('content:search', params),
+    installContent:   (instanceId, type, projectId, taskId) => ipcRenderer.invoke('content:install', instanceId, type, projectId, taskId),
+    checkContentUpdates: (instanceId, type) => ipcRenderer.invoke('content:check-updates', instanceId, type),
+    applyContentUpdate:  (instanceId, type, update) => ipcRenderer.invoke('content:apply-update', instanceId, type, update),
+    installModpack:   (projectId, taskId) => ipcRenderer.invoke('modpack:install', projectId, taskId),
+    installPerformancePreset: (instanceId, taskId) => ipcRenderer.invoke('mods:performance-preset', instanceId, taskId),
+    importMrpack:     (taskId) => ipcRenderer.invoke('mrpack:import', taskId),
+
+    // Skinler (kütüphane herkes için; profil/uygula/pelerin yalnız Microsoft)
+    listSkins:        () => ipcRenderer.invoke('skins:list'),
+    importSkinFile:   () => ipcRenderer.invoke('skins:import-file'),
+    importSkinUsername: (name) => ipcRenderer.invoke('skins:import-username', name),
+    updateSkin:       (id, patch) => ipcRenderer.invoke('skins:update', id, patch),
+    removeSkin:       (id) => ipcRenderer.invoke('skins:remove', id),
+    getSkinProfile:   () => ipcRenderer.invoke('skins:profile'),
+    applySkin:        (id) => ipcRenderer.invoke('skins:apply', id),
+    resetSkin:        () => ipcRenderer.invoke('skins:reset'),
+    setCape:          (capeId) => ipcRenderer.invoke('skins:cape', capeId),
+    saveCurrentSkin:  () => ipcRenderer.invoke('skins:save-current'),
 
     // Sunucu manifesti / OptiFine manuel
-    applyServerManifest: (url) => ipcRenderer.invoke('server:apply-manifest', url),
+    applyServerManifest: (url, taskId) => ipcRenderer.invoke('server:apply-manifest', url, taskId),
     installOptiFineManual: (mcVersion) => ipcRenderer.invoke('optifine:manual-install', mcVersion),
 });

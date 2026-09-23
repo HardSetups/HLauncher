@@ -1,9 +1,18 @@
-// Döndürülebilir 3D skin görüntüleyici (skinview3d). WebGL yoksa veya skin
-// yüklenemezse 2D bust görseline düşer — launcher asla bu yüzden bozulmaz.
+// Döndürülebilir 3D skin görüntüleyici (skinview3d). Tek WebGL örneği kurulur;
+// skin, model, pelerin ve animasyon değişince yeniden oluşturulmadan güncellenir.
+// WebGL yoksa veya skin yüklenemezse 2D görsele düşer — launcher bozulmaz.
 import { useEffect, useRef, useState } from 'react';
-import { SkinViewer, IdleAnimation } from 'skinview3d';
+import { SkinViewer, IdleAnimation, WalkingAnimation, RunningAnimation, WaveAnimation, CrouchAnimation } from 'skinview3d';
 
-function skinUrlFor(account) {
+const ANIMATIONS = {
+  idle: () => new IdleAnimation(),
+  walk: () => new WalkingAnimation(),
+  run: () => new RunningAnimation(),
+  wave: () => new WaveAnimation(),
+  crouch: () => new CrouchAnimation(),
+};
+
+function accountSkinUrl(account) {
   if (account?.type === 'microsoft' && account.uuid) {
     return `https://crafatar.com/skins/${encodeURIComponent(account.uuid)}`;
   }
@@ -14,60 +23,77 @@ function bustUrlFor(account) {
   return `https://minotar.net/armor/bust/${encodeURIComponent(account?.name || 'Steve')}/120.png`;
 }
 
-function SkinViewer3D({ account, width = 140, height = 200 }) {
+/**
+ * skin: data URL / https URL (verilmezse hesaptan türetilir)
+ * variant: 'classic' | 'slim' | undefined (otomatik algıla)
+ * cape: data URL | null
+ */
+function SkinViewer3D({ account, skin, variant, cape = null, animation = 'idle', rotate = true, width = 140, height = 200, zoom = 0.9 }) {
   const canvasRef = useRef(null);
-  // Hangi URL'in başarısız olduğunu tutar; URL değişince otomatik sıfırlanır
-  // (effect içinde senkron setState gerekmez).
-  const [failedUrl, setFailedUrl] = useState(null);
-  const skinUrl = skinUrlFor(account);
-  const failed = failedUrl === skinUrl;
+  const viewerRef = useRef(null);
+  const [failed, setFailed] = useState(false);
+  const skinUrl = skin || accountSkinUrl(account);
 
+  // Görüntüleyici bir kez kurulur
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
-
     let viewer;
     try {
-      viewer = new SkinViewer({ canvas, width, height });
-      viewer.animation = new IdleAnimation();
-      viewer.autoRotate = true;
-      viewer.autoRotateSpeed = 0.5;
+      viewer = new SkinViewer({ canvas, width, height, zoom });
       if (viewer.controls) {
         viewer.controls.enableZoom = false;
         viewer.controls.enablePan = false;
       }
     } catch {
-      // WebGL kullanılamıyor (nadir sürücü/VM durumları)
-      queueMicrotask(() => setFailedUrl(skinUrl));
+      queueMicrotask(() => setFailed(true)); // WebGL yok (nadir sürücü/VM durumu)
       return undefined;
     }
-
-    let disposed = false;
-    Promise.resolve(viewer.loadSkin(skinUrl))
-      .catch(() => { if (!disposed) setFailedUrl(skinUrl); });
-
+    viewerRef.current = viewer;
     return () => {
-      disposed = true;
+      viewerRef.current = null;
       viewer.dispose();
     };
-  }, [skinUrl, width, height, failed]);
+  // Boyut değişimi aşağıdaki efektte; bu yalnızca kurulum
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => { viewerRef.current?.setSize(width, height); }, [width, height]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    let stale = false;
+    Promise.resolve(viewer.loadSkin(skinUrl, { model: variant === 'slim' ? 'slim' : variant === 'classic' ? 'default' : 'auto-detect' }))
+      .catch(() => { if (!stale && !skin) setFailed(true); });
+    return () => { stale = true; };
+  }, [skinUrl, variant, skin]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    if (cape) Promise.resolve(viewer.loadCape(cape)).catch(() => viewer.resetCape());
+    else viewer.resetCape();
+  }, [cape]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    viewer.animation = (ANIMATIONS[animation] || ANIMATIONS.idle)();
+  }, [animation]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    viewer.autoRotate = rotate;
+    viewer.autoRotateSpeed = 0.6;
+  }, [rotate]);
 
   if (failed) {
-    return (
-      <img
-        src={bustUrlFor(account)}
-        alt="Skin"
-        style={{ width: `${Math.min(width, 120)}px`, filter: 'drop-shadow(0 10px 20px rgba(0,0,0,0.5))' }}
-      />
-    );
+    return <img src={bustUrlFor(account)} alt="Skin" style={{ width: Math.min(width, 140), imageRendering: 'pixelated' }} />;
   }
 
-  return (
-    <canvas
-      ref={canvasRef}
-      style={{ width: `${width}px`, height: `${height}px`, cursor: 'grab', touchAction: 'none' }}
-    />
-  );
+  return <canvas ref={canvasRef} className="skin-canvas" style={{ width, height }} />;
 }
 
 export default SkinViewer3D;

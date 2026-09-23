@@ -279,6 +279,119 @@ test('sanitizeNews: http URL reddedilir, dizi olmayan girdi null döner', () => 
     assert.strictEqual(sanitizeNews({ hatali: true }), null);
 });
 
+// ─── content.cjs (mod / kaynak paketi / shader) ─────────────────────────────
+const content = require('../electron/lib/content.cjs');
+
+test('content.classifyEntry: jar modu açık, .disabled kapalı', () => {
+    assert.deepStrictEqual(content.classifyEntry('mod', 'sodium.jar', false), { file: 'sodium.jar', name: 'sodium.jar', enabled: true, isDir: false });
+    const off = content.classifyEntry('mod', 'sodium.jar.disabled', false);
+    assert.strictEqual(off.enabled, false);
+    assert.strictEqual(off.name, 'sodium.jar');
+});
+
+test('content.classifyEntry: yanlış uzantı ve mod klasörü içerik sayılmaz', () => {
+    assert.strictEqual(content.classifyEntry('mod', 'readme.txt', false), null);
+    assert.strictEqual(content.classifyEntry('mod', 'somefolder', true), null);
+    assert.strictEqual(content.classifyEntry('mod', '.hidden.jar', false), null);
+});
+
+test('content.classifyEntry: kaynak paketi zip ve klasör kabul edilir', () => {
+    assert.ok(content.classifyEntry('resourcepack', 'Faithful.zip', false));
+    assert.ok(content.classifyEntry('resourcepack', 'MyPack', true));
+    assert.strictEqual(content.classifyEntry('resourcepack', 'MyPack.disabled', true).enabled, false);
+    assert.throws(() => content.classifyEntry('world', 'x.zip', false));
+});
+
+test('content.setEnabled: kapat → .disabled, aç → geri; listede durum doğru', () => {
+    const dir = fs.mkdtempSync(path.join(tmpAppData, 'mods-'));
+    fs.writeFileSync(path.join(dir, 'a.jar'), 'x');
+    const off = content.setEnabled(dir, 'a.jar', false);
+    assert.strictEqual(off, 'a.jar.disabled');
+    assert.ok(fs.existsSync(path.join(dir, 'a.jar.disabled')));
+    assert.strictEqual(content.listEntries(dir, 'mod')[0].enabled, false);
+    assert.strictEqual(content.setEnabled(dir, off, true), 'a.jar');
+    assert.strictEqual(content.setEnabled(dir, 'a.jar', true), 'a.jar'); // zaten açık: değişiklik yok
+});
+
+test('content.setEnabled: hedef adda dosya varsa üzerine yazmaz', () => {
+    const dir = fs.mkdtempSync(path.join(tmpAppData, 'mods-'));
+    fs.writeFileSync(path.join(dir, 'b.jar'), '1');
+    fs.writeFileSync(path.join(dir, 'b.jar.disabled'), '2');
+    assert.throws(() => content.setEnabled(dir, 'b.jar', false));
+    assert.strictEqual(fs.readFileSync(path.join(dir, 'b.jar.disabled'), 'utf8'), '2');
+});
+
+test('content: yol kaçışı engellenir (toggle / remove)', () => {
+    const dir = fs.mkdtempSync(path.join(tmpAppData, 'mods-'));
+    assert.throws(() => content.setEnabled(dir, '../config.json', false));
+    assert.throws(() => content.removeContent(dir, '..\\evil.jar'));
+    assert.throws(() => content.removeContent(dir, 'C:\\Windows\\x.jar'));
+});
+
+test('content.loadersFor: quilt fabric modlarını da kapsar, kaynak paketi minecraft', () => {
+    assert.deepStrictEqual(content.loadersFor('mod', 'quilt'), ['quilt', 'fabric']);
+    assert.deepStrictEqual(content.loadersFor('resourcepack', 'fabric'), ['minecraft']);
+});
+
+test('instances.sanitizeInstancePatch: yalnızca kullanıcı alanları geçer', () => {
+    const clean = instances.sanitizeInstancePatch({
+        name: '  Skyblock  ', loader: 'fabric', ram: 99, mcVersion: '1.21.4',
+        managedFiles: ['x'], origin: 'server', id: 'hack', announcements: [], serverAddress: ' mc.example.com ',
+    });
+    assert.deepStrictEqual(clean, { name: 'Skyblock', loader: 'fabric', ram: 64, mcVersion: '1.21.4', serverAddress: 'mc.example.com' });
+    assert.deepStrictEqual(instances.sanitizeInstancePatch({ loader: 'rift', mcVersion: '../x', ram: 'a' }), {});
+    assert.deepStrictEqual(instances.sanitizeInstancePatch({ mcVersion: null, ram: null, serverAddress: '' }), { mcVersion: null, ram: null, serverAddress: null });
+});
+
+// ─── skins.cjs ──────────────────────────────────────────────────────────────
+const skins = require('../electron/lib/skins.cjs');
+const pngHeader = (w, h) => {
+    const buf = Buffer.alloc(33);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(buf, 0);
+    buf.writeUInt32BE(13, 8);
+    buf.write('IHDR', 12, 'ascii');
+    buf.writeUInt32BE(w, 16);
+    buf.writeUInt32BE(h, 20);
+    return buf;
+};
+
+test('skins.validateSkinPng: 64×64 ve 64×32 kabul, diğer boyutlar ret', () => {
+    assert.deepStrictEqual(skins.validateSkinPng(pngHeader(64, 64)), { width: 64, height: 64 });
+    assert.deepStrictEqual(skins.validateSkinPng(pngHeader(64, 32)), { width: 64, height: 32 });
+    assert.throws(() => skins.validateSkinPng(pngHeader(128, 128)), /64×64/);
+});
+
+test('skins.validateSkinPng: PNG olmayan ve aşırı büyük dosya reddedilir', () => {
+    assert.throws(() => skins.validateSkinPng(Buffer.from('GIF89a-this-is-not-a-png-file')), /PNG/);
+    assert.throws(() => skins.validateSkinPng(Buffer.alloc(300 * 1024)), /büyük/);
+});
+
+test('skins.addToLibrary: aynı görsel iki kez eklenmez, silinince listeden çıkar', () => {
+    const png = pngHeader(64, 64);
+    const a = skins.addToLibrary(png, { name: 'Deneme<>', variant: 'slim' });
+    const b = skins.addToLibrary(png, { name: 'Kopya' });
+    assert.strictEqual(a.id, b.id);
+    assert.strictEqual(a.name, 'Deneme');
+    assert.strictEqual(a.variant, 'slim');
+    assert.ok(skins.listLibrary().some((s) => s.id === a.id && s.dataUrl.startsWith('data:image/png;base64,')));
+    skins.removeEntry(a.id);
+    assert.ok(!skins.listLibrary().some((s) => s.id === a.id));
+});
+
+// ─── updater.cjs ────────────────────────────────────────────────────────────
+const { plainReleaseNotes } = require('../electron/lib/updater.cjs');
+
+test('updater.plainReleaseNotes: GitHub HTML notunu düz metne çevirir', () => {
+    const html = '<h2>Yeni</h2><ul><li>Skin <b>kütüphanesi</b></li><li>İndirme &amp; panel</li></ul>';
+    assert.strictEqual(plainReleaseNotes(html), 'Yeni\n• Skin kütüphanesi\n• İndirme & panel');
+});
+
+test('updater.plainReleaseNotes: dizi biçimi, boş değer ve uzunluk sınırı', () => {
+    assert.strictEqual(plainReleaseNotes([{ note: 'a' }, { note: 'b' }]), 'a\n\nb');
+    assert.strictEqual(plainReleaseNotes(null), '');
+    assert.ok(plainReleaseNotes('x'.repeat(5000), 100).length <= 101);
+});
+
 // ─── i18n: backend ilerleme anahtarları sözlükte var mı? ────────────────────
 test('i18n: backend be.* anahtarları TR ve EN sözlüklerinde mevcut', () => {
     const i18nSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'i18n.jsx'), 'utf8');

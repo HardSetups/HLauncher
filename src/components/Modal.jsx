@@ -1,21 +1,46 @@
+import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { X } from 'lucide-react';
 
-function Modal({ open, icon, title, accentColor = '#3b82f6', children, footer }) {
+// Sola hizalı diyalog: başlık + (ikon) + içerik + sağda aksiyonlar.
+// onClose verilirse Escape, arka plan tıklaması ve X düğmesi kapatır.
+// tone: 'default' | 'danger' | 'success' — yalnızca ikon rengini etkiler.
+function Modal({ open, onClose, icon, title, tone = 'default', size = 'sm', children, footer }) {
+  useEffect(() => {
+    if (!open || !onClose) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   return (
     <AnimatePresence>
       {open && (
         <motion.div
+          className="modal-backdrop"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9998 }}
+          transition={{ duration: 0.15 }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
         >
           <motion.div
-            initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
-            style={{ background: '#101115', border: `1px solid ${accentColor}4d`, borderTop: `3px solid ${accentColor}`, borderRadius: '14px', padding: '40px', maxWidth: '440px', width: '100%', textAlign: 'center' }}
+            className={`modal modal-${size}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label={typeof title === 'string' ? title : undefined}
+            initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.16 }}
           >
-            {icon && <div style={{ fontSize: '44px', marginBottom: '16px', display: 'flex', justifyContent: 'center' }}>{icon}</div>}
-            {title && <h3 style={{ fontSize: '20px', fontWeight: '800', color: accentColor, marginBottom: '12px' }}>{title}</h3>}
-            {children}
-            {footer}
+            <div className="modal-head">
+              {icon && <span className={`modal-icon tone-${tone}`}>{icon}</span>}
+              {title && <h2 className="modal-title">{title}</h2>}
+              {onClose && (
+                <button className="icon-btn modal-close" onClick={onClose} aria-label="Kapat">
+                  <X size={17} />
+                </button>
+              )}
+            </div>
+            <div className="modal-body">{children}</div>
+            {footer && <div className="modal-foot">{footer}</div>}
           </motion.div>
         </motion.div>
       )}

@@ -121,4 +121,43 @@ function getModsDir(id) {
     return dir;
 }
 
-module.exports = { list, get, create, update, remove, ensureDefault, getModsDir, slugify, VALID_LOADERS };
+/** İçerik türünün (mods/resourcepacks/shaderpacks) klasörü; yoksa oluşturur. */
+function getContentDir(id, type) {
+    if (!get(id)) throw new Error(`Profil bulunamadı: ${id}`);
+    const { CONTENT_TYPES } = require('./content.cjs');
+    const info = CONTENT_TYPES[type];
+    if (!info) throw new Error(`Bilinmeyen içerik türü: ${type}`);
+    const dir = path.join(getInstanceDir(id), info.dir);
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+}
+
+/** Başlatmada çağrılır: "kaldığın yerden devam" sıralaması için. */
+function markPlayed(id) {
+    try { return update(id, { lastPlayed: Date.now() }); } catch { return null; }
+}
+
+/**
+ * Renderer'dan gelen profil yamasını süzer (saf, testli). Yalnızca kullanıcının
+ * düzenleyebileceği alanlar geçer; managedFiles/origin/announcements gibi iç
+ * alanlar renderer'dan asla yazılamaz.
+ */
+function sanitizeInstancePatch(patch) {
+    const clean = {};
+    if (!patch || typeof patch !== 'object') return clean;
+    if (typeof patch.name === 'string' && patch.name.trim()) clean.name = patch.name.trim().slice(0, 48);
+    if (patch.mcVersion === null || (typeof patch.mcVersion === 'string' && /^[\w.-]{1,32}$/.test(patch.mcVersion))) {
+        clean.mcVersion = patch.mcVersion;
+    }
+    if (VALID_LOADERS.includes(patch.loader)) clean.loader = patch.loader;
+    if (patch.ram === null) clean.ram = null;
+    else if (Number.isFinite(patch.ram)) clean.ram = Math.min(64, Math.max(1, Math.round(patch.ram)));
+    if (patch.serverAddress === null || patch.serverAddress === '') clean.serverAddress = null;
+    else if (typeof patch.serverAddress === 'string') clean.serverAddress = patch.serverAddress.trim().slice(0, 120) || null;
+    return clean;
+}
+
+module.exports = {
+    list, get, create, update, remove, ensureDefault, getModsDir, getContentDir, markPlayed,
+    sanitizeInstancePatch, slugify, VALID_LOADERS,
+};

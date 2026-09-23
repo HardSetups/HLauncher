@@ -59,6 +59,7 @@ function loginOffline(name) {
 }
 
 function logout() {
+    mcCache = null;
     getStore().set('account', null);
 }
 
@@ -69,15 +70,15 @@ function getCurrent() {
     return { type: account.type, name: account.name, uuid: account.uuid || null };
 }
 
-/** Başlatma için MCLC auth nesnesi üretir. Microsoft ise token tazelenir. */
-async function getMclcAuth() {
+// Tazelenmiş Minecraft oturumu bellekte kısa süre tutulur: skin işlemleri
+// her tıklamada Microsoft'a yeniden gitmesin. (Token ~24 saat geçerli.)
+let mcCache = null; // { mc, uuid, expires }
+const MC_CACHE_MS = 30 * 60 * 1000;
+
+async function refreshMinecraft() {
     const account = getStore().get('account');
-    if (!account) throw new Error('Önce giriş yapın');
-
-    if (account.type === 'offline') {
-        return Authenticator.getAuth(account.name);
-    }
-
+    if (!account || account.type !== 'microsoft') throw new Error('Bu işlem için Microsoft hesabıyla giriş yapmalısın');
+    if (mcCache && mcCache.uuid === account.uuid && mcCache.expires > Date.now()) return mcCache.mc;
     try {
         const { Auth } = require('msmc');
         const auth = new Auth('select_account');
@@ -85,11 +86,26 @@ async function getMclcAuth() {
         const mc = await xbox.getMinecraft();
         // Tazelenen token'ı (şifreli) sakla ki oturum süresiz devam etsin
         getStore().set('account', { ...account, refresh: encryptToken(xbox.save()), name: mc.profile?.name || account.name });
-        return mc.mclc();
+        mcCache = { mc, uuid: account.uuid, expires: Date.now() + MC_CACHE_MS };
+        return mc;
     } catch (err) {
+        mcCache = null;
         log.error(`[ACCOUNT] Microsoft token yenileme hatası: ${err.message}`);
         throw new Error('Microsoft oturumu yenilenemedi. Hesap sekmesinden tekrar giriş yapın.');
     }
 }
 
-module.exports = { loginMicrosoft, loginOffline, logout, getCurrent, getMclcAuth };
+/** Minecraft Services API için erişim token'ı (yalnız Microsoft hesabı). */
+async function getMinecraftToken() {
+    return (await refreshMinecraft()).mcToken;
+}
+
+/** Başlatma için MCLC auth nesnesi üretir. Microsoft ise token tazelenir. */
+async function getMclcAuth() {
+    const account = getStore().get('account');
+    if (!account) throw new Error('Önce giriş yapın');
+    if (account.type === 'offline') return Authenticator.getAuth(account.name);
+    return (await refreshMinecraft()).mclc();
+}
+
+module.exports = { loginMicrosoft, loginOffline, logout, getCurrent, getMclcAuth, getMinecraftToken };
