@@ -172,9 +172,10 @@ function manifestFromResponse(data, file) {
 }
 
 /** by-license yanıtındaki en uygun dosya: STABLE içinde en yeni sürüm. */
-function pickFile(files) {
+function pickFile(files, { allowBeta = false } = {}) {
     const list = (Array.isArray(files) ? files : []).filter((f) => f && typeof f.url === 'string' && f.sha256);
-    const stable = list.filter((f) => (f.channel || 'STABLE') === 'STABLE');
+    // Beta açıksa kanal fark etmez, en yeni sürüm; kapalıyken kararlı olan varsa o
+    const stable = allowBeta ? [] : list.filter((f) => (f.channel || 'STABLE') === 'STABLE');
     return (stable.length ? stable : list).sort((a, b) => compareVersions(b.version || '0.0.0', a.version || '0.0.0'))[0] || null;
 }
 

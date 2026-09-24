@@ -25,6 +25,10 @@ if (NO_SANDBOX) {
     app.commandLine.appendSwitch('no-sandbox');
 }
 
+// Testler/ekran görüntüleri (yalnızca paketlenmemiş): ayrı Electron userData'sı. Tek instance
+// kilidi userData'ya bağlı; bu olmadan açık bir geliştirme kopyası e2e'yi kapatır.
+if (!app.isPackaged && process.env.HL_USER_DATA) app.setPath('userData', process.env.HL_USER_DATA);
+
 // Tek instance: ikinci kopya açılırsa mevcut pencereye odaklan.
 if (!app.requestSingleInstanceLock()) {
     app.quit();
@@ -492,6 +496,7 @@ function startApp() {
     // Vitrin, ürün, satın alma, bildirimler (C3)
     ipcMain.handle('portal:home', portalCall('Vitrin', (reason) => portal.home({ reason: ['open', 'focus', 'refresh'].includes(reason) ? reason : 'open' })));
     ipcMain.handle('portal:dismiss-announcement', portalCall('Duyuru', (id) => ({ dismissed: portal.dismissAnnouncement(id) })));
+    ipcMain.handle('portal:products', portalCall('Ürün listesi', () => portal.products()));
     ipcMain.handle('portal:product', portalCall('Ürün', (slug) => portal.product(String(slug || ''))));
     ipcMain.handle('portal:quote', portalCall('Teklif', (productSlug, plan, coupon) => portal.quote(String(productSlug || ''), String(plan || ''), coupon ? String(coupon) : null)));
     ipcMain.handle('portal:purchase', portalCall('Satın alma', (quoteId, consents) => portal.purchase(String(quoteId || ''), Array.isArray(consents) ? consents.map(String) : [])));

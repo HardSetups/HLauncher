@@ -8,7 +8,7 @@ const offline = require('./offline.cjs');
 
 const ONLINE_FRESH_MS = 10 * 60 * 1000; // bu süreden yeni çevrimiçi yanıt varsa yeniden sorulmaz
 
-function createLibrary({ api, dataRoot, getDeviceId, log, keyring = undefined, now = Date.now }) {
+function createLibrary({ api, dataRoot, getDeviceId, log, keyring = undefined, now = Date.now, getChannel = () => 'STABLE' }) {
     const file = path.join(dataRoot, 'hardsetups-library.json');
     let cache = load();
 
@@ -32,7 +32,8 @@ function createLibrary({ api, dataRoot, getDeviceId, log, keyring = undefined, n
 
     /** Sunucudan tazeler; zarfı doğrular ve saklar. */
     async function refresh() {
-        const { data } = await api.get('/v1/launcher/library');
+        // Oyuncu beta sürümleri de istiyorsa (Ayarlar) sunucu en yeni sürümü BETA dahil hesaplar
+        const { data } = await api.get(`/v1/launcher/library${getChannel() === 'BETA' ? '?channel=BETA' : ''}`);
         const items = Array.isArray(data?.items) ? data.items : [];
         let envelope = cache?.envelope || null;
         let referenceIssuedAt = cache?.referenceIssuedAt || null;

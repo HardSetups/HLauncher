@@ -25,7 +25,8 @@ async function main() {
     const server = await mock.start(0);
     const base = `http://127.0.0.1:${server.address().port}`;
     // HL_EXTERNAL_BASE: Modrinth / Fabric meta da mock'tan (test internete çıkmaz)
-    const env = { ...process.env, APPDATA: appData, HL_API_BASE: base, HL_EXTERNAL_BASE: base };
+    // HL_USER_DATA: açık bir geliştirme kopyası varken de çalışsın (tek instance kilidi userData'ya bağlı)
+    const env = { ...process.env, APPDATA: appData, HL_API_BASE: base, HL_EXTERNAL_BASE: base, HL_USER_DATA: path.join(appData, 'electron-user') };
     delete env.ELECTRON_RUN_AS_NODE; // açıksa main.cjs kendini yeniden başlatır, Playwright süreci kaybeder
     delete env.NODE_ENV;              // dist/ yüklensin (Vite gerekmez)
 

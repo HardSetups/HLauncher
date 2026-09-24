@@ -25,7 +25,7 @@ const codedError = (code, message, extra = {}) => Object.assign(new Error(messag
 const CONFIG_RETRY_MS = 5 * 60 * 1000;
 const ME_MIN_INTERVAL_MS = 60 * 1000;
 // Renderer'ın açtırabileceği bağlantı türleri (IPC girdisi bu listeyle sınırlı)
-const LINK_KINDS = new Set(['account', 'wallet', 'topup', 'devices', 'licenses', 'site', 'store', 'support', 'launcher']);
+const LINK_KINDS = new Set(['account', 'wallet', 'topup', 'devices', 'licenses', 'site', 'store', 'support', 'launcher', 'register']);
 
 /**
  * @param {object} o
@@ -259,9 +259,21 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
 
     function openLink(kind) {
         if (!LINK_KINDS.has(kind)) return false;
-        if (state.outdated && kind !== 'launcher') return false; // indirme sayfası kilitli değil
-        const url = state.me?.links?.[kind] || state.config?.links?.[kind];
+        if (state.outdated && !['launcher', 'register'].includes(kind)) return false; // indirme ve kayıt sayfası kilitli değil
+        let url = state.me?.links?.[kind] || state.config?.links?.[kind];
+        if (!url && kind === 'register') url = registerFallback();
         return url ? openLinkUrl(url) : false;
+    }
+
+    /** Kayıt sayfası config'te yoksa sitenin /kayit sayfası (hardsetups.com/kayit). */
+    function registerFallback() {
+        const site = state.config?.links?.site || (baseUrl === DEFAULT_BASE ? 'https://hardsetups.com/' : null);
+        try { return site ? new URL('kayit', site.endsWith('/') ? site : `${site}/`).toString() : null; } catch { return null; }
+    }
+
+    /** Ürün kanalı: Ayarlar'da "beta sürümleri de kur" açıksa BETA (sunucu en yeniyi seçer). */
+    function productChannel() {
+        return store.get('settings')?.hsBetaChannel === true ? 'BETA' : 'STABLE';
     }
 
     /** İndirme izin listesi: launcher'ın sabit listesi + sunucunun downloadHosts'u. */
@@ -288,7 +300,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         }
         try { return offline.buildKeyring(raw); } catch { return undefined; }
     }
-    library = createLibrary({ api, dataRoot, getDeviceId: () => session.getDeviceId(), log, keyring: devKeyring() });
+    library = createLibrary({ api, dataRoot, getDeviceId: () => session.getDeviceId(), log, keyring: devKeyring(), getChannel: productChannel });
 
     const managedId = (folderName) => `hs-${folderName}`;
     /** Sunucu resmi yalnızca imageHosts altındaysa saklanır/gösterilir (§2). */
@@ -381,7 +393,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         onProgress({ percent: null, key: 'be.hsPreparing' });
         const existing = findManaged(slug);
         const installedVersionId = existing ? installer.readInstalled(getInstanceDir(existing.id))?.version?.id || null : null;
-        const body = { product: slug, action, channel: 'STABLE', installedVersionId };
+        const body = { product: slug, action, channel: productChannel(), installedVersionId };
         let manifest = (await api.post('/v1/launcher/install', body)).data;
         if (!isValidFolderName(manifest?.instance?.folderName)) throw codedError('EBADMANIFEST', 'Sunucudan geçersiz kurulum bildirimi geldi');
         // v1.5 §7.8.1: Modrinth bağımlılıkları ayrı alanda gelir; birebir sürümle çözülüp dosyalara eklenir
@@ -451,10 +463,12 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         const key = String(licenseKey || '').trim();
         if (!key || key.length > 64) throw codedError('VALIDATION', 'Geçerli bir lisans anahtarı gir');
         onProgress({ percent: null, key: 'be.hsPreparing' });
-        const call = () => api.post('/v1/downloads/by-license', { licenseKey: key, channel: 'STABLE' }, { auth: 'none' });
+        const channel = productChannel();
+        const pick = (files) => bylicense.pickFile(files, { allowBeta: channel === 'BETA' });
+        const call = () => api.post('/v1/downloads/by-license', { licenseKey: key, channel }, { auth: 'none' });
         const first = (await call()).data;
         const product = first?.license?.product;
-        const file = bylicense.pickFile(first?.files);
+        const file = pick(first?.files);
         if (!file) throw codedError('NOT_FOUND', 'Bu ürün için yayınlanmış sürüm yok', { details: { reason: 'noPublishedVersion' } });
 
         let manifest = bylicense.manifestFromResponse(first, file);
@@ -477,7 +491,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
                 {
                     allowedHosts: downloadHosts(), allowLocalHttp: isDev, signal,
                     onBytes: (d) => { done += d; report({ phase: 'download', done, total: archiveSize }); },
-                    refreshUrl: async () => bylicense.pickFile((await call()).data.files)?.url,
+                    refreshUrl: async () => pick((await call()).data.files)?.url,
                 },
             );
             info = bylicense.inspectArchive(dest);
@@ -508,7 +522,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
             meta: { source: 'licenseKey' },
             signal,
             onProgress: report,
-            refreshUrls: async () => ({ f1: bylicense.pickFile((await call()).data.files)?.url }),
+            refreshUrls: async () => ({ f1: pick((await call()).data.files)?.url }),
         });
         const validated = installer.validateInstallManifest(manifest);
         await ensureLoaderVersion(validated, instanceDir);
@@ -543,16 +557,28 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
     const arr = (v) => (Array.isArray(v) ? v : []);
     const str = (v, max = 500) => (typeof v === 'string' ? v.slice(0, max) : null);
 
+    /** ProductCard (§4) süzgeci: vitrin ve ürün listesi aynı biçimi kullanır. */
+    const card = (p) => (p && typeof p.slug === 'string' ? {
+        slug: str(p.slug, 64), name: str(p.name, 120), shortDescription: str(p.shortDescription, 300),
+        iconUrl: str(p.iconUrl, 2048), coverUrl: str(p.coverUrl, 2048),
+        priceFromMinor: str(p.priceFromMinor, 20), compareAtMinor: str(p.compareAtMinor, 20), currency: str(p.currency, 3) || 'TRY',
+        badges: arr(p.badges).filter((b) => BADGES.has(b)), owned: p.owned === true,
+    } : null);
+
+    /** GET /products (§5): launcher'dan kurulabilir ürünlerin tamamı (vitrin boşken de katalog dolu). */
+    async function products() {
+        if (state.outdated) throw codedError('LAUNCHER_OUTDATED', 'Bu launcher sürümü HardSetups tarafından artık desteklenmiyor');
+        let res;
+        try {
+            res = await api.get('/v1/launcher/products', { auth: 'optional' });
+        } catch (err) { throw markUnavailable(err); }
+        return { products: arr(res.data?.products).map(card).filter(Boolean).slice(0, 100) };
+    }
+
     /** Vitrin yanıtını renderer için süzer: bilinmeyen action türü gizlenir (§4), kapatılan duyuru çıkarılır. */
     function sanitizeHome(data) {
         const dismissed = new Set(arr(store.get('dismissedAnnouncements')));
         const action = (a) => (a && ACTION_TYPES.has(a.type) ? { type: a.type, slug: str(a.slug, 64), url: str(a.url, 2048) } : null);
-        const card = (p) => (p && typeof p.slug === 'string' ? {
-            slug: str(p.slug, 64), name: str(p.name, 120), shortDescription: str(p.shortDescription, 300),
-            iconUrl: str(p.iconUrl, 2048), coverUrl: str(p.coverUrl, 2048),
-            priceFromMinor: str(p.priceFromMinor, 20), compareAtMinor: str(p.compareAtMinor, 20), currency: str(p.currency, 3) || 'TRY',
-            badges: arr(p.badges).filter((b) => BADGES.has(b)), owned: p.owned === true,
-        } : null);
         return {
             // action null olabilir (tıklanmaz); bilinmeyen tür ise öğe gizlenir (§4)
             hero: arr(data?.hero)
@@ -755,6 +781,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         launchCheck,
         home,
         dismissAnnouncement,
+        products,
         product,
         quote,
         purchase,

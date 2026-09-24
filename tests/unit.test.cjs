@@ -388,7 +388,7 @@ test('updater.plainReleaseNotes: GitHub HTML notunu düz metne çevirir', () => 
 
 test('updater.feedFor: GitHub kaynağında besleme değişmez; HardSetups kaynağında kanal adresi', () => {
     const { feedFor, UPDATE_SOURCE } = require('../electron/lib/updater.cjs');
-    assert.strictEqual(UPDATE_SOURCE, 'github', 'L3 canlıya çıkmadan kaynak değişmemeli (köprü sürüm)');
+    assert.strictEqual(UPDATE_SOURCE, 'hardsetups', 'alpha.7 köprü sürüm: güncellemeler HardSetups akışından (kullanıcı kararı)');
     assert.strictEqual(feedFor('github', 'beta'), null);
     assert.deepStrictEqual(feedFor('hardsetups'), { provider: 'generic', url: 'https://api.hardsetups.com/v1/launcher/update/stable' });
     assert.deepStrictEqual(feedFor('hardsetups', 'beta').url, 'https://api.hardsetups.com/v1/launcher/update/beta');

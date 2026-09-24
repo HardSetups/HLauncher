@@ -802,6 +802,25 @@ test('portal.home (v1.7): hesaba özel kuponlar yalnızca girişliyken; bilinmey
     });
 });
 
+test('bylicense.pickFile: beta kapalıyken kararlı en yeni, açıkken kanal fark etmeksizin en yeni', () => {
+    const { pickFile } = require('../electron/services/bylicense.cjs');
+    const f = (version, channel) => ({ version, channel, url: `https://cdn.hardsetups.com/${version}`, sha256: 'a'.repeat(64) });
+    const files = [f('1.3.0', 'STABLE'), f('1.4.0-beta.2', 'BETA'), f('1.2.0', 'STABLE')];
+    assert.strictEqual(pickFile(files).version, '1.3.0');
+    assert.strictEqual(pickFile(files, { allowBeta: true }).version, '1.4.0-beta.2');
+    assert.strictEqual(pickFile([f('0.2.0', 'BETA')]).version, '0.2.0', 'yalnızca beta varsa yine o');
+});
+
+test('portal: ürün kataloğu (§5) ve "Kayıt ol" bağlantısı (config\'te yoksa site/kayit)', async () => {
+    await withPortal(async ({ portal }) => {
+        const { products } = await portal.products();
+        assert.ok(products.length >= 2);
+        assert.ok(products.every((p) => p.slug && p.name && Array.isArray(p.badges)));
+        assert.strictEqual(portal.openLink('register'), true);
+        assert.strictEqual(portal.openLink('kayit-olmayan-tur'), false);
+    });
+});
+
 test('telemetry: onaysız ya da sunucu kapalıyken hiçbir şey tutulmaz; toplu, 100\'lük ve 1000\'lik parçalar', async () => {
     const { createTelemetry } = require('../electron/services/telemetry.cjs');
     let enabled = false;

@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     portalOpenUrl:      (url) => ipcRenderer.invoke('portal:open-url', url),
     portalHome:         (reason) => ipcRenderer.invoke('portal:home', reason),
     portalDismissAnnouncement: (id) => ipcRenderer.invoke('portal:dismiss-announcement', id),
+    portalProducts:     () => ipcRenderer.invoke('portal:products'),
     portalProduct:      (slug) => ipcRenderer.invoke('portal:product', slug),
     portalQuote:        (productSlug, plan, coupon) => ipcRenderer.invoke('portal:quote', productSlug, plan, coupon),
     portalPurchase:     (quoteId, consents) => ipcRenderer.invoke('portal:purchase', quoteId, consents),

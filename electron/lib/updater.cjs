@@ -1,8 +1,7 @@
-// Otomatik güncelleme (electron-updater + GitHub Releases).
-// - Kaynak: package.json → build.publish (HardSetups/HLauncher-releases: yalnızca
-//   derlenmiş dosyalar, herkese açık). alpha.6 öncesi kurulumlar kaynak repoyu
-//   dinlediği için sürümler scripts/release.cjs ile iki repoya birden yüklenir.
-//   Sürüm bir ön sürümse (1.0.0-alpha.N) Pre-release'ler de görülür.
+// Otomatik güncelleme (electron-updater).
+// - Kaynak (alpha.7'den beri): HardSetups güncelleme akışı (aşağıda). Sürümler panelden
+//   (Admin › Lisanslar › Launcher › Sürümler) yayımlanır. alpha.7 köprü sürümdür: GitHub'a da
+//   yüklenir ki GitHub'ı dinleyen kurulu alpha.6 ve öncesi ona geçebilsin.
 // - Açılışta ve açık kaldığı sürece her CHECK_INTERVAL'de bir denetler;
 //   Ayarlar'daki anahtar kapatılırsa zamanlayıcı durur (yeniden başlatma gerekmez).
 // - Güncelleme arka planda iner; "hazır" olunca arayüz kullanıcıya sorar.
@@ -13,13 +12,12 @@ const log = require('./logger.cjs');
 const CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3 saat
 const FIRST_CHECK_DELAY_MS = 8 * 1000;        // açılışı yavaşlatma
 
-// Güncelleme kaynağı (sözleşme §12). 'github': HardSetups/HLauncher-releases (bugün).
-// 'hardsetups': generic sağlayıcı https://api.hardsetups.com/v1/launcher/update/<kanal>
-// (latest.yml sunucuda üretilir, dosya adresi göreli → 302 ile imzalı CDN; blockmap yok →
-// nsis.differentialPackage: false). Kademeli yayın kovası X-HL-Device'tan hesaplanır.
-// L3 canlıya çıkınca köprü sürümde bu sabit değiştirilir; kurulum kimliği YALNIZCA
-// HardSetups kaynağına gider (GitHub'a gitmez).
-const UPDATE_SOURCE = 'github';
+// Güncelleme kaynağı (sözleşme §12). 'hardsetups': generic sağlayıcı
+// https://api.hardsetups.com/v1/launcher/update/<kanal> (latest.yml sunucuda üretilir, dosya
+// adresi göreli → 302 ile imzalı CDN; blockmap yok → nsis.differentialPackage: false).
+// Kademeli yayın kovası X-HL-Device'tan hesaplanır; kurulum kimliği YALNIZCA bu kaynağa gider.
+// 'github': package.json build.publish (HardSetups/HLauncher-releases) — alpha.6'ya kadar.
+const UPDATE_SOURCE = 'hardsetups';
 const HARDSETUPS_UPDATE_BASE = 'https://api.hardsetups.com/v1/launcher/update';
 
 /** Kaynak + kanal → electron-updater besleme ayarı (saf, testli). */

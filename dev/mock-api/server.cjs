@@ -467,7 +467,7 @@ async function handle(req, res) {
         }, { ETag: etag });
     }
     if (p === '/v1/launcher/products' && req.method === 'GET') {
-        return send(res, 200, Object.keys(PRODUCTS).map((s) => productCard(s, !authed(req).error, base)));
+        return send(res, 200, { products: Object.keys(PRODUCTS).map((s) => productCard(s, !authed(req).error, base)) }); // §5
     }
     const productMatch = /^\/v1\/launcher\/products\/([a-z0-9-]+)$/.exec(p);
     if (productMatch && req.method === 'GET') {
