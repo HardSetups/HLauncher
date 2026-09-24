@@ -93,6 +93,7 @@ function validateInstallManifest(m) {
         licenseConfig = { ...m.licenseConfig, path: normalizeRelative(m.licenseConfig.path) };
     }
     const world = m.quickPlay?.singleplayer;
+    // eslint-disable-next-line no-control-regex -- dünya adında kontrol karakteri yasak
     if (world !== null && world !== undefined && (typeof world !== 'string' || !/^[^\\/:*?"<>|\x00-\x1f]{1,64}$/.test(world))) bad('quickPlay');
 
     return {

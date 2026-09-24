@@ -36,7 +36,7 @@ function readExisting(file) {
         throw err;
     }
     try {
-        const parsed = JSON.parse(text.replace(/^﻿/, ''));
+        const parsed = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text); // BOM'lu dosyalar da okunur
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return { data: parsed, corrupt: false, existed: true };
     } catch { /* bozuk */ }
     return { data: {}, corrupt: true, existed: true };
