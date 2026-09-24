@@ -434,4 +434,4 @@
 .ob-signed-in { display: inline-flex; align-items: center; gap: 7px; color: var(--text); }
 .ob-signed-in svg { color: var(--ok); }
 /* logo.png'nin saydam kenarları kırpılır (giriş ekranındaki marka işaretiyle aynı) */
-.onboarding .ob-logo { width: auto; height: 48px; object-view-box: inset(17% 27% 19% 27%); }
+.onboarding .ob-logo { width: auto; height: 48px; align-self: flex-start; object-view-box: inset(17% 27% 19% 27%); }

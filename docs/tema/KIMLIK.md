@@ -21,7 +21,7 @@ Launcher, oyun içi modlar ve site aynı görsel kimliği paylaşır. Değerleri
 | Kiremit 300 | `#F4957F` | Açık vurgu (üzerine gelme metni), çok az |
 | Kor | `#F0A04B` | Nadir vurgu: indirim, "yeni", ödül. Bir ekranda en fazla bir kez |
 | Grafit 950–600 | `#0B0C0F` … `#3A3F49` | Zemin, yüzey, kart ve çizgiler (tema.json › roles) |
-| Metin | `#F2F3F5` / `#B3B7C0` / `#7C818C` | Birincil / ikincil / üçüncül. Saf beyaz kullanılmaz |
+| Metin | `#F2F3F5` / `#B3B7C0` / `#7C818C` | Birincil / ikincil / üçüncül. Saf beyaz kullanılmaz. Üçüncül yalnızca `surface` ya da daha koyu zeminde; launcher kart (`raised`) üstünde 4.5:1 için bir tık açık `#858A95` kullanır |
 | Durum | başarı `#3FCF7B`, uyarı `#E7A93B`, hata `#E5484D`, bilgi `#4C8DFF` | Yalnızca durum bildirir, süs değildir |
 
 Launcher'da oyuncu vurgu rengini değiştirebilir; **varsayılan** Kiremit'tir. Modlar ve site her zaman Kiremit kullanır.
