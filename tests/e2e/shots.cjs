@@ -3,8 +3,9 @@
 //
 //   npm run build && node tests/e2e/shots.cjs [çıktı klasörü] [--no-login] [--fresh] [--scenario=<ad>] [--size=1280x800]
 //
-// --no-login: HardSetups hesabı bağlanmadan (giriş ekranı / kilit görünümü)
-// --fresh:    ilk kurulum (onboarding) — config.json yazılmaz
+// --no-login: HardSetups hesabı bağlanmadan: giriş kapısı (alpha.7), kod paneli, İngilizce hâli
+// --fresh:    ilk kurulum — config.json yazılmaz; girişten sonra sihirbaz (onboarding) adımları çekilir
+// --scenario: mock senaryosu (ör. maintenance, outdated, notDeployed → giriş ekranının durumları)
 // --accent=#10b981: vurgu rengi (config.json settings.accent)
 // --empty-home: vitrin boş gelir (canlıdaki gibi; ürün kataloğu dolu kalır)
 // Giriş arayüzden bağımsız yapılır: portalLoginStart IPC'si çağrılır, kod mock'ta onaylanır.
@@ -72,19 +73,35 @@ const [W, H] = opt('size', '1280x800').split('x').map(Number);
         await win.waitForTimeout(1500);
         await shot(win, '01-acilis');
 
-        if (!flag('no-login') && !flag('fresh')) {
+        if (flag('no-login')) {
+            // Giriş kapısı: kod paneli ve dil değişimi
+            if (await clickIf(win, '.auth-login:not(:disabled)')) {
+                await win.waitForSelector('.auth-code-value', { timeout: 10000 }).catch(() => {});
+                await shot(win, '02-giris-kodu');
+                await clickIf(win, '.auth-cancel');
+            }
+            if (await clickIf(win, '.auth-lang button:not(.is-active)')) await shot(win, '02b-giris-dil');
+        } else {
             const res = await win.evaluate(() => globalThis.electronAPI.portalLoginStart());
             if (res?.ok) {
                 await fetch(`${base}/__mock/approve`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userCode: res.userCode }) });
-                // Oturum açılana kadar bekle (cihaz kodu yoklaması birkaç saniyede bir)
+                await win.waitForSelector('.rail, .onboarding', { timeout: 20000 }).catch(() => {});
+                // Ana sayfa bandındaki bakiye için /me yanıtını da bekle
                 for (let i = 0; i < 40; i++) {
                     const st = await win.evaluate(() => globalThis.electronAPI.portalState()).catch(() => null);
                     if (st?.state?.signedIn && st.state.wallet) break;
                     await win.waitForTimeout(250);
                 }
-                await win.waitForTimeout(800);
-                await win.keyboard.press('Escape').catch(() => {});
             } else console.log('  – giriş başlatılamadı', res?.error);
+            if (flag('fresh') && await win.$('.onboarding')) {
+                await shot(win, '02-ilk-kurulum-1');
+                await clickIf(win, '.onboarding .modal-foot .btn-primary');
+                await shot(win, '02-ilk-kurulum-2');
+                await clickIf(win, '.onboarding .modal-foot button:last-child');
+                await shot(win, '02-ilk-kurulum-3');
+                await clickIf(win, '.onboarding .modal-foot .btn-primary');
+            }
+            await win.keyboard.press('Escape').catch(() => {});
         }
         await shot(win, '02-sonraki');
         if (await clickIf(win, '.rail-home')) {

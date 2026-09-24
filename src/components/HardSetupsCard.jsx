@@ -1,54 +1,32 @@
 // HardSetups hesabı kartı (Hesap sayfası) + cihaz kodu ile bağlanma penceresi.
 // Giriş tarayıcıda yapılır: launcher parola görmez. Token'lar ana süreçte kalır;
-// buraya yalnızca özet (kullanıcı adı, bakiye) gelir.
+// buraya yalnızca özet (kullanıcı adı, bakiye) gelir. alpha.7'den beri hesap zorunlu:
+// oturum yokken kabuk yerine giriş ekranı (AuthScreen) görünür, bu kart normalde bağlı
+// hâlde çizilir. Cihaz kodu mantığı giriş ekranıyla ortak (auth/useDeviceLogin).
 import { useState, useEffect } from 'react';
 import { Link2, ExternalLink, Copy, Check, Loader2, LogOut, Wallet, MonitorSmartphone, ShieldCheck, RefreshCw } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import Modal from './Modal.jsx';
 import { formatMinor } from '../utils/money.js';
 import { portalErrorText } from '../utils/portal.js';
+import { useDeviceLogin } from './auth/useDeviceLogin.js';
 
 function ConnectModal({ open, onClose, onError }) {
   const { t } = useI18n();
-  const api = window.electronAPI;
-  const [flow, setFlow] = useState(null);     // { userCode, verificationUri }
-  const [status, setStatus] = useState('idle'); // idle | starting | waiting | denied | expired | error
-  const [copied, setCopied] = useState(false);
-
-  const start = async () => {
-    setStatus('starting');
-    setFlow(null);
-    try {
-      const res = await api.portalLoginStart();
-      if (!res.ok) { setStatus('error'); onError(portalErrorText(t, res.error)); return; }
-      setFlow({ userCode: res.userCode, verificationUri: res.verificationUri });
-      setStatus('waiting');
-    } catch (err) {
-      setStatus('error');
-      onError(String(err?.message || err));
-    }
-  };
+  const login = useDeviceLogin();
+  const { start, cancel, status, error } = login;
 
   // Pencere açılınca akışı başlat; kapanınca (onaylanmadıysa) iptal et
   useEffect(() => {
     if (!open) return undefined;
     start();
-    const off = api.onPortalLogin((res) => {
-      if (res.state === 'success') { onClose(true); return; }
-      if (res.state === 'denied' || res.state === 'expired') setStatus(res.state);
-      if (res.state === 'error') { setStatus('error'); onError(portalErrorText(t, res.error)); }
-    });
-    return () => { off?.(); api.portalLoginCancel(); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+    return cancel;
+  }, [open, start, cancel]);
 
-  const copy = async () => {
-    const res = await api.portalCopyVerification();
-    if (res.ok && res.copied) { setCopied(true); setTimeout(() => setCopied(false), 1500); }
-  };
+  useEffect(() => { if (status === 'success') onClose(true); }, [status, onClose]);
+  useEffect(() => { if (status === 'error' && error) onError(portalErrorText(t, error)); }, [status, error, onError, t]);
 
-  const ended = status === 'denied' || status === 'expired' || status === 'error';
-
+  const flow = login.flow;
   return (
     <Modal
       open={open}
@@ -58,9 +36,9 @@ function ConnectModal({ open, onClose, onError }) {
       footer={
         <>
           <button className="btn-ghost" onClick={() => onClose(false)}>{t('common.cancel')}</button>
-          {ended
-            ? <button className="btn-primary" onClick={start} autoFocus>{t('hs.retry')}</button>
-            : <button className="btn-primary" onClick={() => api.portalOpenVerification()} disabled={!flow}><ExternalLink size={15} /> {t('hs.openBrowser')}</button>}
+          {login.ended
+            ? <button className="btn-primary" onClick={() => start()} autoFocus>{t('hs.retry')}</button>
+            : <button className="btn-primary" onClick={login.openBrowser} disabled={!flow}><ExternalLink size={15} /> {t('hs.openBrowser')}</button>}
         </>
       }
     >
@@ -75,11 +53,11 @@ function ConnectModal({ open, onClose, onError }) {
         {status === 'denied' && t('hs.denied')}
         {status === 'expired' && t('hs.expired')}
       </div>
-      {flow && !ended && (
+      {flow && !login.ended && (
         <p className="hs-fallback">
           {t('hs.noBrowser')}{' '}
-          <button className="link-btn" onClick={copy}>
-            {copied ? <><Check size={12} /> {t('hs.copied')}</> : <><Copy size={12} /> {t('hs.copyUrl')}</>}
+          <button className="link-btn" onClick={login.copy}>
+            {login.copied ? <><Check size={12} /> {t('hs.copied')}</> : <><Copy size={12} /> {t('hs.copyUrl')}</>}
           </button>
           <span className="hs-fallback-url">{flow.verificationUri}</span>
         </p>
@@ -93,6 +71,7 @@ export default function HardSetupsCard({ portal, onError }) {
   const api = window.electronAPI;
   const [connecting, setConnecting] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   // Oturum durumu 'portal:login' olayından önce gelebilir: bağlanınca pencere
   // durumunu da sıfırla, yoksa sonraki oturum kapanışında pencere kendiliğinden açılır.
@@ -117,7 +96,9 @@ export default function HardSetupsCard({ portal, onError }) {
     );
   }
 
+  // Çıkış onaylanınca oturum kapanır ve kapı (giriş ekranı) görünür; bu kart da kalkar
   const logout = async () => {
+    setConfirmLogout(false);
     setBusy(true);
     try {
       const res = await api.portalLogout();
@@ -194,10 +175,24 @@ export default function HardSetupsCard({ portal, onError }) {
       <div className="acct-actions">
         <button className="btn-secondary" onClick={() => openLink('account')}><ExternalLink size={15} /> {t('hs.myAccount')}</button>
         <button className="btn-ghost" onClick={() => openLink('devices')}><MonitorSmartphone size={15} /> {t('hs.devices')}</button>
-        <button className="btn-ghost" onClick={logout} disabled={busy}>
+        <button className="btn-ghost hs-logout" onClick={() => setConfirmLogout(true)} disabled={busy}>
           {busy ? <Loader2 size={15} className="spin" /> : <LogOut size={15} />} {t('hs.logout')}
         </button>
       </div>
+      <Modal
+        open={confirmLogout}
+        onClose={() => setConfirmLogout(false)}
+        icon={<LogOut size={18} />}
+        title={t('auth.logout.title')}
+        footer={
+          <>
+            <button className="btn-ghost" onClick={() => setConfirmLogout(false)} autoFocus>{t('common.cancel')}</button>
+            <button className="btn-primary hs-logout-confirm" onClick={logout}>{t('auth.logout.confirm')}</button>
+          </>
+        }
+      >
+        <p className="modal-text">{t('auth.logout.text')}</p>
+      </Modal>
     </section>
   );
 }

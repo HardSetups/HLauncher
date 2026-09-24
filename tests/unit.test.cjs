@@ -711,6 +711,38 @@ test('report.collectReportFiles: launcher günlüğü + oyunun latest.log + en y
     assert.strictEqual((mp.body.toString().match(/name="logs"; filename=/g) || []).length, 3);
 });
 
+// ─── Giriş kapısı (alpha.7): portal özeti → ekran ─────────────────────────
+// Renderer ESM; saf dosya metin olarak okunup `export` atılarak değerlendirilir (import içermez).
+test('authView: HardSetups hesabı zorunlu kapısı doğru ekranı seçer', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'auth', 'authView.js'), 'utf8');
+    assert.ok(!/^\s*import\s/m.test(src), 'authView.js import içermemeli');
+    const { authView, isRevokedReason, isStateError } = new Function(`${src.replace(/^export\s+/gm, '')}\nreturn { authView, isRevokedReason, isStateError };`)();
+    const base = { signedIn: false, configLoaded: true, accountAvailable: true, outdated: null, maintenance: null };
+    // İlk IPC yanıtı gelmeden hiçbir şey (giriş ekranı dahil) gösterilmez
+    assert.strictEqual(authView(null), 'loading');
+    assert.strictEqual(authView(undefined), 'loading');
+    assert.strictEqual(authView(base), 'login');
+    // Oturum varsa her durumda uygulama: çevrimdışı (config yok), bakım ve eski sürüm oturumu kapatmaz
+    assert.strictEqual(authView({ ...base, signedIn: true, configLoaded: false }), 'app');
+    assert.strictEqual(authView({ ...base, signedIn: true, maintenance: { message: null } }), 'app');
+    assert.strictEqual(authView({ ...base, signedIn: true, outdated: { minVersion: '9.0.0' } }), 'app');
+    // Oturum yoksa: sürüm > bakım > sunucu kapalı > giriş
+    assert.strictEqual(authView({ ...base, outdated: { minVersion: '9.0.0' }, maintenance: { message: 'x' }, accountAvailable: false }), 'outdated');
+    assert.strictEqual(authView({ ...base, maintenance: { message: 'x' }, accountAvailable: false }), 'maintenance');
+    assert.strictEqual(authView({ ...base, accountAvailable: false }), 'unavailable');
+    // Config henüz yokken (çevrimdışı ilk açılış) giriş ekranı; hata girişe basınca gösterilir
+    assert.strictEqual(authView({ ...base, configLoaded: false }), 'login');
+    // Bildirim yalnızca güvenlik nedeniyle kapanan oturumda
+    assert.strictEqual(isRevokedReason('DEVICE_REVOKED'), true);
+    assert.strictEqual(isRevokedReason('REFRESH_TOKEN_INVALID'), true);
+    assert.strictEqual(isRevokedReason('logout'), false);
+    assert.strictEqual(isRevokedReason(null), false);
+    // Ekranı zaten değiştiren hatalar kartta ayrıca yazılmaz
+    assert.strictEqual(isStateError({ code: 'PORTAL_UNAVAILABLE' }), true);
+    assert.strictEqual(isStateError({ code: 'NETWORK' }), false);
+    assert.strictEqual(isStateError(null), false);
+});
+
 // ─── i18n: arayüzdeki her t('…') anahtarı iki sözlükte de var mı? ───────────
 test('i18n: src/ içindeki tüm sabit t(\'…\') anahtarları TR ve EN sözlüklerinde mevcut', () => {
     const i18nSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'i18n.jsx'), 'utf8');
