@@ -10,6 +10,16 @@ const { createSession } = require('./hsession.cjs');
 const { createEncryptedFileStorage } = require('./session-file.cjs');
 const { compareVersions } = require('../lib/semver.cjs');
 const { DEFAULT_LINK_HOSTS, BASE_DOWNLOAD_HOSTS, hostMatches } = require('../lib/links.cjs');
+const { isValidFolderName } = require('../lib/safepath.cjs');
+const { getInstanceDir } = require('../lib/paths.cjs');
+const instances = require('../lib/instances.cjs');
+const installer = require('./installer.cjs');
+const bylicense = require('./bylicense.cjs');
+const offline = require('./offline.cjs');
+const { createLibrary } = require('./library.cjs');
+const { downloadVerified } = require('./downloader.cjs');
+
+const codedError = (code, message, extra = {}) => Object.assign(new Error(message), { code, ...extra });
 
 const CONFIG_RETRY_MS = 5 * 60 * 1000;
 const ME_MIN_INTERVAL_MS = 60 * 1000;
@@ -24,8 +34,9 @@ const LINK_KINDS = new Set(['account', 'wallet', 'topup', 'devices', 'licenses',
  * @param {object} o.log
  * @param {(url: string, hosts: string[]) => boolean} o.openExternal izin listesiyle açar
  * @param {(channel: string, payload: object) => void} o.send renderer'a olay
+ * @param {() => boolean} [o.isGameRunning] oyun açıkken kurulum/onarma yapılmaz (§7.5)
  */
-function createPortal({ app, store, dataRoot, log, openExternal, send }) {
+function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRunning = () => false }) {
     const isDev = !app.isPackaged;
     const baseUrl = resolveBaseUrl(process.env.HL_API_BASE, { allowLocalHttp: isDev });
     const appVersion = app.getVersion();
@@ -45,6 +56,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send }) {
         lastError: null,
     };
     let loginFlow = null; // { verificationUriComplete, cancel }
+    let library = null;   // createLibrary — api kurulduktan sonra atanır
     let meFetchedAt = 0;
     let configTimer = null;
 
@@ -55,6 +67,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send }) {
         onChange: (e) => {
             if (!e.signedIn) {
                 state.me = null;
+                library?.clear(); // başka bir hesap bağlanırsa eski lisanslar/zarf kalmasın
                 if (e.reason && e.reason !== 'logout') log.warn(`[PORTAL] Oturum kapatıldı: ${e.reason}`);
             }
             send('portal:session', { signedIn: e.signedIn, reason: e.reason || null });
@@ -214,6 +227,215 @@ function createPortal({ app, store, dataRoot, log, openExternal, send }) {
         return [...new Set([...BASE_DOWNLOAD_HOSTS, ...fromServer])];
     }
 
+    // ── Kütüphane ve yönetilen örnekler (C2) ─────────────────────────────────
+
+    // Geliştirmede yerel mock, zarfı sözleşme vektörlerinin TEST anahtarıyla imzalar;
+    // o anahtar yalnızca paketlenmemiş + yerel API ile eklenir, üretimde asla.
+    function devKeyring() {
+        if (!isDev || !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(baseUrl)) return undefined;
+        try {
+            const vectors = require('../../tests/fixtures/launcher-offline-vectors.json');
+            return offline.buildKeyring({ ...offline.EMBEDDED_KEYS, ...Object.fromEntries(vectors.keys.map((k) => [k.kid, k.publicKeyRawBase64url])) });
+        } catch { return undefined; }
+    }
+    library = createLibrary({ api, dataRoot, getDeviceId: () => session.getDeviceId(), log, keyring: devKeyring() });
+
+    const managedId = (folderName) => `hs-${folderName}`;
+    const findManaged = (slug) => instances.list().find((i) => i.origin === 'hardsetups' && i.product === slug) || null;
+
+    function requireReady({ account = true } = {}) {
+        assertSupported();
+        if (account && !session.isSignedIn()) throw codedError('NOT_SIGNED_IN', 'Önce HardSetups hesabını bağla');
+        if (isGameRunning()) throw codedError('EGAMERUNNING', 'Oyun açıkken kurulum yapılamaz; önce oyunu kapat');
+    }
+
+    /** Kurulum sonrası profil kaydı: yönetilen örnek, kullanıcının RAM seçimi korunur. */
+    function registerManaged(manifest, { installedVia, iconUrl = null }) {
+        const id = managedId(manifest.instance.folderName);
+        const loader = manifest.loader.type === 'vanilla' ? 'release' : manifest.loader.type;
+        const fields = {
+            name: manifest.instance.displayName,
+            mcVersion: manifest.minecraft.version,
+            loader,
+            loaderVersion: manifest.loader.version || null,
+            product: manifest.instance.id,
+            installedVia,
+            installedVersion: manifest.version.version || null,
+            installedVersionId: manifest.version.id || null,
+            quickPlayWorld: manifest.quickPlay?.singleplayer || null,
+            javaMajor: manifest.java.major,
+            ...(iconUrl ? { iconUrl } : {}),
+        };
+        if (!instances.get(id)) {
+            const ramGb = Math.max(2, Math.ceil((manifest.memory?.recommendedMb || 4096) / 1024));
+            instances.create({ id, name: fields.name, mcVersion: fields.mcVersion, loader, ram: ramGb, origin: 'hardsetups' });
+        }
+        return instances.update(id, fields);
+    }
+
+    /** Kütüphane görünümü: lisanslı ürünler + bu cihazdaki kurulum durumu. */
+    async function libraryView({ refresh: doRefresh = true } = {}) {
+        let items = library.cachedItems();
+        let offlineMode = false;
+        let error = null;
+        if (session.isSignedIn() && !state.outdated && doRefresh) {
+            try { items = await library.refresh(); } catch (err) {
+                offlineMode = err?.code === 'NETWORK' || err?.status >= 500;
+                error = err?.toJSON?.() || { code: 'UNKNOWN', message: String(err?.message || err) };
+            }
+        }
+        const view = items.map((it) => {
+            const inst = findManaged(it.product.slug);
+            const installed = inst ? installer.readInstalled(getInstanceDir(inst.id)) : null;
+            const latest = it.latestVersion;
+            const updateAvailable = !!(installed && latest && (latest.id ? latest.id !== installed.version?.id : compareVersions(latest.version, installed.version?.version || '0.0.0') > 0));
+            return { ...it, source: 'account', instanceId: inst?.id || null, installedVersion: installed?.version?.version || null, updateAvailable };
+        });
+        // Anahtarla kurulanlar (§11) hesabın kütüphanesinde görünmeyebilir: yerelden eklenir
+        for (const inst of instances.list().filter((i) => i.origin === 'hardsetups' && i.installedVia === 'licenseKey')) {
+            if (view.some((v) => v.product.slug === inst.product)) continue;
+            view.push({
+                licenseId: null, keyLast4: null, product: { slug: inst.product, name: inst.name, iconUrl: inst.iconUrl || null, coverUrl: null },
+                status: 'KEY', expiresAt: null, latestVersion: null, installable: true, reason: null,
+                source: 'licenseKey', instanceId: inst.id, installedVersion: inst.installedVersion || null, updateAvailable: false,
+            });
+        }
+        return { items: view, fetchedAt: library.fetchedAt(), offline: offlineMode, error };
+    }
+
+    function progressReporter(onProgress) {
+        return ({ phase, done, total }) => {
+            const percent = phase === 'download' && total > 0 ? Math.min(95, Math.floor((done / total) * 95)) : phase === 'commit' ? 98 : null;
+            const mb = (n) => (n / (1024 * 1024)).toFixed(1);
+            if (phase === 'download') onProgress({ percent, key: 'be.hsDownloading', params: { done: mb(done), total: mb(total) } });
+            else if (phase === 'extract') onProgress({ percent: 96, key: 'be.hsExtracting' });
+            else onProgress({ percent, key: 'be.hsApplying' });
+        };
+    }
+
+    /** Hesapla kurulum / güncelleme / onarma (§7). */
+    async function installProduct(slug, action, { onProgress = () => {}, signal } = {}) {
+        requireReady();
+        if (typeof slug !== 'string' || !/^[a-z0-9-]{1,64}$/.test(slug)) throw codedError('VALIDATION', 'Geçersiz ürün');
+        if (!['INSTALL', 'UPDATE', 'REPAIR'].includes(action)) throw codedError('VALIDATION', 'Geçersiz işlem');
+        onProgress({ percent: null, key: 'be.hsPreparing' });
+        const existing = findManaged(slug);
+        const installedVersionId = existing ? installer.readInstalled(getInstanceDir(existing.id))?.version?.id || null : null;
+        const body = { product: slug, action, channel: 'STABLE', installedVersionId };
+        let manifest = (await api.post('/v1/launcher/install', body)).data;
+        if (!isValidFolderName(manifest?.instance?.folderName)) throw codedError('EBADMANIFEST', 'Sunucudan geçersiz kurulum bildirimi geldi');
+        const instanceDir = getInstanceDir(managedId(manifest.instance.folderName));
+        const started = Date.now();
+        const reportResult = (result, errorCode = null) => api.post(`/v1/launcher/install/${manifest.installId}/result`, { result, errorCode, durationMs: Date.now() - started })
+            .catch((err) => log.info(`[PORTAL] Kurulum sonucu bildirilemedi: ${err.code || err.message}`));
+        try {
+            const result = await installer.syncProduct({
+                manifest,
+                instanceDir,
+                allowedHosts: downloadHosts(),
+                allowLocalHttp: isDev,
+                meta: { source: 'account' },
+                signal,
+                onProgress: progressReporter(onProgress),
+                refreshUrls: async () => {
+                    try {
+                        const r = await api.post(`/v1/launcher/install/${manifest.installId}/urls`, {});
+                        return Object.fromEntries((r.data?.files || []).map((f) => [f.id, f.url]));
+                    } catch (err) {
+                        if (err?.code !== 'INSTALL_EXPIRED') throw err;
+                        manifest = (await api.post('/v1/launcher/install', body)).data; // installId 1 saati geçti (§7.3)
+                        return Object.fromEntries(manifest.files.map((f) => [f.id, f.url]));
+                    }
+                },
+            });
+            const libItem = library.cachedItems().find((it) => it.product.slug === slug);
+            const inst = registerManaged(installer.validateInstallManifest(manifest), { installedVia: 'account', iconUrl: libItem?.product?.iconUrl || null });
+            await reportResult('SUCCESS');
+            log.info(`[PORTAL] ${slug} ${action}: ${result.version} (${result.downloaded} indirildi, ${result.reused} yeniden kullanıldı)`);
+            return { instanceId: inst.id, ...result };
+        } catch (err) {
+            await reportResult('FAILED', err.code || 'UNKNOWN');
+            throw err;
+        }
+    }
+
+    /** "Lisans anahtarım var" (§11): hesap gerekmez, launcher kapı koymaz. */
+    async function installByLicense(licenseKey, { onProgress = () => {}, signal } = {}) {
+        requireReady({ account: false });
+        const key = String(licenseKey || '').trim();
+        if (!key || key.length > 64) throw codedError('VALIDATION', 'Geçerli bir lisans anahtarı gir');
+        onProgress({ percent: null, key: 'be.hsPreparing' });
+        const call = () => api.post('/v1/downloads/by-license', { licenseKey: key, channel: 'STABLE' }, { auth: 'none' });
+        const first = (await call()).data;
+        const product = first?.license?.product;
+        const table = bylicense.PRODUCTS[product];
+        if (!table) throw codedError('UNSUPPORTED_PRODUCT', 'Bu ürün launcher\'dan anahtarla henüz kurulamıyor');
+        const file = bylicense.pickFile(first.files);
+        if (!file) throw codedError('NOT_FOUND', 'Bu ürün için yayınlanmış sürüm yok', { details: { reason: 'noPublishedVersion' } });
+
+        const instanceDir = getInstanceDir(managedId(product));
+        const report = progressReporter(onProgress);
+        const archiveSize = Number(file.sizeBytes) || 0;
+        let done = 0;
+        // 1. Arşiv önce iner (içindeki modlar incelenir); syncProduct aynı önbelleği kullanır
+        await downloadVerified(
+            { url: file.url, dest: path.join(instanceDir, '.hl-staging', 'dl', file.sha256.slice(0, 32)), sha256: file.sha256, sizeBytes: file.sizeBytes },
+            {
+                allowedHosts: downloadHosts(), allowLocalHttp: isDev, signal,
+                onBytes: (d) => { done += d; report({ phase: 'download', done, total: archiveSize }); },
+                refreshUrl: async () => bylicense.pickFile((await call()).data.files)?.url,
+            },
+        );
+        const info = bylicense.inspectArchive(path.join(instanceDir, '.hl-staging', 'dl', file.sha256.slice(0, 32)));
+        const fabricApi = info.mods.some((m) => m.id === 'fabric-api') ? null : await bylicense.fetchFabricApi(table.mc);
+        const loaderVersion = bylicense.pickLoaderVersion(await bylicense.fetchFabricLoaders(table.mc), info.mods.map((m) => m.loaderConstraint).filter(Boolean));
+        if (!loaderVersion) throw codedError('EDEPENDENCY', 'Modların istediği Fabric sürümü bulunamadı');
+
+        const manifest = bylicense.buildManifest({ product, table, file, licenseKey: key, loaderVersion, fabricApi });
+        const result = await installer.syncProduct({
+            manifest,
+            instanceDir,
+            allowedHosts: downloadHosts(),
+            allowLocalHttp: isDev,
+            extraRules: bylicense.ARCHIVE_RULES,
+            meta: { source: 'licenseKey' },
+            signal,
+            onProgress: report,
+            refreshUrls: async () => ({ f1: bylicense.pickFile((await call()).data.files)?.url }),
+        });
+        const inst = registerManaged(installer.validateInstallManifest(manifest), { installedVia: 'licenseKey' });
+        log.info(`[PORTAL] Anahtarla kuruldu: ${product} ${result.version} (Fabric ${loaderVersion}${fabricApi ? ', Fabric API Modrinth\'ten' : ''})`);
+        return { instanceId: inst.id, product, ...result };
+    }
+
+    /** Kaldırma (§7.7): isteğe bağlı dünya yedeği, sonra örnek klasörü ve profil kaydı silinir. */
+    function uninstallProduct(slug, { backupWorlds = true } = {}) {
+        if (isGameRunning()) throw codedError('EGAMERUNNING', 'Oyun açıkken kaldırılamaz; önce oyunu kapat');
+        const inst = findManaged(slug);
+        if (!inst) throw codedError('NOT_INSTALLED', 'Bu ürün kurulu değil');
+        const { backupPath } = installer.uninstallProduct(getInstanceDir(inst.id), {
+            backupDir: backupWorlds ? path.join(dataRoot, 'yedekler') : null,
+            label: inst.product,
+        });
+        instances.remove(inst.id);
+        if (store.get('activeInstanceId') === inst.id) store.set('activeInstanceId', 'default');
+        log.info(`[PORTAL] Kaldırıldı: ${slug}${backupPath ? ` (dünya yedeği: ${path.basename(backupPath)})` : ''}`);
+        return { backupPath };
+    }
+
+    /**
+     * HardSetups ürünü açılabilir mi? minVersion altında hiçbiri (§2, v1.3.2);
+     * hesapla kurulanlar lisans durumuna / çevrimdışı zarfa bakar (§6.3);
+     * anahtarla kurulanlara kapı yok (§6.6, lisansı mod doğrular).
+     */
+    async function launchCheck(instance) {
+        if (instance?.origin !== 'hardsetups') return { allowed: true };
+        if (state.outdated) return { allowed: false, reason: 'LAUNCHER_OUTDATED' };
+        if (instance.installedVia === 'licenseKey') return { allowed: true };
+        if (!session.isSignedIn()) return { allowed: false, reason: 'NOT_SIGNED_IN' };
+        return library.launchCheck(instance.product);
+    }
+
     return {
         api,
         session,
@@ -230,6 +452,11 @@ function createPortal({ app, store, dataRoot, log, openExternal, send }) {
         linkHosts,
         isDev,
         baseUrl,
+        libraryView,
+        installProduct,
+        installByLicense,
+        uninstallProduct,
+        launchCheck,
     };
 }
 

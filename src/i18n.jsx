@@ -481,6 +481,10 @@ export const DICTS = {
     'be.fetchingManifest': 'Sunucu manifesti alınıyor...',
     'be.notFoundDownloading': '{name} bulunamadı, indiriliyor...',
     'be.ready': '{name} hazır!',
+    'be.hsPreparing': 'Kurulum hazırlanıyor…',
+    'be.hsDownloading': 'İndiriliyor: {done} / {total} MB',
+    'be.hsExtracting': 'Dosyalar açılıyor…',
+    'be.hsApplying': 'Kurulum tamamlanıyor…',
   },
 
   en: {
@@ -960,6 +964,10 @@ export const DICTS = {
     'be.fetchingManifest': 'Fetching server manifest...',
     'be.notFoundDownloading': '{name} not found, downloading...',
     'be.ready': '{name} ready!',
+    'be.hsPreparing': 'Preparing installation…',
+    'be.hsDownloading': 'Downloading: {done} / {total} MB',
+    'be.hsExtracting': 'Extracting files…',
+    'be.hsApplying': 'Finishing installation…',
   },
 };
 

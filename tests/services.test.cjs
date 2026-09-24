@@ -522,6 +522,110 @@ test('installer: kaldırma önce dünyaları yedekler, sonra örnek klasörünü
     assert.ok(!fs.existsSync(dir));
 });
 
+// ─── services/bylicense.cjs (§11.1 yardımcıları) ────────────────────────────
+const bylicense = require('../electron/services/bylicense.cjs');
+
+test('bylicense.satisfies: fabric.mod.json sürüm koşulları', async () => {
+    assert.ok(bylicense.satisfies('0.16.14', '>=0.16.0'));
+    assert.ok(!bylicense.satisfies('0.15.11', '>=0.16.0'));
+    assert.ok(bylicense.satisfies('0.16.14', '*'));
+    assert.ok(bylicense.satisfies('0.16.14', ['>=0.17.0', '0.16.14'])); // dizi: VEYA
+    assert.ok(!bylicense.satisfies('0.16.14', '>=0.16.0 <0.16.10')); // boşluk: VE
+    assert.ok(bylicense.satisfies('0.16.14', '~0.16.2'));
+    assert.ok(!bylicense.satisfies('0.17.0', '~0.16.2'));
+    assert.ok(bylicense.satisfies('0.16.14', '0.16.x'));
+});
+
+test('bylicense.pickLoaderVersion: tüm koşulları sağlayan en yeni KARARLI loader', async () => {
+    const loaders = [
+        { loader: { version: '0.17.0-beta.1', stable: false } },
+        { loader: { version: '0.16.14', stable: true } },
+        { loader: { version: '0.16.10', stable: true } },
+        { loader: { version: '0.15.11', stable: true } },
+    ];
+    assert.strictEqual(bylicense.pickLoaderVersion(loaders, ['>=0.16.0']), '0.16.14');
+    assert.strictEqual(bylicense.pickLoaderVersion(loaders, ['>=0.16.0', '<0.16.12']), '0.16.10');
+    assert.strictEqual(bylicense.pickLoaderVersion(loaders, ['>=0.18.0']), null);
+});
+
+test('bylicense.inspectArchive: <klasör>/mods/*.jar kimlikleri ve .hs-license', async () => {
+    const zip = new (require('adm-zip'))();
+    const jar = (id) => { const j = new (require('adm-zip'))(); j.addFile('fabric.mod.json', Buffer.from(JSON.stringify({ id, depends: { fabricloader: '>=0.16.0' } }))); return j.toBuffer(); };
+    zip.addFile('HardSetups-DoldurDoldur/mods/hardsetups-core-0.2.0.jar', jar('hardsetups'));
+    zip.addFile('HardSetups-DoldurDoldur/mods/fabric-api-0.116.17+1.21.1.jar', jar('fabric-api'));
+    zip.addFile('HardSetups-DoldurDoldur/README.txt', Buffer.from('x'));
+    zip.addFile('.hs-license', Buffer.from('{}'));
+    const file = path.join(tmpDir(), 'a.zip');
+    zip.writeZip(file);
+    const info = bylicense.inspectArchive(file);
+    assert.deepStrictEqual(info.mods.map((m) => m.id).sort(), ['fabric-api', 'hardsetups']);
+    assert.ok(info.mods.every((m) => m.loaderConstraint === '>=0.16.0'));
+    assert.strictEqual(info.hasLicenseStamp, true);
+});
+
+test('bylicense.buildManifest: sözleşme §7 biçiminde, doğrulayıcıdan geçer', async () => {
+    const m = bylicense.buildManifest({
+        product: 'tiktok-doldurdoldur', table: bylicense.PRODUCTS['tiktok-doldurdoldur'],
+        file: { url: 'https://cdn.hardsetups.com/x.zip', sha256: 'a'.repeat(64), sizeBytes: '100', version: '0.2.0', versionId: 'v1' },
+        licenseKey: 'HSMN-OPQR-STUV-WXYZ', loaderVersion: '0.16.14',
+        fabricApi: { url: 'https://cdn.modrinth.com/f.jar', sha512: 'b'.repeat(128), size: 10, filename: 'fabric-api-0.116.17+1.21.1.jar' },
+    });
+    const v = installer.validateInstallManifest(m);
+    assert.strictEqual(v.instance.folderName, 'tiktok-doldurdoldur');
+    assert.deepStrictEqual(v.licenseConfig.entries, { 'lisans.anahtar.dolduroldur': 'HSMN-OPQR-STUV-WXYZ' });
+    assert.strictEqual(v.files[1].path, 'mods/fabric-api-0.116.17+1.21.1.jar');
+    assert.strictEqual(v.loader.version, '0.16.14');
+});
+
+// ─── services/library.cjs (§6.3 açma kuralları, mock API'ye karşı) ───────────
+const { createLibrary } = require('../electron/services/library.cjs');
+const offlineSvc = require('../electron/services/offline.cjs');
+const testKeyring = offlineSvc.buildKeyring(Object.fromEntries(require('./fixtures/launcher-offline-vectors.json').keys.map((k) => [k.kid, k.publicKeyRawBase64url])));
+
+test('library.launchCheck: çevrimiçi aktif lisans açılır, askıdaki açılmaz', async () => {
+    await withMock(async (base) => {
+        const c = makeClient(base);
+        await c.login();
+        const lib = createLibrary({ api: c.api, dataRoot: tmpDir(), getDeviceId: () => c.session.getDeviceId(), keyring: testKeyring });
+        assert.deepStrictEqual(await lib.launchCheck('kum-firtinasi'), { allowed: true });
+        assert.strictEqual((await lib.launchCheck('tiktok-doldurdoldur')).reason, 'LICENSE_REQUIRED');
+        mock.state.scenario = 'suspended';
+        await lib.refresh();
+        assert.strictEqual((await lib.launchCheck('kum-firtinasi')).reason, 'LICENSE_SUSPENDED');
+    });
+});
+
+test('library.launchCheck: internet yokken imzalı zarfla açılır; saat geri alınmışsa ya da süre dolmuşsa açılmaz', async () => {
+    let clock = Date.now();
+    let lib;
+    const dataRoot = tmpDir();
+    let deviceId;
+    await withMock(async (base) => {
+        const c = makeClient(base);
+        await c.login();
+        deviceId = c.session.getDeviceId();
+        lib = createLibrary({ api: c.api, dataRoot, getDeviceId: () => deviceId, keyring: testKeyring, now: () => clock });
+        await lib.refresh(); // zarf diske yazılır
+    });
+    // Oturum açık ama internet yok (yenileme isteği bağlanamaz → NETWORK)
+    const offlineApi = () => makeClient('http://127.0.0.1:9', { storage: createMemoryStorage({ refreshToken: 'eski', deviceId, user: { username: 'mert' } }) }).api;
+    clock += 11 * 60 * 1000;
+    assert.deepStrictEqual(await lib.launchCheck('kum-firtinasi'), { allowed: true, offline: true });
+    assert.strictEqual((await lib.launchCheck('tiktok-doldurdoldur')).reason, 'LICENSE_INACTIVE');
+    // Yeniden başlatma: diskten yüklenen zarf da çalışır
+    const reloaded = createLibrary({ api: offlineApi(), dataRoot, getDeviceId: () => deviceId, keyring: testKeyring, now: () => clock });
+    assert.deepStrictEqual(await reloaded.launchCheck('kum-firtinasi'), { allowed: true, offline: true });
+    // Saat geri alındı
+    const back = createLibrary({ api: offlineApi(), dataRoot, getDeviceId: () => deviceId, keyring: testKeyring, now: () => clock - 60 * 60 * 1000 });
+    assert.strictEqual((await back.launchCheck('kum-firtinasi')).reason, 'OFFLINE_CLOCK');
+    // Başka cihazın zarfı işe yaramaz
+    const other = createLibrary({ api: offlineApi(), dataRoot, getDeviceId: () => 'baska-cihaz', keyring: testKeyring, now: () => clock });
+    assert.strictEqual((await other.launchCheck('kum-firtinasi')).reason, 'OFFLINE_INVALID');
+    // 72 saatlik çevrimdışı süre doldu
+    clock += 73 * 60 * 60 * 1000;
+    assert.strictEqual((await lib.launchCheck('kum-firtinasi')).reason, 'OFFLINE_EXPIRED');
+});
+
 // ─── Çalıştırıcı ────────────────────────────────────────────────────────────
 (async () => {
     let passed = 0;

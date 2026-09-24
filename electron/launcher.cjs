@@ -76,8 +76,11 @@ function parseAddress(address) {
 
 const LOADER_LABELS = { optifine: 'OptiFine', fabric: 'Fabric', quilt: 'Quilt', forge: 'Forge', neoforge: 'NeoForge' };
 
-/** Loader'ı kurar; MCLC için { customVersionId } veya { forgeInstaller } döndürür. */
-async function prepareLoader(loader, rootPath, mcVersion, onProgress) {
+/**
+ * Loader'ı kurar; MCLC için { customVersionId } veya { forgeInstaller } döndürür.
+ * pinnedVersion: HardSetups ürünlerinde sunucunun sabitlediği loader sürümü.
+ */
+async function prepareLoader(loader, rootPath, mcVersion, onProgress, pinnedVersion = null) {
     switch (loader) {
         case 'release':
             return {};
@@ -85,7 +88,7 @@ async function prepareLoader(loader, rootPath, mcVersion, onProgress) {
             return { customVersionId: await optifine.install(rootPath, mcVersion, onProgress) };
         case 'fabric':
         case 'quilt':
-            return { customVersionId: await fabriclike.install(loader, rootPath, mcVersion, onProgress) };
+            return { customVersionId: await fabriclike.install(loader, rootPath, mcVersion, onProgress, pinnedVersion) };
         case 'forge':
         case 'neoforge':
             return { forgeInstaller: await forge.ensureInstaller(loader, mcVersion, onProgress) };
@@ -120,7 +123,7 @@ const launchGame = async (event, options = {}) => {
         const label = LOADER_LABELS[loader];
         event.reply('java-status', { type: loader, percent: 0, key: 'be.checking', params: { name: label } });
         try {
-            loaderResult = await prepareLoader(loader, rootPath, mcVersion, (p) => event.reply('java-status', p));
+            loaderResult = await prepareLoader(loader, rootPath, mcVersion, (p) => event.reply('java-status', p), instance.loaderVersion || null);
             event.reply('java-status', { type: 'done', percent: 100, key: 'be.ready', params: { name: label } });
         } catch (err) {
             log.error(`[LAUNCH] ${label} kurulum hatası: ${err.stack || err.message}`);
@@ -190,6 +193,9 @@ const launchGame = async (event, options = {}) => {
             const { host, port } = parseAddress(serverIp);
             gameArgs.push('--server', host, '--port', port);
         }
+    } else if (instance.quickPlayWorld && supportsQuickPlay(mcVersion)) {
+        // HardSetups ürünü doğrudan dünyaya açılır (sözleşme §7.9: --quickPlaySingleplayer)
+        quickPlay = { type: 'singleplayer', identifier: instance.quickPlayWorld };
     }
 
     const requiredJava = getRequiredJava(mcVersion);

@@ -37,7 +37,7 @@ function startApp() {
     const { getStore, sanitizeSettingsPatch, sanitizeServers } = require('./lib/store.cjs');
     const { getLogsDir, getRootPath } = require('./lib/paths.cjs');
     const { friendlyError } = require('./lib/errors.cjs');
-    const { launchGame, stopGame } = require('./launcher.cjs');
+    const { launchGame, stopGame, isGameRunning } = require('./launcher.cjs');
     const { getRecentReleaseVersions, getLatestRelease } = require('./lib/versions.cjs');
     const instances = require('./lib/instances.cjs');
     const accounts = require('./lib/accounts.cjs');
@@ -193,6 +193,7 @@ function startApp() {
             send: (channel, payload) => {
                 if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
             },
+            isGameRunning,
         });
         log.info(`[PORTAL] API: ${portal.baseUrl}`);
         portal.loadConfig().then(() => portal.refreshMe({ force: true }));
@@ -221,10 +222,29 @@ function startApp() {
     ipcMain.on('show-launcher', () => { mainWindow.show(); mainWindow.focus(); });
 
     // ── Oyun ────────────────────────────────────────────────────────────────
-    ipcMain.on('launch-game', (event, options) => {
+    // HardSetups ürünü açılmadan önce lisans kapısı (sözleşme §6.3); kapı mesajları Türkçe
+    const LAUNCH_BLOCK_TEXT = {
+        LAUNCHER_OUTDATED: 'Bu launcher sürümü HardSetups tarafından artık desteklenmiyor. HardSetups ürünlerini oynamak için launcher\'ı güncelle.',
+        NOT_SIGNED_IN: 'Bu ürünü oynamak için HardSetups hesabını bağla (Hesap sayfası).',
+        LICENSE_REQUIRED: 'Bu ürün için hesabında aktif bir lisans yok.',
+        OFFLINE_NO_ENVELOPE: 'İnternet yok ve bu cihazda çevrimdışı oynama izni henüz alınmamış. Bir kez internete bağlanıp launcher\'ı aç.',
+        OFFLINE_EXPIRED: 'Çevrimdışı oynama süren doldu. Lisansının doğrulanması için internete bağlan.',
+        OFFLINE_CLOCK: 'Bilgisayarının saati geri alınmış görünüyor. Saati düzeltip tekrar dene.',
+        OFFLINE_INVALID: 'Çevrimdışı lisans bilgisi doğrulanamadı. İnternete bağlanıp tekrar dene.',
+    };
+    ipcMain.on('launch-game', async (event, options) => {
         const opts = options || {};
+        const inst = opts.instanceId ? instances.get(opts.instanceId) : null;
+        if (inst?.origin === 'hardsetups') {
+            const check = portal ? await portal.launchCheck(inst) : { allowed: false, reason: 'NOT_READY' };
+            if (!check.allowed) {
+                log.warn(`[LAUNCH] HardSetups ürünü açılmadı: ${inst.product} (${check.reason})`);
+                event.reply('launch-error', LAUNCH_BLOCK_TEXT[check.reason] || `Bu ürünün lisansı şu an aktif değil (${check.reason}).`);
+                return;
+            }
+        }
         // "Kaldığın yerden devam" sırası + son seçilen profil
-        if (opts.instanceId && instances.get(opts.instanceId)) {
+        if (inst) {
             instances.markPlayed(opts.instanceId);
             getStore().set('activeInstanceId', opts.instanceId);
         }
@@ -385,8 +405,16 @@ function startApp() {
         const clean = instances.sanitizeInstancePatch(data);
         return instances.create({ ...clean, name: clean.name || '', loader: clean.loader || 'release' });
     });
-    ipcMain.handle('instances:update', (_e, id, patch) => instances.update(id, instances.sanitizeInstancePatch(patch)));
+    ipcMain.handle('instances:update', (_e, id, patch) => {
+        const clean = instances.sanitizeInstancePatch(patch);
+        // HardSetups ürününün sürümü ve loader'ı sunucunun kurulum bildiriminden gelir
+        if (instances.get(id)?.origin === 'hardsetups') { delete clean.mcVersion; delete clean.loader; }
+        return instances.update(id, clean);
+    });
     ipcMain.handle('instances:delete', (_e, id) => {
+        const inst = instances.get(id);
+        // Yönetilen örnek: dünyalar yedeklenerek kaldırılır (sözleşme §7.7)
+        if (inst?.origin === 'hardsetups' && portal) return !!portal.uninstallProduct(inst.product, { backupWorlds: true });
         const removed = instances.remove(id);
         if (getStore().get('activeInstanceId') === id) getStore().set('activeInstanceId', 'default');
         return removed;
@@ -462,6 +490,30 @@ function startApp() {
         const summary = await content.installModpack(String(projectId || ''), modProgress(event, taskId));
         if (summary.iconUrl) instances.update(summary.instanceId, { iconUrl: summary.iconUrl });
         return summary;
+    }));
+
+    // ── HardSetups kütüphanesi ve kurulumlar (C2) ───────────────────────────
+    // Uzun işler taskId'li 'mod-progress' olaylarıyla indirme paneline ilerleme yollar.
+    const portalTask = (label, fn) => async (event, ...args) => {
+        if (!portal) return { ok: false, error: { code: 'NOT_READY', message: 'Launcher henüz hazır değil' } };
+        try {
+            return { ok: true, ...(await fn(event, ...args)) };
+        } catch (err) {
+            log.error(`[PORTAL] ${label}: ${err.code || ''} ${err.message}`);
+            return { ok: false, error: err?.toJSON?.() || { code: err.code || 'UNKNOWN', message: friendlyError(err), details: err.details || {} } };
+        }
+    };
+    ipcMain.handle('portal:library', portalTask('Kütüphane', (_e, opts) => portal.libraryView({ refresh: opts?.refresh !== false })));
+    ipcMain.handle('portal:install', portalTask('Kurulum', (event, slug, action, taskId) =>
+        portal.installProduct(String(slug || ''), String(action || 'INSTALL'), { onProgress: modProgress(event, taskId) })));
+    ipcMain.handle('portal:install-key', portalTask('Anahtarla kurulum', (event, licenseKey, taskId) =>
+        portal.installByLicense(String(licenseKey || ''), { onProgress: modProgress(event, taskId) })));
+    ipcMain.handle('portal:uninstall', portalTask('Kaldırma', (_e, slug, opts) =>
+        portal.uninstallProduct(String(slug || ''), { backupWorlds: opts?.backupWorlds !== false })));
+    ipcMain.handle('portal:open-backups', portalTask('Yedek klasörü', async () => {
+        const dir = path.join(getRootPath(), 'yedekler');
+        require('fs').mkdirSync(dir, { recursive: true });
+        return { error: await shell.openPath(dir) || undefined };
     }));
 
     ipcMain.handle('mods:performance-preset', async (event, instanceId, taskId) => {
