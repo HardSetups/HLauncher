@@ -106,6 +106,27 @@ function makeZip(entries) {
     end.writeUInt32LE(centralBuf.length, 12); end.writeUInt32LE(offset, 16);
     return Buffer.concat([...locals, centralBuf, end]);
 }
+// Düz renkli küçük PNG (ürün ikonu); gerçek geliştirme API'si gibi resimler yerel host'tan gelir
+function makePng(size, [r, g, b]) {
+    const chunk = (type, data) => {
+        const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+        const td = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+        const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td));
+        return Buffer.concat([len, td, crc]);
+    };
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4); ihdr[8] = 8; ihdr[9] = 2;
+    const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: size }, () => [r, g, b]).flat())]);
+    const raw = Buffer.concat(Array.from({ length: size }, (_, y) => {
+        // köşegen şerit: ikon düz renk görünmesin
+        const line = Buffer.from(row);
+        for (let x = 0; x < size; x++) if (Math.abs(x - y) < size / 6) line.set([255, 255, 255], 1 + x * 3);
+        return line;
+    }));
+    return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+const ICON_COLORS = { 'kum-firtinasi': [214, 150, 60], 'tiktok-doldurdoldur': [70, 140, 220] };
+
 const fakeJar = (id, version) => makeZip([{ name: 'fabric.mod.json', data: Buffer.from(JSON.stringify({ schemaVersion: 1, id, version, depends: { fabricloader: '>=0.16.0' } })) }]);
 
 // ─── Katalog ────────────────────────────────────────────────────────────────
@@ -209,11 +230,11 @@ function issuePair(deviceId) {
     return { accessToken, accessTokenExpiresIn: cfg.accessTtl, refreshToken };
 }
 
-function productCard(slug, withOwned) {
+function productCard(slug, withOwned, base) {
     const p = PRODUCTS[slug];
     return {
         slug, name: p.name, shortDescription: `${p.name} — HardSetups mod paketi`,
-        iconUrl: `https://cdn.hardsetups.com/mock/${slug}/icon.png`, coverUrl: `https://cdn.hardsetups.com/mock/${slug}/cover.jpg`,
+        iconUrl: `${base}/img/${slug}.png`, coverUrl: `${base}/img/${slug}.png`,
         priceFromMinor: p.priceMinor, compareAtMinor: p.compareAtMinor, currency: 'TRY', badges: p.badges,
         owned: withOwned ? state.owned.has(slug) : false,
     };
@@ -251,6 +272,13 @@ async function handle(req, res) {
 <h1>Launcher bağlantısı (mock)</h1><p>Kod: <b>${kod.replace(/[^A-Z-]/g, '')}</b></p>
 <button onclick="fetch('/__mock/approve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userCode:'${kod.replace(/[^A-Z-]/g, '')}'})}).then(()=>document.body.append(' Onaylandı'))">Onayla</button>
 <button onclick="fetch('/__mock/approve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userCode:'${kod.replace(/[^A-Z-]/g, '')}',deny:true})}).then(()=>document.body.append(' Reddedildi'))">Reddet</button>`);
+    }
+
+    // Ürün resimleri (imageHosts: 127.0.0.1)
+    const img = /^\/img\/([a-z0-9-]+)\.png$/.exec(p);
+    if (img && PRODUCTS[img[1]]) {
+        res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'max-age=3600' });
+        return res.end(makePng(64, ICON_COLORS[img[1]] || [120, 120, 120]));
     }
 
     // Sahte CDN: Range destekli, süreli adres
@@ -297,7 +325,7 @@ async function handle(req, res) {
             features: { purchase: state.scenario !== 'purchaseDisabled', telemetry: false, report: true },
             offlineGraceHours: 72,
             downloadHosts: ['cdn.hardsetups.com', 'cdn.modrinth.com', 'meta.fabricmc.net'],
-            imageHosts: ['cdn.hardsetups.com'],
+            imageHosts: ['cdn.hardsetups.com', '127.0.0.1', 'localhost'], // geliştirmedeki gerçek API gibi yerel resimler
             linkHosts: ['hardsetups.com', '*.hardsetups.com', 'youtube.com', 'www.youtube.com', 'youtu.be', 'discord.gg', 'discord.com', 'modrinth.com'],
             links: { site: 'https://hardsetups.com', store: 'https://magaza.hardsetups.com', support: 'https://support.hardsetups.com', launcher: 'https://hardsetups.com/launcher' },
         });
@@ -377,9 +405,9 @@ async function handle(req, res) {
         const etag = `${state.homeEtag}-${personal ? 'p' : 'a'}`;
         if (req.headers['if-none-match'] === etag) { res.writeHead(304, { ETag: etag }); return res.end(); }
         return send(res, 200, {
-            hero: [{ id: 'h1', title: 'Kum Fırtınası çıktı', subtitle: 'Çölün ortasında hayatta kal', imageUrl: 'https://cdn.hardsetups.com/mock/hero.jpg', action: { type: 'product', slug: 'kum-firtinasi' } }],
+            hero: [{ id: 'h1', title: 'Kum Fırtınası çıktı', subtitle: 'Çölün ortasında hayatta kal', imageUrl: `${base}/img/kum-firtinasi.png`, action: { type: 'product', slug: 'kum-firtinasi' } }],
             announcements: [{ id: 'a1', text: 'Launcher portalı test ediliyor', variant: 'INFO', link: { label: 'İncele', url: 'https://hardsetups.com/launcher' }, dismissible: true }],
-            featured: Object.keys(PRODUCTS).map((s) => productCard(s, personal)),
+            featured: Object.keys(PRODUCTS).map((s) => productCard(s, personal, base)),
             campaigns: [],
             news: [],
             updates: personal ? [{ product: 'kum-firtinasi', version: '1.4.0', publishedAt: new Date().toISOString(), changelog: '- Yeni harita' }] : [],
@@ -387,16 +415,16 @@ async function handle(req, res) {
         }, { ETag: etag });
     }
     if (p === '/v1/launcher/products' && req.method === 'GET') {
-        return send(res, 200, Object.keys(PRODUCTS).map((s) => productCard(s, !authed(req).error)));
+        return send(res, 200, Object.keys(PRODUCTS).map((s) => productCard(s, !authed(req).error, base)));
     }
     const productMatch = /^\/v1\/launcher\/products\/([a-z0-9-]+)$/.exec(p);
     if (productMatch && req.method === 'GET') {
         const slug = productMatch[1];
         if (!PRODUCTS[slug]) return fail(res, req, 404, 'NOT_FOUND', 'Ürün bulunamadı');
         return send(res, 200, {
-            ...productCard(slug, !authed(req).error),
+            ...productCard(slug, !authed(req).error, base),
             description: `## ${PRODUCTS[slug].name}\n\nMock ürün açıklaması. <script>alert(1)</script> ham HTML işlenmemeli.\n\n[Mağaza](https://magaza.hardsetups.com)`,
-            gallery: [{ type: 'image', url: 'https://cdn.hardsetups.com/mock/g1.jpg', thumbUrl: 'https://cdn.hardsetups.com/mock/g1t.jpg' }, { type: 'video', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumbUrl: 'https://cdn.hardsetups.com/mock/v1t.jpg' }],
+            gallery: [{ type: 'image', url: `${base}/img/${slug}.png`, thumbUrl: `${base}/img/${slug}.png` }, { type: 'video', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumbUrl: `${base}/img/${slug}.png` }],
             features: ['Tek oyunculu', 'Türkçe'],
             requirements: { minecraft: '1.21.1', loader: 'fabric', ramMinMb: 2048, ramRecommendedMb: 4096 },
             rating: { average: 4.8, count: 37 }, reviews: [{ author: 'oyuncu1', rating: 5, text: 'Çok iyi', createdAt: new Date().toISOString() }],
@@ -426,7 +454,7 @@ async function handle(req, res) {
         const now = new Date();
         const items = Object.keys(PRODUCTS).filter((s) => state.owned.has(s)).map((slug, i) => ({
             licenseId: `lic-${i + 1}`, keyLast4: '7F2A',
-            product: { slug, name: PRODUCTS[slug].name, iconUrl: `https://cdn.hardsetups.com/mock/${slug}/icon.png`, coverUrl: `https://cdn.hardsetups.com/mock/${slug}/cover.jpg` },
+            product: { slug, name: PRODUCTS[slug].name, iconUrl: `${base}/img/${slug}.png`, coverUrl: `${base}/img/${slug}.png` },
             status: state.scenario === 'suspended' ? 'SUSPENDED' : 'ACTIVE', expiresAt: null,
             latestVersion: { id: `v-${PRODUCTS[slug].version}`, version: PRODUCTS[slug].version, channel: 'STABLE', publishedAt: now.toISOString() },
             installable: state.scenario !== 'suspended', reason: state.scenario === 'suspended' ? 'suspended' : null,

@@ -89,6 +89,17 @@ export function IconSettings(props) {
   );
 }
 
+// HardSetups kütüphanesi: pahlı sandık, kilit yeri piksel
+export function IconLibrary(props) {
+  return (
+    <Svg {...props}>
+      <path d="M4 8 7 5h10l3 3v12H4z" />
+      <path d="M4 11.5h16" />
+      <rect x="10.75" y="10" width="2.5" height="3.5" {...px} />
+    </Svg>
+  );
+}
+
 // Hesap: blok kafa (Minecraft oyuncusu), iki piksel göz
 export function IconAccount(props) {
   return (

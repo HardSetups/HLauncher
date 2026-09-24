@@ -99,6 +99,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
             wallet: state.me?.wallet || null,
             unreadNotifications: state.me?.unreadNotifications ?? 0,
             features: cfg?.features || null,
+            imageHosts: Array.isArray(cfg?.imageHosts) ? cfg.imageHosts : [],
             maintenance: state.maintenance,
             outdated: state.outdated,
             loggingIn: !!loginFlow,
@@ -241,6 +242,13 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
     library = createLibrary({ api, dataRoot, getDeviceId: () => session.getDeviceId(), log, keyring: devKeyring() });
 
     const managedId = (folderName) => `hs-${folderName}`;
+    /** Sunucu resmi yalnızca imageHosts altındaysa saklanır/gösterilir (§2). */
+    function imageAllowed(url) {
+        let u;
+        try { u = new URL(url); } catch { return false; }
+        const httpOk = u.protocol === 'https:' || (isDev && u.protocol === 'http:');
+        return httpOk && hostMatches(u.hostname, state.config?.imageHosts || []);
+    }
     const findManaged = (slug) => instances.list().find((i) => i.origin === 'hardsetups' && i.product === slug) || null;
 
     function requireReady({ account = true } = {}) {
@@ -264,7 +272,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
             installedVersionId: manifest.version.id || null,
             quickPlayWorld: manifest.quickPlay?.singleplayer || null,
             javaMajor: manifest.java.major,
-            ...(iconUrl ? { iconUrl } : {}),
+            ...(iconUrl && imageAllowed(iconUrl) ? { iconUrl } : {}),
         };
         if (!instances.get(id)) {
             const ramGb = Math.max(2, Math.ceil((manifest.memory?.recommendedMb || 4096) / 1024));

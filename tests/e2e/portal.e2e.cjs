@@ -56,6 +56,36 @@ async function main() {
         await win.screenshot({ path: path.join(OUT, '03-bagli.png') });
         step(`bağlandı: ${username}, bakiye ${balance}`);
 
+        // Kütüphane: lisanslı ürünü kur → ayrı klasör → dünyaları yedekleyerek kaldır
+        await win.click('.rail-library');
+        await win.waitForSelector('.hs-item .btn-primary', { timeout: 15000 });
+        await win.screenshot({ path: path.join(OUT, '03b-kutuphane.png') });
+        await win.click('.hs-item .btn-primary');
+        await win.waitForSelector('.hs-item.is-installed .btn-play', { timeout: 30000 });
+        const instDir = path.join(appData, '.hlauncher', 'instances', 'hs-kum-firtinasi');
+        for (const rel of ['mods/hardsetups-kumfirtinasi-1.4.0.jar', 'mods/fabric-api-0.116.17+1.21.1.jar', 'hl-manifest.json', 'config/hardsetups/ayarlar.json']) {
+            assert.ok(fs.existsSync(path.join(instDir, ...rel.split('/'))), `kurulumda eksik: ${rel}`);
+        }
+        assert.ok(!fs.existsSync(path.join(appData, '.hlauncher', 'mods')), 'ürün dosyaları kök klasöre karışmamalı');
+        await win.waitForSelector('.rail-inst[aria-label="Kum Fırtınası"]', { timeout: 5000 });
+        await win.screenshot({ path: path.join(OUT, '03c-kuruldu.png') });
+        step('ürün kuruldu: kendi klasöründe, rayda profil olarak görünüyor');
+
+        fs.mkdirSync(path.join(instDir, 'saves', 'Dunya'), { recursive: true });
+        fs.writeFileSync(path.join(instDir, 'saves', 'Dunya', 'level.dat'), 'dunya');
+        await win.click('.hs-item.is-installed .icon-btn-framed');
+        await win.click('.menu-panel .is-danger, .menu-panel button:has-text("Kaldır")');
+        await win.waitForSelector('.check-row input:checked');
+        await win.click('.modal .btn-danger');
+        await win.waitForSelector('.hs-item:not(.is-installed)', { timeout: 10000 });
+        assert.ok(!fs.existsSync(instDir), 'örnek klasörü silinmeli');
+        const backups = fs.readdirSync(path.join(appData, '.hlauncher', 'yedekler'));
+        assert.ok(backups.some((f) => /^kum-firtinasi-dunyalar-.*\.zip$/.test(f)), `dünya yedeği yok: ${backups}`);
+        await win.click('.modal .btn-primary'); // "kaldırıldı" bildirimi
+        await win.click('.rail-account');
+        await win.waitForSelector('.hs-card.is-connected');
+        step('dünyalar yedeklenip ürün kaldırıldı');
+
         // Oturum diskte şifreli, renderer'da token yok
         const sessionFile = JSON.parse(fs.readFileSync(path.join(appData, '.hlauncher', 'hardsetups-session.json'), 'utf8'));
         assert.ok(sessionFile.refresh.startsWith('enc:'), 'yenileme token\'ı şifreli olmalı');

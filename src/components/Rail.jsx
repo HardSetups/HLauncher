@@ -2,7 +2,7 @@
 // profil / ayarlar / hesap. Etiketler ipucu balonunda.
 import { useState } from 'react';
 import { useI18n } from '../i18n.jsx';
-import { IconHome, IconBrowse, IconServers, IconSettings, IconAdd, IconAccount } from './icons.jsx';
+import { IconHome, IconBrowse, IconServers, IconSettings, IconAdd, IconAccount, IconLibrary } from './icons.jsx';
 import { InstanceIcon } from './ui.jsx';
 
 function RailButton({ active, label, onClick, children, className = '' }) {
@@ -42,6 +42,7 @@ export default function Rail({ view, navigate, instances, runningId, account, on
         <RailButton active={page === 'home'} label={t('nav.home')} onClick={() => navigate({ page: 'home' })}><IconHome /></RailButton>
         <RailButton active={page === 'browse'} label={t('nav.browse')} onClick={() => navigate({ page: 'browse' })}><IconBrowse /></RailButton>
         <RailButton active={page === 'servers'} label={t('nav.servers')} onClick={() => navigate({ page: 'servers' })}><IconServers /></RailButton>
+        <RailButton active={page === 'library'} label={t('nav.library')} onClick={() => navigate({ page: 'library' })} className="rail-library"><IconLibrary /></RailButton>
       </div>
 
       <div className="rail-sep" />

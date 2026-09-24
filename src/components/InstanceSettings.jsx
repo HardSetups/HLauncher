@@ -125,6 +125,15 @@ export default function InstanceSettings({
         </label>
       </Card>
 
+      {instance.origin === 'hardsetups' ? (
+        // HardSetups ürünü: sürüm ve loader sunucunun kurulum bildiriminden gelir (değiştirilemez)
+        <Card title={t('inst.set.game')} desc={t('hs.managed.gameDesc')}>
+          <p className="iset-readonly">
+            Minecraft {instance.mcVersion} · {LOADER_NAMES[instance.loader] || instance.loader}{instance.loaderVersion ? ` ${instance.loaderVersion}` : ''}
+            {instance.installedVersion ? ` · ${t('hs.managed.version', { v: instance.installedVersion })}` : ''}
+          </p>
+        </Card>
+      ) : (
       <Card title={t('inst.set.game')} desc={t('inst.set.game.desc')}>
         <div className="loader-grid" role="radiogroup" aria-label="Loader">
           {LOADERS.map((id) => (
@@ -161,6 +170,7 @@ export default function InstanceSettings({
           />
         </div>
       </Card>
+      )}
 
       <Card title={t('inst.set.ram')} desc={t('inst.set.ram.question')}>
         <div className="choice-row" role="radiogroup">

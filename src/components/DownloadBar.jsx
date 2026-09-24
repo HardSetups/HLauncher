@@ -28,7 +28,7 @@ function TaskRow({ task, onDismiss }) {
       className={`dl-row is-${task.status}`}
     >
       <span className="dl-icon">
-        {task.iconUrl ? <img src={task.iconUrl} alt="" /> : task.kind === 'launch' ? <IconPlay size={15} /> : task.kind === 'update' ? <RefreshCw size={15} /> : <Package size={15} />}
+        {task.iconUrl ? <img src={task.iconUrl} alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : task.kind === 'launch' ? <IconPlay size={15} /> : task.kind === 'update' ? <RefreshCw size={15} /> : <Package size={15} />}
       </span>
       <span className="dl-body">
         <span className="dl-title ellipsis">{task.title}</span>

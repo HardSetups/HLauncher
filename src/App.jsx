@@ -9,6 +9,7 @@ import BrowsePage from './components/BrowsePage';
 import ServersPage from './components/ServersPage';
 import SettingsPage from './components/SettingsPage';
 import AccountPage from './components/AccountPage';
+import LibraryPage from './components/LibraryPage';
 import DownloadBar from './components/DownloadBar';
 import UpdateModal from './components/UpdateModal';
 import CreateInstanceModal from './components/CreateInstanceModal';
@@ -381,6 +382,7 @@ function App() {
           : [{ label: t('browse.title') }];
       }
       case 'servers': return [{ label: t('nav.servers') }];
+      case 'library': return [{ label: t('nav.library') }];
       case 'settings': return [{ label: t('nav.settings') }];
       case 'account': return [{ label: t('nav.account') }];
       default: return [{ label: t('nav.home') }];
@@ -492,6 +494,20 @@ function App() {
                   onToggleFavorite={handleToggleFavorite}
                   onApplyManifest={handleApplyManifest}
                   onPlayServer={(server, inst) => launchInstance(inst, server.address)}
+                />
+              )}
+
+              {page === 'library' && (
+                <LibraryPage
+                  portal={portal}
+                  instances={instances}
+                  launch={launch}
+                  onPlay={(inst) => launchInstance(inst)}
+                  onStop={stopGame}
+                  onOpenInstance={openInstance}
+                  onInstancesRefresh={refreshInstances}
+                  onError={setErrorMessage}
+                  onNotice={setNotice}
                 />
               )}
 
