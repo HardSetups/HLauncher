@@ -49,7 +49,9 @@ function validateInstallManifest(m) {
     if (typeof m.minecraft?.version !== 'string' || !/^[\w.-]{1,32}$/.test(m.minecraft.version)) bad('minecraft.version');
     const loaderType = m.loader?.type;
     if (!LOADERS.has(loaderType)) bad('loader.type');
-    if (loaderType !== 'vanilla' && (typeof m.loader.version !== 'string' || !/^[\w.+-]{1,64}$/.test(m.loader.version))) bad('loader.version');
+    // null: sunucu sabitlemedi → launcher modların koşuluna göre seçer (v1.4, §11.1 kuralı)
+    const loaderVersion = m.loader.version ?? null;
+    if (loaderVersion !== null && (typeof loaderVersion !== 'string' || !/^[\w.+-]{1,64}$/.test(loaderVersion))) bad('loader.version');
     const javaMajor = Number(m.java?.major);
     if (!Number.isInteger(javaMajor) || javaMajor < 8 || javaMajor > 40) bad('java.major');
     if (!Array.isArray(m.files) || !m.files.length || m.files.length > MAX_FILES) bad('files');
@@ -101,7 +103,7 @@ function validateInstallManifest(m) {
         instance: { id: String(inst.id || inst.folderName), folderName: inst.folderName, displayName: String(inst.displayName || inst.folderName).slice(0, 64) },
         version: { id: String(m.version?.id || ''), version: String(m.version?.version || ''), channel: String(m.version?.channel || 'STABLE') },
         minecraft: { version: m.minecraft.version },
-        loader: { type: loaderType, version: loaderType === 'vanilla' ? null : m.loader.version },
+        loader: { type: loaderType, version: loaderType === 'vanilla' ? null : loaderVersion },
         java: { major: javaMajor },
         memory: { minMb: Number(m.memory?.minMb) || null, recommendedMb: Number(m.memory?.recommendedMb) || null },
         files,
@@ -401,7 +403,15 @@ function uninstallProduct(instanceDir, { backupDir = null, label = 'urun', now =
     return { backupPath };
 }
 
+/** Seçilen loader sürümünü kurulu manifeste işler (§11.1: "seçilen sürüm hl-manifest'e yazılır"). */
+function setInstalledLoaderVersion(instanceDir, version) {
+    const data = readInstalled(instanceDir);
+    if (!data) return;
+    data.loader = { ...data.loader, version };
+    writeInstalled(instanceDir, data);
+}
+
 module.exports = {
-    validateInstallManifest, syncProduct, verifyInstalled, readInstalled, uninstallProduct,
+    validateInstallManifest, syncProduct, verifyInstalled, readInstalled, uninstallProduct, setInstalledLoaderVersion,
     extractArchive, targetFor, MANIFEST_FILE,
 };

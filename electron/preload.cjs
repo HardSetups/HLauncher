@@ -64,6 +64,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     portalCopyVerification: () => ipcRenderer.invoke('portal:copy-verification'),
     portalLogout:       () => ipcRenderer.invoke('portal:logout'),
     portalOpenLink:     (kind) => ipcRenderer.invoke('portal:open-link', kind),
+    portalOpenUrl:      (url) => ipcRenderer.invoke('portal:open-url', url),
     portalLibrary:      (opts) => ipcRenderer.invoke('portal:library', opts),
     portalInstall:      (slug, action, taskId) => ipcRenderer.invoke('portal:install', slug, action, taskId),
     portalInstallKey:   (licenseKey, taskId) => ipcRenderer.invoke('portal:install-key', licenseKey, taskId),

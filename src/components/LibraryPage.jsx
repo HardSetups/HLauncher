@@ -18,13 +18,17 @@ function describeInstallError(t, error) {
   const d = error?.details || {};
   const withSupport = (text) => (error?.requestId ? `${text}\n${t('hs.supportCode', { code: error.requestId })}` : text);
   switch (code) {
-    case 'LICENSE_REQUIRED': return { text: withSupport(t('hs.err.licenseRequired')), action: { kind: 'store', label: t('hs.buy') } };
+    case 'LICENSE_REQUIRED': return { text: withSupport(t('hs.err.licenseRequired')), action: d.storeUrl ? { url: d.storeUrl, label: t('hs.buy') } : { kind: 'store', label: t('hs.buy') } };
+    case 'CONFLICT':
+      return { text: withSupport(d.reason === 'buildNotReady' ? t('hs.err.buildNotReady') : d.reason === 'archiveLayout' ? t('hs.err.archiveLayout') : (error.message || t('hs.error.generic'))) };
     case 'LICENSE_SUSPENDED': return { text: withSupport(t('hs.err.suspended')), action: { kind: 'support', label: t('hs.support') } };
     case 'LICENSE_REVOKED': return { text: withSupport(t('hs.err.revoked')), action: { kind: 'support', label: t('hs.support') } };
     case 'LICENSE_ACTIVATION_LIMIT':
       return { text: withSupport(t('hs.err.activationLimit', { used: d.used ?? '?', limit: d.limit ?? '?' })), action: { kind: 'devices', label: t('hs.manageDevices') } };
-    case 'NOT_FOUND':
-      return { text: withSupport(d.reason === 'noPublishedVersion' ? t('hs.err.noVersion') : (error.message || t('hs.error.generic'))) };
+    case 'NOT_FOUND': {
+      const byReason = { noPublishedVersion: 'hs.err.noVersion', notLauncherProduct: 'hs.err.notLauncherProduct', expiredNoVersions: 'hs.err.expiredNoVersions' }[d.reason];
+      return { text: withSupport(byReason ? t(byReason) : (error.message || t('hs.error.generic'))) };
+    }
     case 'LICENSE_NOT_FOUND': return { text: withSupport(t('hs.err.keyNotFound')) };
     case 'VALIDATION_FAILED': return { text: withSupport(d.reason === 'PRODUCT_MISMATCH' ? t('hs.err.productMismatch') : (error.message || t('hs.error.generic'))) };
     case 'UNSUPPORTED_PRODUCT': return { text: t('hs.err.unsupported') };
@@ -108,9 +112,10 @@ export default function LibraryPage({ portal, instances, launch, onPlay, onStop,
   };
 
   const runProblemAction = () => {
-    const kind = problem?.action?.kind;
+    const action = problem?.action;
     setProblem(null);
-    if (kind) api.portalOpenLink(kind);
+    if (action?.url) api.portalOpenUrl(action.url);
+    else if (action?.kind) api.portalOpenLink(action.kind);
   };
 
   if (!portal) return <div className="page-scroll hs-lib"><Loader2 className="spin" /></div>;

@@ -215,6 +215,12 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         emitState();
     }
 
+    /** Sunucunun hata ayrıntısında verdiği adres (ör. details.storeUrl); yalnızca linkHosts. */
+    function openUrl(url) {
+        if (state.outdated) return false;
+        return typeof url === 'string' && url.length < 2048 ? openLinkUrl(url) : false;
+    }
+
     function openLink(kind) {
         if (!LINK_KINDS.has(kind)) return false;
         if (state.outdated && kind !== 'launcher') return false; // indirme sayfası kilitli değil
@@ -258,7 +264,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
     }
 
     /** Kurulum sonrası profil kaydı: yönetilen örnek, kullanıcının RAM seçimi korunur. */
-    function registerManaged(manifest, { installedVia, iconUrl = null }) {
+    function registerManaged(manifest, { installedVia, iconUrl = null, product = null }) {
         const id = managedId(manifest.instance.folderName);
         const loader = manifest.loader.type === 'vanilla' ? 'release' : manifest.loader.type;
         const fields = {
@@ -266,7 +272,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
             mcVersion: manifest.minecraft.version,
             loader,
             loaderVersion: manifest.loader.version || null,
-            product: manifest.instance.id,
+            product: product || manifest.instance.id,
             installedVia,
             installedVersion: manifest.version.version || null,
             installedVersionId: manifest.version.id || null,
@@ -356,8 +362,10 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
                     }
                 },
             });
+            const validated = installer.validateInstallManifest(manifest);
+            await ensureLoaderVersion(validated, instanceDir);
             const libItem = library.cachedItems().find((it) => it.product.slug === slug);
-            const inst = registerManaged(installer.validateInstallManifest(manifest), { installedVia: 'account', iconUrl: libItem?.product?.iconUrl || null });
+            const inst = registerManaged(validated, { installedVia: 'account', iconUrl: libItem?.product?.iconUrl || null, product: slug });
             await reportResult('SUCCESS');
             log.info(`[PORTAL] ${slug} ${action}: ${result.version} (${result.downloaded} indirildi, ${result.reused} yeniden kullanıldı)`);
             return { instanceId: inst.id, ...result };
@@ -367,7 +375,27 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         }
     }
 
-    /** "Lisans anahtarım var" (§11): hesap gerekmez, launcher kapı koymaz. */
+    // Geliştirmede Modrinth / Fabric meta adresleri mock'a çevrilebilir (HL_EXTERNAL_BASE);
+    // paketli sürümde her zaman gerçek adresler
+    const externalEndpoints = isDev && process.env.HL_EXTERNAL_BASE && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(process.env.HL_EXTERNAL_BASE)
+        ? { modrinthApi: `${process.env.HL_EXTERNAL_BASE}/modrinth`, fabricMeta: `${process.env.HL_EXTERNAL_BASE}/fabric-meta` }
+        : bylicense.DEFAULT_ENDPOINTS;
+
+    /** Sunucu Fabric sürümünü sabitlemediyse (v1.4) modların koşuluna göre seç ve manifeste yaz. */
+    async function ensureLoaderVersion(validated, instanceDir) {
+        if (validated.loader.version || !['fabric'].includes(validated.loader.type)) return validated.loader.version;
+        const version = await bylicense.resolveFabricLoader(path.join(instanceDir, 'mods'), validated.minecraft.version, externalEndpoints);
+        validated.loader.version = version;
+        installer.setInstalledLoaderVersion(instanceDir, version);
+        log.info(`[PORTAL] Fabric sürümü seçildi: ${version} (sunucu sabitlemedi)`);
+        return version;
+    }
+
+    /**
+     * "Lisans anahtarım var" (§11): hesap gerekmez, launcher kapı koymaz (§6.6).
+     * Sunucu `install` bilgisini veriyorsa (v1.4 §11.0) o kullanılır; vermiyorsa
+     * §11.1 ara dönem tablosu. Arşivde Fabric API yoksa Modrinth'ten eklenir (§11.1).
+     */
     async function installByLicense(licenseKey, { onProgress = () => {}, signal } = {}) {
         requireReady({ account: false });
         const key = String(licenseKey || '').trim();
@@ -376,44 +404,65 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         const call = () => api.post('/v1/downloads/by-license', { licenseKey: key, channel: 'STABLE' }, { auth: 'none' });
         const first = (await call()).data;
         const product = first?.license?.product;
-        const table = bylicense.PRODUCTS[product];
-        if (!table) throw codedError('UNSUPPORTED_PRODUCT', 'Bu ürün launcher\'dan anahtarla henüz kurulamıyor');
-        const file = bylicense.pickFile(first.files);
+        const file = bylicense.pickFile(first?.files);
         if (!file) throw codedError('NOT_FOUND', 'Bu ürün için yayınlanmış sürüm yok', { details: { reason: 'noPublishedVersion' } });
 
-        const instanceDir = getInstanceDir(managedId(product));
+        let manifest = bylicense.manifestFromResponse(first, file);
+        const table = bylicense.PRODUCTS[product];
+        if (!manifest && !table) throw codedError('UNSUPPORTED_PRODUCT', 'Bu ürün launcher\'dan anahtarla henüz kurulamıyor');
+        const folderName = manifest ? manifest.instance?.folderName : product;
+        if (!isValidFolderName(folderName)) throw codedError('EBADMANIFEST', 'Sunucudan geçersiz kurulum bilgisi geldi');
+        const instanceDir = getInstanceDir(managedId(folderName));
         const report = progressReporter(onProgress);
-        const archiveSize = Number(file.sizeBytes) || 0;
-        let done = 0;
-        // 1. Arşiv önce iner (içindeki modlar incelenir); syncProduct aynı önbelleği kullanır
-        await downloadVerified(
-            { url: file.url, dest: path.join(instanceDir, '.hl-staging', 'dl', file.sha256.slice(0, 32)), sha256: file.sha256, sizeBytes: file.sizeBytes },
-            {
-                allowedHosts: downloadHosts(), allowLocalHttp: isDev, signal,
-                onBytes: (d) => { done += d; report({ phase: 'download', done, total: archiveSize }); },
-                refreshUrl: async () => bylicense.pickFile((await call()).data.files)?.url,
-            },
-        );
-        const info = bylicense.inspectArchive(path.join(instanceDir, '.hl-staging', 'dl', file.sha256.slice(0, 32)));
-        const fabricApi = info.mods.some((m) => m.id === 'fabric-api') ? null : await bylicense.fetchFabricApi(table.mc);
-        const loaderVersion = bylicense.pickLoaderVersion(await bylicense.fetchFabricLoaders(table.mc), info.mods.map((m) => m.loaderConstraint).filter(Boolean));
-        if (!loaderVersion) throw codedError('EDEPENDENCY', 'Modların istediği Fabric sürümü bulunamadı');
 
-        const manifest = bylicense.buildManifest({ product, table, file, licenseKey: key, loaderVersion, fabricApi });
+        // Arşiv önce iner ve incelenir (Fabric API var mı, loader koşulları); syncProduct aynı önbelleği kullanır
+        let info = { mods: [] };
+        const isArchive = !manifest || file.kind === 'archive';
+        if (isArchive) {
+            const archiveSize = Number(file.sizeBytes) || 0;
+            let done = 0;
+            const dest = path.join(instanceDir, '.hl-staging', 'dl', file.sha256.slice(0, 32));
+            await downloadVerified(
+                { url: file.url, dest, sha256: file.sha256, sizeBytes: file.sizeBytes },
+                {
+                    allowedHosts: downloadHosts(), allowLocalHttp: isDev, signal,
+                    onBytes: (d) => { done += d; report({ phase: 'download', done, total: archiveSize }); },
+                    refreshUrl: async () => bylicense.pickFile((await call()).data.files)?.url,
+                },
+            );
+            info = bylicense.inspectArchive(dest);
+        }
+        const mcVersion = manifest ? manifest.minecraft?.version : table.mc;
+        const hasFabricApi = info.mods.some((m) => m.id === 'fabric-api') || (manifest?.files || []).some((f) => /fabric-api/i.test(f.path || ''));
+        const fabricApi = hasFabricApi ? null : await bylicense.fetchFabricApi(mcVersion, externalEndpoints);
+
+        let extraRules = {};
+        if (manifest) {
+            if (fabricApi) manifest.files.push({ id: 'dep-fabric-api', kind: 'file', source: 'modrinth', path: `mods/${fabricApi.filename}`, url: fabricApi.url, sha512: fabricApi.sha512, sizeBytes: String(fabricApi.size) });
+        } else {
+            const constraints = info.mods.map((m) => m.loaderConstraint).filter(Boolean);
+            const loaderVersion = bylicense.pickLoaderVersion(await bylicense.fetchFabricLoaders(table.mc, externalEndpoints), constraints);
+            if (!loaderVersion) throw codedError('EDEPENDENCY', 'Modların istediği Fabric sürümü bulunamadı');
+            manifest = bylicense.buildManifest({ product, table, file, licenseKey: key, loaderVersion, fabricApi });
+            extraRules = bylicense.ARCHIVE_RULES;
+        }
+
         const result = await installer.syncProduct({
             manifest,
             instanceDir,
             allowedHosts: downloadHosts(),
             allowLocalHttp: isDev,
-            extraRules: bylicense.ARCHIVE_RULES,
+            extraRules,
             meta: { source: 'licenseKey' },
             signal,
             onProgress: report,
             refreshUrls: async () => ({ f1: bylicense.pickFile((await call()).data.files)?.url }),
         });
-        const inst = registerManaged(installer.validateInstallManifest(manifest), { installedVia: 'licenseKey' });
-        log.info(`[PORTAL] Anahtarla kuruldu: ${product} ${result.version} (Fabric ${loaderVersion}${fabricApi ? ', Fabric API Modrinth\'ten' : ''})`);
-        return { instanceId: inst.id, product, ...result };
+        const validated = installer.validateInstallManifest(manifest);
+        await ensureLoaderVersion(validated, instanceDir);
+        const inst = registerManaged(validated, { installedVia: 'licenseKey', product: product || validated.instance.id });
+        log.info(`[PORTAL] Anahtarla kuruldu: ${validated.instance.id} ${result.version} (Fabric ${validated.loader.version}${fabricApi ? ', Fabric API Modrinth\'ten' : ''}; ${first.install ? 'sunucu bildirimi' : 'ara dönem tablosu'})`);
+        return { instanceId: inst.id, product: validated.instance.id, ...result };
     }
 
     /** Kaldırma (§7.7): isteğe bağlı dünya yedeği, sonra örnek klasörü ve profil kaydı silinir. */
@@ -455,6 +504,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         verificationUrl,
         logout,
         openLink,
+        openUrl,
         publicState,
         downloadHosts,
         linkHosts,

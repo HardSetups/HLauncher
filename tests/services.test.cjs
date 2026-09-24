@@ -626,6 +626,99 @@ test('library.launchCheck: internet yokken imzalı zarfla açılır; saat geri a
     assert.strictEqual((await lib.launchCheck('kum-firtinasi')).reason, 'OFFLINE_EXPIRED');
 });
 
+// ─── services/portal.cjs (bütünleşik, mock API'ye karşı) ─────────────────────
+async function withPortal(fn) {
+    await withMock(async (base) => {
+        mock.cfg.interval = 1;
+        process.env.HL_API_BASE = base;
+        process.env.HL_EXTERNAL_BASE = base; // Modrinth / Fabric meta → mock
+        const events = [];
+        const kv = new Map();
+        const { createPortal } = require('../electron/services/portal.cjs');
+        const portal = createPortal({
+            app: { isPackaged: false, getVersion: () => '1.0.0-alpha.7' },
+            store: { get: (k) => kv.get(k), set: (k, v) => kv.set(k, v) },
+            dataRoot: tmpDir(),
+            log: { info() {}, warn() {}, error() {} },
+            openExternal: () => true,
+            send: (channel, payload) => events.push({ channel, ...payload }),
+        });
+        await portal.loadConfig();
+        const login = async () => {
+            const flow = await portal.startLogin();
+            await fetch(`${base}/__mock/approve`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userCode: flow.userCode }) });
+            for (let i = 0; i < 100 && !events.some((e) => e.channel === 'portal:login'); i++) await new Promise((r) => setTimeout(r, 50));
+            assert.strictEqual(events.find((e) => e.channel === 'portal:login')?.state, 'success');
+        };
+        try { await fn({ portal, base, login, events }); } finally {
+            mock.cfg.interval = 5;
+            delete process.env.HL_API_BASE;
+            delete process.env.HL_EXTERNAL_BASE;
+        }
+    });
+}
+const instancesLib = require('../electron/lib/instances.cjs');
+const { getInstanceDir } = require('../electron/lib/paths.cjs');
+
+test('portal: sunucu loader sürümünü sabitlemezse modların koşuluna göre seçer ve manifeste yazar', async () => {
+    await withPortal(async ({ portal, login }) => {
+        await login();
+        mock.state.scenario = 'noLoaderPin';
+        const r = await portal.installProduct('kum-firtinasi', 'INSTALL');
+        const inst = instancesLib.get(r.instanceId);
+        assert.strictEqual(inst.origin, 'hardsetups');
+        assert.strictEqual(inst.loaderVersion, '0.16.14'); // en yeni KARARLI, beta değil
+        assert.strictEqual(installer.readInstalled(getInstanceDir(r.instanceId)).loader.version, '0.16.14');
+        const view = await portal.libraryView();
+        assert.strictEqual(view.items.find((i) => i.product.slug === 'kum-firtinasi').installedVersion, '1.4.0');
+        portal.uninstallProduct('kum-firtinasi', { backupWorlds: false });
+        assert.strictEqual(instancesLib.get(r.instanceId), null);
+    });
+});
+
+test('portal: anahtarla kurulum (v1.4 §11.0) — Fabric API eklenir, anahtar lisans ayarına yazılır, hesap gerekmez', async () => {
+    await withPortal(async ({ portal }) => {
+        const r = await portal.installByLicense('hsmn opqr stuv wxyz');
+        const dir = getInstanceDir(r.instanceId);
+        for (const rel of ['mods/hardsetups-kumfirtinasi-1.4.0.jar', 'mods/fabric-api-0.116.17+1.21.1.jar', '.hardsetups/lisans-damgasi.json']) {
+            assert.ok(fs.existsSync(path.join(dir, ...rel.split('/'))), `eksik: ${rel}`);
+        }
+        const cfg = JSON.parse(fs.readFileSync(path.join(dir, 'config', 'hardsetups', 'ayarlar.json'), 'utf8'));
+        assert.deepStrictEqual(cfg, { 'lisans.anahtar.kumfirtinasi': 'hsmn opqr stuv wxyz' }); // birebir
+        const inst = instancesLib.get(r.instanceId);
+        assert.strictEqual(inst.installedVia, 'licenseKey');
+        assert.strictEqual(inst.loaderVersion, '0.16.14');
+        assert.deepStrictEqual(await portal.launchCheck(inst), { allowed: true }); // §6.6: kapı yok
+        portal.uninstallProduct('kum-firtinasi', { backupWorlds: false });
+    });
+});
+
+test('portal: anahtarla kurulum, sunucu kurulum bilgisi vermezse §11.1 tablosuyla', async () => {
+    await withPortal(async ({ portal }) => {
+        mock.state.scenario = 'byLicenseLegacy';
+        const r = await portal.installByLicense('HSMN-OPQR-STUV-WXYZ');
+        const m = installer.readInstalled(getInstanceDir(r.instanceId));
+        assert.deepStrictEqual(m.files.map((f) => f.path).sort(), [
+            '.hardsetups/lisans-damgasi.json', 'mods/fabric-api-0.116.17+1.21.1.jar',
+            'mods/hardsetups-core-0.2.0.jar', 'mods/hardsetups-kumfirtinasi-1.4.0.jar',
+        ]);
+        assert.strictEqual(m.loader.version, '0.16.14');
+        await assert.rejects(portal.installByLicense('YANLIS-ANAHTAR'), { code: 'LICENSE_NOT_FOUND' });
+        portal.uninstallProduct('kum-firtinasi', { backupWorlds: false });
+    });
+});
+
+test('portal: lisansa özel dosya hazırlanıyorsa 409 CONFLICT buildNotReady; kurulum sonucu FAILED bildirilir', async () => {
+    await withPortal(async ({ portal, login }) => {
+        await login();
+        mock.state.scenario = 'buildPending';
+        const view = await portal.libraryView();
+        const item = view.items.find((i) => i.product.slug === 'kum-firtinasi');
+        assert.deepStrictEqual([item.status, item.installable, item.reason], ['PENDING_BUILD', false, 'buildPending']);
+        await assert.rejects(portal.installProduct('kum-firtinasi', 'INSTALL'), (err) => err.code === 'CONFLICT' && err.details.reason === 'buildNotReady');
+    });
+});
+
 // ─── Çalıştırıcı ────────────────────────────────────────────────────────────
 (async () => {
     let passed = 0;

@@ -25,6 +25,9 @@ const SCENARIOS = new Set([
     'normal', 'maintenance', 'outdated', 'rateLimited', 'slowDown', 'deny', 'expire',
     'noLicense', 'activationLimit', 'suspended', 'insufficientBalance', 'purchaseDisabled',
     'expiredUrls', 'corruptFile',
+    'noLoaderPin',      // v1.4: install'da loader.version null → launcher seçer
+    'buildPending',     // v1.4: PENDING_BUILD / 409 CONFLICT buildNotReady
+    'byLicenseLegacy',  // by-license yanıtında install alanı yok (§11.1 tablosu)
 ]);
 
 const TEST_SEED = crypto.createHash('sha256').update('hardsetups-launcher-offline-vectors-v1').digest();
@@ -274,6 +277,22 @@ async function handle(req, res) {
 <button onclick="fetch('/__mock/approve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userCode:'${kod.replace(/[^A-Z-]/g, '')}',deny:true})}).then(()=>document.body.append(' Reddedildi'))">Reddet</button>`);
     }
 
+    // Dış servislerin yerel taklidi (launcher HL_EXTERNAL_BASE ile buraya yönlenir; testler internete çıkmaz)
+    if (p === '/modrinth/v2/project/fabric-api/version') {
+        const dep = buildFilesCached('kum-firtinasi').dep;
+        return send(res, 200, [{
+            version_number: '0.116.17+1.21.1',
+            files: [{ primary: true, filename: 'fabric-api-0.116.17+1.21.1.jar', url: `${base}/cdn/kum-firtinasi/dep.jar`, size: dep.length, hashes: { sha512: sha512(dep) } }],
+        }]);
+    }
+    if (p.startsWith('/fabric-meta/v2/versions/loader/')) {
+        return send(res, 200, [
+            { loader: { version: '0.17.0-beta.1', stable: false } },
+            { loader: { version: '0.16.14', stable: true } },
+            { loader: { version: '0.15.11', stable: true } },
+        ]);
+    }
+
     // Ürün resimleri (imageHosts: 127.0.0.1)
     const img = /^\/img\/([a-z0-9-]+)\.png$/.exec(p);
     if (img && PRODUCTS[img[1]]) {
@@ -394,9 +413,21 @@ async function handle(req, res) {
         const slug = 'kum-firtinasi';
         if (body.product && body.product !== slug) return fail(res, req, 422, 'VALIDATION_FAILED', 'Bu anahtar başka bir ürün için', { reason: 'PRODUCT_MISMATCH' });
         const f = buildFilesCached(slug);
+        const file = { versionId: 'v-140', name: `${PRODUCTS[slug].folder}.zip`, version: PRODUCTS[slug].version, channel: 'STABLE', sha256: sha256(f.archive), sizeBytes: String(f.archive.length), url: `${base}/cdn/${slug}/archive.zip?exp=${Date.now() + 300e3}`, expiresInSeconds: 300 };
+        if (state.scenario === 'byLicenseLegacy') {
+            return send(res, 200, { license: { product: slug, owner: 'mert', expiresAt: null, features: [] }, files: [file] });
+        }
+        // v1.4 §11.0: launcher'a açık üründe kurulum bilgisi (loader sabitlenmemiş olabilir)
+        const m = installManifest('unused', slug, base, true);
         return send(res, 200, {
             license: { product: slug, owner: 'mert', expiresAt: null, features: [] },
-            files: [{ versionId: 'v-140', name: `${PRODUCTS[slug].folder}.zip`, version: PRODUCTS[slug].version, channel: 'STABLE', sha256: sha256(f.archive), sizeBytes: String(f.archive.length), url: `${base}/cdn/${slug}/archive.zip?exp=${Date.now() + 300e3}`, expiresInSeconds: 300 }],
+            files: [{ ...file, kind: 'archive', extract: m.files[0].extract }],
+            install: {
+                instance: m.instance, minecraft: m.minecraft, loader: { type: 'fabric', version: null, profileUrl: null },
+                java: m.java, memory: m.memory,
+                licenseConfig: { ...m.licenseConfig, entries: { [`lisans.anahtar.${PRODUCTS[slug].gameId}`]: String(body.licenseKey) } },
+                managedPaths: m.managedPaths, quickPlay: m.quickPlay,
+            },
         });
     }
     if (p === '/v1/launcher/home' && req.method === 'GET') {
@@ -455,9 +486,10 @@ async function handle(req, res) {
         const items = Object.keys(PRODUCTS).filter((s) => state.owned.has(s)).map((slug, i) => ({
             licenseId: `lic-${i + 1}`, keyLast4: '7F2A',
             product: { slug, name: PRODUCTS[slug].name, iconUrl: `${base}/img/${slug}.png`, coverUrl: `${base}/img/${slug}.png` },
-            status: state.scenario === 'suspended' ? 'SUSPENDED' : 'ACTIVE', expiresAt: null,
+            status: { suspended: 'SUSPENDED', buildPending: 'PENDING_BUILD' }[state.scenario] || 'ACTIVE', expiresAt: null,
             latestVersion: { id: `v-${PRODUCTS[slug].version}`, version: PRODUCTS[slug].version, channel: 'STABLE', publishedAt: now.toISOString() },
-            installable: state.scenario !== 'suspended', reason: state.scenario === 'suspended' ? 'suspended' : null,
+            installable: !['suspended', 'buildPending'].includes(state.scenario),
+            reason: { suspended: 'suspended', buildPending: 'buildPending' }[state.scenario] || null,
         }));
         const offline = signEnvelope({
             userId: state.user.id, deviceId: a.deviceId, issuedAt: now.toISOString(),
@@ -470,7 +502,8 @@ async function handle(req, res) {
         state.stats.installCalls++;
         const slug = body.product;
         if (!PRODUCTS[slug]) return fail(res, req, 404, 'NOT_FOUND', 'Ürün bulunamadı');
-        if (state.scenario === 'noLicense' || !state.owned.has(slug)) return fail(res, req, 403, 'LICENSE_REQUIRED', 'Bu ürün için lisansın yok');
+        if (state.scenario === 'noLicense' || !state.owned.has(slug)) return fail(res, req, 403, 'LICENSE_REQUIRED', 'Bu ürün için lisansın yok', { storeUrl: `https://magaza.hardsetups.com/urun/${slug}` });
+        if (state.scenario === 'buildPending') return fail(res, req, 409, 'CONFLICT', 'Lisansına özel dosya hazırlanıyor', { reason: 'buildNotReady' });
         if (state.scenario === 'suspended') return fail(res, req, 403, 'LICENSE_SUSPENDED', 'Lisansın askıya alınmış');
         if (state.scenario === 'activationLimit') return fail(res, req, 409, 'LICENSE_ACTIVATION_LIMIT', 'Cihaz sınırına ulaştın', { used: 2, limit: 2, manageUrl: 'https://hardsetups.com/hesap/cihazlar' });
         const installId = `inst_${rid()}`;
@@ -547,7 +580,9 @@ function installManifest(installId, slug, base, fresh = false) {
         instance: { id: slug, folderName: slug, displayName: p.name },
         version: { id: `v-${p.version}`, version: p.version, channel: 'STABLE' },
         minecraft: { version: '1.21.1' },
-        loader: { type: 'fabric', version: '0.16.14', profileUrl: 'https://meta.fabricmc.net/v2/versions/loader/1.21.1/0.16.14/profile/json' },
+        loader: state.scenario === 'noLoaderPin'
+            ? { type: 'fabric', version: null, profileUrl: null }
+            : { type: 'fabric', version: '0.16.14', profileUrl: 'https://meta.fabricmc.net/v2/versions/loader/1.21.1/0.16.14/profile/json' },
         java: { major: 21 },
         memory: { minMb: 2048, recommendedMb: 4096 },
         files: [

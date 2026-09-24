@@ -397,6 +397,7 @@ function startApp() {
     }));
     ipcMain.handle('portal:logout', portalCall('Çıkış', async () => { await portal.logout(); return {}; }));
     ipcMain.handle('portal:open-link', portalCall('Bağlantı', (kind) => ({ opened: portal.openLink(String(kind || '')) })));
+    ipcMain.handle('portal:open-url', portalCall('Bağlantı', (url) => ({ opened: portal.openUrl(url) })));
 
     // ── Profiller ───────────────────────────────────────────────────────────
     ipcMain.handle('instances:list', () => instances.list());
