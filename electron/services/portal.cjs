@@ -9,7 +9,7 @@ const { createApiClient, resolveBaseUrl } = require('./api.cjs');
 const { createSession } = require('./hsession.cjs');
 const { createEncryptedFileStorage } = require('./session-file.cjs');
 const { compareVersions } = require('../lib/semver.cjs');
-const { DEFAULT_LINK_HOSTS, BASE_DOWNLOAD_HOSTS } = require('../lib/links.cjs');
+const { DEFAULT_LINK_HOSTS, BASE_DOWNLOAD_HOSTS, hostMatches } = require('../lib/links.cjs');
 
 const CONFIG_RETRY_MS = 5 * 60 * 1000;
 const ME_MIN_INTERVAL_MS = 60 * 1000;
@@ -118,15 +118,29 @@ function createPortal({ app, store, dataRoot, log, openExternal, send }) {
     }
 
     function openLinkUrl(url) {
-        if (isDev && baseUrl.startsWith('http://') && typeof url === 'string' && url.startsWith(`${baseUrl}/`)) {
-            return openExternal(url, null, { trusted: true });
+        // Geliştirmede (paketlenmemiş) sunucu http adresleri verir (hardsetups.test, yerel mock):
+        // yalnızca linkHosts'taki host'lar ya da API'nin kendi kökeni için http açılır.
+        if (isDev && typeof url === 'string' && url.startsWith('http://')) {
+            let host = '';
+            try { host = new URL(url).hostname; } catch { /* geçersiz */ }
+            if (url.startsWith(`${baseUrl}/`) || hostMatches(host, linkHosts())) return openExternal(url, null, { trusted: true });
         }
         return openExternal(url, linkHosts());
     }
 
+    /** minVersion altındaysa HardSetups bölümü kilitli (kullanıcı kararı: genel launcher çalışmaya devam eder). */
+    function assertSupported() {
+        if (state.outdated) {
+            throw Object.assign(new Error(`Bu launcher sürümü HardSetups tarafından artık desteklenmiyor (en az ${state.outdated.minVersion || '?'})`), {
+                code: 'LAUNCHER_OUTDATED',
+                toJSON() { return { code: 'LAUNCHER_OUTDATED', message: this.message, details: { minVersion: state.outdated?.minVersion || null } }; },
+            });
+        }
+    }
+
     // ── Hesap özeti (§3) ──
     async function refreshMe({ force = false } = {}) {
-        if (!session.isSignedIn()) return null;
+        if (!session.isSignedIn() || state.outdated) return null;
         if (!force && state.me && Date.now() - meFetchedAt < ME_MIN_INTERVAL_MS) return state.me;
         try {
             const { data } = await api.get('/v1/launcher/me');
@@ -141,6 +155,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send }) {
 
     // ── Cihaz kodu girişi (§1) ──
     async function startLogin() {
+        assertSupported();
         if (loginFlow) cancelLogin();
         const flow = await session.startDeviceLogin({
             deviceName: os.hostname().slice(0, 64),
@@ -188,6 +203,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send }) {
 
     function openLink(kind) {
         if (!LINK_KINDS.has(kind)) return false;
+        if (state.outdated && kind !== 'launcher') return false; // indirme sayfası kilitli değil
         const url = state.me?.links?.[kind] || state.config?.links?.[kind];
         return url ? openLinkUrl(url) : false;
     }

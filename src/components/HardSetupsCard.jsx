@@ -101,6 +101,22 @@ export default function HardSetupsCard({ portal, onError }) {
 
   if (!portal) return null;
 
+  // minVersion altındaysa HardSetups bölümü kilitli; genel launcher çalışmaya devam eder
+  if (portal.outdated) {
+    return (
+      <section className="card hs-card is-locked">
+        <div className="hs-card-main">
+          <span className="hs-mark" aria-hidden="true">HS</span>
+          <div className="hs-card-text">
+            <h3>{t('hs.title')}</h3>
+            <p>{t('hs.locked', { min: portal.outdated.minVersion || '' })}</p>
+          </div>
+        </div>
+        <button className="btn-secondary" onClick={() => api.portalOpenLink('launcher')}><ExternalLink size={15} /> {t('hs.outdated.download')}</button>
+      </section>
+    );
+  }
+
   const logout = async () => {
     setBusy(true);
     try {
@@ -125,7 +141,7 @@ export default function HardSetupsCard({ portal, onError }) {
             <span className="hs-safe"><ShieldCheck size={13} /> {t('hs.safe')}</span>
           </div>
         </div>
-        <button className="btn-primary" onClick={() => setConnecting(true)} disabled={!!portal.outdated}>
+        <button className="btn-primary" onClick={() => setConnecting(true)}>
           <Link2 size={15} /> {t('hs.connect')}
         </button>
         <ConnectModal open={connecting && !signedIn} onClose={() => setConnecting(false)} onError={onError} />

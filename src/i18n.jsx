@@ -439,6 +439,7 @@ export const DICTS = {
     'hs.maintenance.playable': 'Kurulu oyunların oynanabilir.',
     'hs.outdated.text': 'Bu launcher sürümü HardSetups tarafından artık desteklenmiyor. Devam etmek için en az {min} sürümüne güncelle.',
     'hs.outdated.update': 'Şimdi güncelle',
+    'hs.locked': 'Bu sürümde HardSetups özellikleri kapalı. Hesabını ve kütüphaneni kullanmak için launcher\'ı en az {min} sürümüne güncelle.',
     'hs.outdated.download': 'İndirme sayfası',
 
     'ob.welcome': 'HLauncher\'a hoş geldin!',
@@ -917,6 +918,7 @@ export const DICTS = {
     'hs.maintenance.playable': 'Your installed games can still be played.',
     'hs.outdated.text': 'HardSetups no longer supports this launcher version. Update to at least {min} to continue.',
     'hs.outdated.update': 'Update now',
+    'hs.locked': 'HardSetups features are turned off in this version. Update the launcher to at least {min} to use your account and library.',
     'hs.outdated.download': 'Download page',
 
     'ob.welcome': 'Welcome to HLauncher!',
