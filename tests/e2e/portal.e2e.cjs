@@ -1,9 +1,10 @@
 // Uçtan uca: gerçek Electron uygulaması + mock API (sözleşme §7 "uçtan uca").
 //   npm run test:e2e   (önce vite build yapar)
 // Kullanıcı verisine dokunmaz: APPDATA geçici klasöre yönlendirilir. Tarayıcı
-// açılmasın diye ana süreçteki shell.openExternal test sırasında susturulur.
+// açılmasın diye ana süreçteki shell.openExternal test sırasında susturulur (açılan
+// adresler kaydedilir). alpha.7: HardSetups hesabı zorunlu — önce giriş kapısı.
 // Ekran görüntüleri: E2E_OUT (varsayılan: işletim sisteminin temp klasörü).
-/* global window -- win.evaluate() gövdeleri renderer'da çalışır */
+/* global window, document -- win.evaluate() gövdeleri renderer'da çalışır */
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -30,15 +31,40 @@ async function main() {
     delete env.ELECTRON_RUN_AS_NODE; // açıksa main.cjs kendini yeniden başlatır, Playwright süreci kaybeder
     delete env.NODE_ENV;              // dist/ yüklensin (Vite gerekmez)
 
-    const app = await electron.launch({ args: [ROOT], env });
+    let app = await electron.launch({ args: [ROOT], env });
     const step = (name) => console.log(`  • ${name}`);
+    const approve = (userCode, deny = false) => fetch(`${base}/__mock/approve`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userCode, deny }) });
+    const muteBrowser = (a) => a.evaluate(({ shell }) => { globalThis.__hlOpened = []; shell.openExternal = async (u) => { globalThis.__hlOpened.push(String(u)); }; });
     try {
-        await app.evaluate(({ shell }) => { shell.openExternal = async () => {}; });
-        const win = await app.firstWindow();
-        await win.waitForSelector('.rail', { timeout: 20000 });
-        step('uygulama açıldı');
+        await muteBrowser(app);
+        let win = await app.firstWindow();
 
-        await win.waitForSelector('.whatsnew .md', { timeout: 5000 });
+        // Giriş kapısı: oturum yokken kabuk hiç çizilmez, arkada odaklanabilir öğe kalmaz
+        await win.waitForSelector('.auth .auth-login', { timeout: 20000 });
+        assert.strictEqual(await win.$('.rail'), null, 'kapı açıkken ray görünmemeli');
+        assert.strictEqual(await win.$('.whatsnew'), null, '"neler var" girişten sonra gelmeli');
+        const focusableOutside = await win.evaluate(() => [...document.querySelectorAll('button, input, select, textarea, a[href], [tabindex]')]
+            .filter((el) => !el.closest('.auth')).length);
+        assert.strictEqual(focusableOutside, 0, 'kapının dışında odaklanabilir öğe kalmamalı');
+        await win.waitForTimeout(400); // açılış animasyonu bitsin
+        await win.screenshot({ path: path.join(OUT, '00-giris-ekrani.png') });
+        step('uygulama açıldı: giriş ekranı görünüyor, kabuk (ray) yok');
+
+        await win.click('.auth-login');
+        const codeEl = await win.waitForSelector('.auth-code-value', { timeout: 10000 });
+        const userCode = (await codeEl.textContent()).trim();
+        assert.match(userCode, /^[A-Z]{4}-[A-Z]{4}$/);
+        await win.waitForSelector('.auth-status.is-waiting');
+        await win.waitForTimeout(300);
+        await win.screenshot({ path: path.join(OUT, '01-giris-kodu.png') });
+        step(`giriş kodu gösterildi (${userCode})`);
+
+        await approve(userCode);
+        await win.waitForSelector('.rail', { timeout: 20000 });
+        assert.strictEqual(await win.$('.auth'), null, 'girişten sonra kapı kalkmalı');
+        step('onaylandı: kabuk açıldı');
+
+        await win.waitForSelector('.whatsnew .md', { timeout: 10000 });
         await win.waitForTimeout(300);
         await win.screenshot({ path: path.join(OUT, '00-neler-yeni.png') });
         await win.click('.modal .btn-primary');
@@ -46,19 +72,6 @@ async function main() {
         step('"Bu sürümde neler var" güncelleme sonrası bir kez gösterildi');
 
         await win.click('.rail-account');
-        await win.waitForSelector('.hs-card');
-        await win.screenshot({ path: path.join(OUT, '01-hesap-bagli-degil.png') });
-        step('HardSetups kartı: bağlı değil');
-
-        await win.click('.hs-card .btn-primary');
-        const codeEl = await win.waitForSelector('.hs-code-value', { timeout: 10000 });
-        const userCode = (await codeEl.textContent()).trim();
-        assert.match(userCode, /^[A-Z]{4}-[A-Z]{4}$/);
-        await win.waitForTimeout(400); // açılış animasyonu bitsin
-        await win.screenshot({ path: path.join(OUT, '02-baglanti-kodu.png') });
-        step(`bağlantı kodu gösterildi (${userCode})`);
-
-        await fetch(`${base}/__mock/approve`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userCode }) });
         await win.waitForSelector('.hs-card.is-connected', { timeout: 20000 });
         await win.waitForSelector('.hs-balance', { timeout: 10000 });
         const username = (await win.textContent('.hs-username')).trim();
@@ -168,25 +181,75 @@ async function main() {
         assert.ok(!/hla_|refresh|deviceCode|accessToken/i.test(leaked), `renderer'a gizli değer sızdı: ${leaked}`);
         step('oturum dosyası şifreli; renderer\'da token yok');
 
-        // Panelden iptal → oturum düşer ve kullanıcıya söylenir
+        // Çıkış onay ister; sonra giriş ekranı (kendi çıkışında iptal bildirimi yok)
+        await win.click('.hs-logout');
+        await win.waitForSelector('.hs-logout-confirm');
+        await win.waitForTimeout(300);
+        await win.screenshot({ path: path.join(OUT, '03e-cikis-onayi.png') });
+        await win.click('.hs-logout-confirm');
+        await win.waitForSelector('.auth .auth-login', { timeout: 10000 });
+        assert.strictEqual(await win.$('.rail'), null);
+        assert.strictEqual(await win.$('.auth-notice-revoked'), null, 'kendi çıkışında iptal bildirimi olmamalı');
+        assert.ok(!fs.existsSync(path.join(appData, '.hlauncher', 'hardsetups-session.json')), 'çıkışta oturum dosyası silinmeli');
+        step('"Bağlantıyı kes" onaylandı: giriş ekranına dönüldü');
+
+        // Kayıt ol: aynı cihaz kodu akışı, onay sayfası kayıt adımıyla (yeni=1). Ret → yeni kod → onay
+        await win.click('.auth-register');
+        const regCode = (await (await win.waitForSelector('.auth-code-value', { timeout: 10000 })).textContent()).trim();
+        const opened = await app.evaluate(() => globalThis.__hlOpened.slice(-1)[0] || '');
+        assert.match(opened, /[?&]yeni=1/, `kayıt onay sayfası yeni=1 ile açılmalı: ${opened}`);
+        await approve(regCode, true);
+        await win.waitForSelector('.auth-status.is-denied', { timeout: 15000 });
+        await win.screenshot({ path: path.join(OUT, '03f-kayit-reddedildi.png') });
+        await win.click('.auth-retry');
+        await win.waitForFunction((old) => {
+            const el = document.querySelector('.auth-code-value');
+            return !!el && el.textContent.trim() !== old;
+        }, regCode, { timeout: 10000 });
+        const regCode2 = (await win.textContent('.auth-code-value')).trim();
+        await approve(regCode2);
+        await win.waitForSelector('.rail', { timeout: 20000 });
+        step('Kayıt ol: yeni=1 ile açıldı; reddedilen koddan sonra yeni kodla bağlanıldı');
+
+        // Panelden iptal → oturum düşer, giriş ekranı iptal bildirimiyle görünür
         await fetch(`${base}/__mock/revoke`, { method: 'POST' });
         await win.evaluate(() => window.electronAPI.portalRefresh());
-        await win.waitForSelector('.hs-card:not(.is-connected)', { timeout: 10000 });
-        await win.waitForSelector('.modal', { timeout: 5000 });
+        await win.waitForSelector('.auth .auth-notice-revoked', { timeout: 10000 });
+        assert.strictEqual(await win.$('.rail'), null, 'iptalden sonra kabuk kalkmalı');
         await win.waitForTimeout(400); // açılış animasyonu bitsin
         await win.screenshot({ path: path.join(OUT, '04-iptal-bildirimi.png') });
         assert.ok(!fs.existsSync(path.join(appData, '.hlauncher', 'hardsetups-session.json')));
-        // Regresyon: oturum düşünce bağlanma penceresi kendiliğinden açılıp yeni kod almamalı
-        assert.strictEqual(await win.$('.hs-code-value'), null, 'bağlanma penceresi kendiliğinden açıldı');
-        await win.click('.modal .btn-primary');
-        step('panelden iptal edilen cihaz oturumu kapattı, bildirim gösterildi');
+        // Regresyon: oturum düşünce giriş akışı kendiliğinden başlayıp yeni kod almamalı
+        assert.strictEqual(await win.$('.auth-code-value'), null, 'giriş akışı kendiliğinden başladı');
+        step('panelden iptal edilen cihaz oturumu kapattı; giriş ekranında bildirim gösterildi');
 
-        // Bakım bandı
+        // Bakım: giriş ekranında bildirim, giriş düğmeleri pasif; bitince "Tekrar dene" açar
         mock.state.scenario = 'maintenance';
         await win.evaluate(() => window.electronAPI.portalRefresh());
-        await win.waitForSelector('.portal-banner', { timeout: 10000 });
+        await win.waitForSelector('.auth-notice-maintenance', { timeout: 10000 });
+        assert.ok(await win.$eval('.auth-login', (b) => b.disabled), 'bakımda giriş düğmesi pasif olmalı');
+        assert.ok(await win.$eval('.auth-register', (b) => b.disabled), 'bakımda kayıt düğmesi pasif olmalı');
+        await win.waitForTimeout(300);
         await win.screenshot({ path: path.join(OUT, '05-bakim.png') });
-        step('bakım bandı gösterildi');
+        mock.state.scenario = 'normal';
+        await win.click('.auth-recheck');
+        await win.waitForSelector('.auth-login:not(:disabled)', { timeout: 10000 });
+        step('bakım: giriş ekranında bildirim, düğmeler pasif; bitince yeniden açıldı');
+
+        // Çevrimdışı: daha önce giriş yapmış oyuncu internetsiz de açar (giriş ekranı görünmez)
+        await win.click('.auth-login');
+        await approve((await (await win.waitForSelector('.auth-code-value', { timeout: 10000 })).textContent()).trim());
+        await win.waitForSelector('.rail', { timeout: 20000 });
+        await app.close();
+        app = await electron.launch({ args: [ROOT], env: { ...env, HL_API_BASE: 'http://127.0.0.1:9', HL_EXTERNAL_BASE: 'http://127.0.0.1:9' } });
+        await muteBrowser(app);
+        win = await app.firstWindow();
+        const first = await win.waitForSelector('.rail, .auth:not(.auth-splash)', { timeout: 20000 });
+        assert.ok(await first.evaluate((el) => el.classList.contains('rail')), 'kayıtlı oturumla giriş ekranı görünmemeli');
+        await win.waitForTimeout(1500); // ağ hataları oturumu kapatmamalı
+        assert.strictEqual(await win.$('.auth'), null, 'ağ hatası oturumu kapattı');
+        await win.screenshot({ path: path.join(OUT, '06-cevrimdisi.png') });
+        step('çevrimdışı: kayıtlı oturumla launcher doğrudan açıldı');
     } finally {
         await app.close().catch(() => {});
         await new Promise((r) => server.close(r));
