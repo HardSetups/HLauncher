@@ -1,0 +1,96 @@
+// Uçtan uca: gerçek Electron uygulaması + mock API (sözleşme §7 "uçtan uca").
+//   npm run test:e2e   (önce vite build yapar)
+// Kullanıcı verisine dokunmaz: APPDATA geçici klasöre yönlendirilir. Tarayıcı
+// açılmasın diye ana süreçteki shell.openExternal test sırasında susturulur.
+// Ekran görüntüleri: E2E_OUT (varsayılan: işletim sisteminin temp klasörü).
+/* global window -- win.evaluate() gövdeleri renderer'da çalışır */
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const assert = require('assert');
+const { _electron: electron } = require('playwright-core');
+const mock = require('../../dev/mock-api/server.cjs');
+
+const ROOT = path.join(__dirname, '..', '..');
+const OUT = process.env.E2E_OUT || fs.mkdtempSync(path.join(os.tmpdir(), 'hlauncher-e2e-out-'));
+
+async function main() {
+    const appData = fs.mkdtempSync(path.join(os.tmpdir(), 'hlauncher-e2e-'));
+    fs.mkdirSync(path.join(appData, '.hlauncher'), { recursive: true });
+    fs.writeFileSync(path.join(appData, '.hlauncher', 'config.json'), JSON.stringify({ settings: { onboarded: true, checkUpdates: false } }));
+
+    const server = await mock.start(0);
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const env = { ...process.env, APPDATA: appData, HL_API_BASE: base };
+    delete env.ELECTRON_RUN_AS_NODE; // açıksa main.cjs kendini yeniden başlatır, Playwright süreci kaybeder
+    delete env.NODE_ENV;              // dist/ yüklensin (Vite gerekmez)
+
+    const app = await electron.launch({ args: [ROOT], env });
+    const step = (name) => console.log(`  • ${name}`);
+    try {
+        await app.evaluate(({ shell }) => { shell.openExternal = async () => {}; });
+        const win = await app.firstWindow();
+        await win.waitForSelector('.rail', { timeout: 20000 });
+        step('uygulama açıldı');
+
+        await win.click('.rail-account');
+        await win.waitForSelector('.hs-card');
+        await win.screenshot({ path: path.join(OUT, '01-hesap-bagli-degil.png') });
+        step('HardSetups kartı: bağlı değil');
+
+        await win.click('.hs-card .btn-primary');
+        const codeEl = await win.waitForSelector('.hs-code-value', { timeout: 10000 });
+        const userCode = (await codeEl.textContent()).trim();
+        assert.match(userCode, /^[A-Z]{4}-[A-Z]{4}$/);
+        await win.waitForTimeout(400); // açılış animasyonu bitsin
+        await win.screenshot({ path: path.join(OUT, '02-baglanti-kodu.png') });
+        step(`bağlantı kodu gösterildi (${userCode})`);
+
+        await fetch(`${base}/__mock/approve`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userCode }) });
+        await win.waitForSelector('.hs-card.is-connected', { timeout: 20000 });
+        await win.waitForSelector('.hs-balance', { timeout: 10000 });
+        const username = (await win.textContent('.hs-username')).trim();
+        const balance = (await win.textContent('.hs-balance b')).trim();
+        assert.strictEqual(username, 'mert');
+        assert.match(balance, /250,00/);
+        await win.screenshot({ path: path.join(OUT, '03-bagli.png') });
+        step(`bağlandı: ${username}, bakiye ${balance}`);
+
+        // Oturum diskte şifreli, renderer'da token yok
+        const sessionFile = JSON.parse(fs.readFileSync(path.join(appData, '.hlauncher', 'hardsetups-session.json'), 'utf8'));
+        assert.ok(sessionFile.refresh.startsWith('enc:'), 'yenileme token\'ı şifreli olmalı');
+        const leaked = await win.evaluate(async () => JSON.stringify(await window.electronAPI.portalState()));
+        assert.ok(!/hla_|refresh|deviceCode|accessToken/i.test(leaked), `renderer'a gizli değer sızdı: ${leaked}`);
+        step('oturum dosyası şifreli; renderer\'da token yok');
+
+        // Panelden iptal → oturum düşer ve kullanıcıya söylenir
+        await fetch(`${base}/__mock/revoke`, { method: 'POST' });
+        await win.evaluate(() => window.electronAPI.portalRefresh());
+        await win.waitForSelector('.hs-card:not(.is-connected)', { timeout: 10000 });
+        await win.waitForSelector('.modal', { timeout: 5000 });
+        await win.waitForTimeout(400); // açılış animasyonu bitsin
+        await win.screenshot({ path: path.join(OUT, '04-iptal-bildirimi.png') });
+        assert.ok(!fs.existsSync(path.join(appData, '.hlauncher', 'hardsetups-session.json')));
+        // Regresyon: oturum düşünce bağlanma penceresi kendiliğinden açılıp yeni kod almamalı
+        assert.strictEqual(await win.$('.hs-code-value'), null, 'bağlanma penceresi kendiliğinden açıldı');
+        await win.click('.modal .btn-primary');
+        step('panelden iptal edilen cihaz oturumu kapattı, bildirim gösterildi');
+
+        // Bakım bandı
+        mock.state.scenario = 'maintenance';
+        await win.evaluate(() => window.electronAPI.portalRefresh());
+        await win.waitForSelector('.portal-banner', { timeout: 10000 });
+        await win.screenshot({ path: path.join(OUT, '05-bakim.png') });
+        step('bakım bandı gösterildi');
+    } finally {
+        await app.close().catch(() => {});
+        await new Promise((r) => server.close(r));
+        try { fs.rmSync(appData, { recursive: true, force: true }); } catch { /* kilit */ }
+    }
+    console.log(`\nE2E geçti. Ekran görüntüleri: ${OUT}`);
+}
+
+main().catch((err) => {
+    console.error(`\nE2E başarısız: ${err.stack || err.message}\nEkran görüntüleri: ${OUT}`);
+    process.exit(1);
+});

@@ -12,7 +12,7 @@ if (process.env.ELECTRON_RUN_AS_NODE) {
     process.exit(0);
 }
 
-const { app, BrowserWindow, ipcMain, dialog, shell, session } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, session, clipboard } = require('electron');
 const os = require('os');
 const path = require('path');
 
@@ -68,9 +68,15 @@ function startApp() {
     app.on('child-process-gone', (_e, details) => onProcessGone('child', details));
     app.on('render-process-gone', (_e, _wc, details) => onProcessGone('renderer', details));
 
-    // Tarayıcıda yalnızca https + izinli host açılır (sözleşme §2).
-    const openExternalSafe = (url) => {
-        if (links.isAllowedLink(url)) {
+    // HardSetups portalı (hesap, config, cihaz kodu girişi) — app ready sonrası kurulur
+    const { createPortal } = require('./services/portal.cjs');
+    let portal = null;
+
+    // Tarayıcıda yalnızca https + izinli host açılır (sözleşme §2): launcher'ın
+    // sabit listesi + sunucunun linkHosts'u. trusted: geliştirmede yerel mock onay sayfası.
+    const openExternalSafe = (url, hosts = null, { trusted = false } = {}) => {
+        const allowed = [...links.DEFAULT_LINK_HOSTS, ...(hosts || portal?.linkHosts() || [])];
+        if (trusted || links.isAllowedLink(url, allowed)) {
             shell.openExternal(url);
             return true;
         }
@@ -177,6 +183,21 @@ function startApp() {
 
         createWindow();
         updater.initUpdater(app, getStore(), mainWindow);
+
+        portal = createPortal({
+            app,
+            store: getStore(),
+            dataRoot: getRootPath(),
+            log,
+            openExternal: openExternalSafe,
+            send: (channel, payload) => {
+                if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
+            },
+        });
+        log.info(`[PORTAL] API: ${portal.baseUrl}`);
+        portal.loadConfig().then(() => portal.refreshMe({ force: true }));
+        // Pencere odaklanınca hesap özeti (bakiye, bildirim sayısı) tazelenir (en sık dakikada bir)
+        mainWindow.on('focus', () => portal?.refreshMe());
 
         app.on('activate', () => {
             if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -328,6 +349,34 @@ function startApp() {
         }
     });
     ipcMain.handle('account:logout', () => { accounts.logout(); return true; });
+
+    // ── HardSetups hesabı (portal) ─────────────────────────────────────────
+    // Hepsi {ok, ...} | {ok:false, error} döndürür; token ve deviceCode renderer'a gitmez.
+    const portalCall = (label, fn) => async (_e, ...args) => {
+        if (!portal) return { ok: false, error: { code: 'NOT_READY', message: 'Launcher henüz hazır değil' } };
+        try {
+            return { ok: true, ...(await fn(...args)) };
+        } catch (err) {
+            log.error(`[PORTAL] ${label}: ${err.code || ''} ${err.message}`);
+            return { ok: false, error: err?.toJSON?.() || { code: 'UNKNOWN', message: friendlyError(err) } };
+        }
+    };
+    ipcMain.handle('portal:state', portalCall('Durum', () => ({ state: portal.publicState() })));
+    ipcMain.handle('portal:refresh', portalCall('Yenileme', async () => {
+        await portal.loadConfig();
+        await portal.refreshMe({ force: true });
+        return { state: portal.publicState() };
+    }));
+    ipcMain.handle('portal:login-start', portalCall('Giriş', () => portal.startLogin()));
+    ipcMain.handle('portal:login-cancel', portalCall('Giriş iptali', () => { portal.cancelLogin(); return {}; }));
+    ipcMain.handle('portal:open-verification', portalCall('Onay sayfası', () => ({ opened: portal.openVerification() })));
+    ipcMain.handle('portal:copy-verification', portalCall('Adres kopyalama', () => {
+        const url = portal.verificationUrl();
+        if (url) clipboard.writeText(url);
+        return { copied: !!url };
+    }));
+    ipcMain.handle('portal:logout', portalCall('Çıkış', async () => { await portal.logout(); return {}; }));
+    ipcMain.handle('portal:open-link', portalCall('Bağlantı', (kind) => ({ opened: portal.openLink(String(kind || '')) })));
 
     // ── Profiller ───────────────────────────────────────────────────────────
     ipcMain.handle('instances:list', () => instances.list());

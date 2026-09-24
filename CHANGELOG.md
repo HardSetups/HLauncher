@@ -1,5 +1,20 @@
 # Değişiklik Günlüğü
 
+## 1.0.0-alpha.7 — yayımlanmadı
+
+### HardSetups hesabı
+- Hesap sayfasında **HardSetups hesabını bağla**: giriş tarayıcıda yapılır, launcher parola görmez. Ekranda büyük bir bağlantı kodu çıkar; tarayıcı açılmazsa adres kopyalanabilir
+- Bağlıyken kullanıcı adı ve bakiye görünür; "Hesabım", "Bağlı cihazlar" ve "Bağlantıyı kes"
+- Oturum anahtarı Windows'un şifreli deposunda tutulur; siteden cihaz kaldırılırsa launcher bir sonraki istekte bunu fark eder ve söyler
+- HardSetups bakımdayken üstte bir bant görünür, kurulu oyunlar oynanabilir kalır
+
+### Güvenlik
+- Electron 44'e geçildi (39 artık güvenlik güncellemesi almıyordu)
+- Chromium sandbox yeniden açık; yalnızca açılışta çöken makinelerde kendiliğinden kapanır
+- Paket sertleştirildi: ASAR bütünlük denetimi, yalnızca ASAR'dan yükleme, NODE_OPTIONS ve hata ayıklayıcı bayrakları kapalı, çerez şifreleme
+- Tarayıcıda yalnızca izinli adresler açılır; kamera/mikrofon/bildirim gibi tarayıcı izinleri kapalı
+- Microsoft oturumu, şifreli depolama yoksa diske yazılmaz
+
 ## 1.0.0-alpha.6 — 2026-09-24
 
 ### Güvenlik düzeltmesi

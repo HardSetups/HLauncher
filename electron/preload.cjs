@@ -55,6 +55,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     loginOffline:   (name) => ipcRenderer.invoke('account:login-offline', name),
     logout:         () => ipcRenderer.invoke('account:logout'),
 
+    // HardSetups hesabı (portal) — token'lar ana süreçte kalır, burada yalnızca özet
+    portalState:        () => ipcRenderer.invoke('portal:state'),
+    portalRefresh:      () => ipcRenderer.invoke('portal:refresh'),
+    portalLoginStart:   () => ipcRenderer.invoke('portal:login-start'),
+    portalLoginCancel:  () => ipcRenderer.invoke('portal:login-cancel'),
+    portalOpenVerification: () => ipcRenderer.invoke('portal:open-verification'),
+    portalCopyVerification: () => ipcRenderer.invoke('portal:copy-verification'),
+    portalLogout:       () => ipcRenderer.invoke('portal:logout'),
+    portalOpenLink:     (kind) => ipcRenderer.invoke('portal:open-link', kind),
+    onPortalState:      (cb) => subscribe('portal:state', cb),
+    onPortalLogin:      (cb) => subscribe('portal:login', cb),
+    onPortalSession:    (cb) => subscribe('portal:session', cb),
+
     // Profiller
     listInstances:    () => ipcRenderer.invoke('instances:list'),
     createInstance:   (data) => ipcRenderer.invoke('instances:create', data),

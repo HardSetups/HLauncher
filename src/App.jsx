@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, CheckCircle2, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Trash2, Wrench, ArrowUpCircle } from 'lucide-react';
 import Rail from './components/Rail';
 import TopBar from './components/TopBar';
 import HomePage from './components/HomePage';
@@ -55,6 +55,8 @@ function App() {
   const [pendingDelete, setPendingDelete] = useState(null);
 
   const [news, setNews] = useState([]);
+  // HardSetups hesabı özeti (token içermez): { signedIn, user, wallet, maintenance, outdated, ... }
+  const [portal, setPortal] = useState(null);
   const [updaterStatus, setUpdaterStatus] = useState({ state: 'idle' });
   const [updateOpen, setUpdateOpen] = useState(false);
   const promptedVersion = useRef(null);
@@ -158,8 +160,14 @@ function App() {
         if (data.type === 'done') setTimeout(() => setInstallStatus(null), 1200);
       }),
       api.onUpdaterStatus(setUpdaterStatus),
+      api.onPortalState(setPortal),
+      // Panelden iptal / güvenlik nedeniyle kapanan oturum kullanıcıya söylenir
+      api.onPortalSession((e) => {
+        if (!e.signedIn && e.reason && e.reason !== 'logout') setNotice(tRef.current('hs.revoked'));
+      }),
     ];
     api.getUpdaterStatus().then(setUpdaterStatus).catch(() => {});
+    api.portalState().then((res) => { if (res.ok) setPortal(res.state); }).catch(() => {});
     return () => unsubs.forEach((off) => off?.());
   }, [api, refreshInstances]);
 
@@ -397,6 +405,25 @@ function App() {
       <div className="app-column">
         <TopBar crumbs={crumbs} status={topStatus} onStop={stopGame} updateReady={updateReady} onOpenUpdate={() => setUpdateOpen(true)} />
 
+        {portal?.outdated && (
+          <div className="banner portal-banner" role="alert">
+            <ArrowUpCircle size={16} />
+            <span style={{ flex: 1 }}>{t('hs.outdated.text', { min: portal.outdated.minVersion || '' })}</span>
+            <button className="btn-secondary btn-xs" onClick={() => (updateReady ? setUpdateOpen(true) : api.checkAppUpdate())}>{t('hs.outdated.update')}</button>
+            <button className="btn-ghost btn-xs" onClick={() => api.portalOpenLink('launcher')}>{t('hs.outdated.download')}</button>
+          </div>
+        )}
+        {portal?.maintenance && !portal?.outdated && (
+          <div className="banner portal-banner" role="status">
+            <Wrench size={16} />
+            <span>
+              <b>{t('hs.maintenance.title')}</b>
+              {portal.maintenance.message ? ` ${portal.maintenance.message}` : ''}
+              <span className="muted"> — {t('hs.maintenance.playable')}</span>
+            </span>
+          </div>
+        )}
+
         {/* İndirme paneli açıkken sayfaların altı boşalır: panel düğmeleri örtmesin */}
         <main className={`app-main${tasks.length || launch.launchingId || updaterStatus.state === 'downloading' ? ' has-dl' : ''}`}>
           <AnimatePresence mode="wait">
@@ -484,6 +511,7 @@ function App() {
                 <AccountPage
                   account={account}
                   setAccount={setAccount}
+                  portal={portal}
                   onError={setErrorMessage}
                 />
               )}

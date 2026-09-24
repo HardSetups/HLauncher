@@ -570,6 +570,28 @@ test('offline.clockTrusted: saat 5 dakikadan fazla geri alınmışsa güvenilmez
     assert.ok(offline.clockTrusted(Date.now(), null));
 });
 
+// ─── i18n: arayüzdeki her t('…') anahtarı iki sözlükte de var mı? ───────────
+test('i18n: src/ içindeki tüm sabit t(\'…\') anahtarları TR ve EN sözlüklerinde mevcut', () => {
+    const i18nSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'i18n.jsx'), 'utf8');
+    const start = i18nSrc.indexOf('export const DICTS = {');
+    const objText = i18nSrc.slice(start + 'export const '.length, i18nSrc.indexOf('\n};') + 3);
+    const dicts = new Function(`let ${objText}; return DICTS;`)();
+    const used = new Map();
+    const walk = (dir) => {
+        for (const entry of fs.readdirSync(dir)) {
+            const p = path.join(dir, entry);
+            if (fs.statSync(p).isDirectory()) walk(p);
+            else if (/\.(jsx|js)$/.test(p) && !p.endsWith('i18n.jsx')) {
+                for (const m of fs.readFileSync(p, 'utf8').matchAll(/\bt\(\s*'([a-zA-Z0-9_.]+)'/g)) used.set(m[1], path.basename(p));
+            }
+        }
+    };
+    walk(path.join(__dirname, '..', 'src'));
+    assert.ok(used.size > 50, `beklenenden az anahtar: ${used.size}`);
+    const missing = [...used].filter(([k]) => !dicts.tr[k] || !dicts.en[k]).map(([k, f]) => `${k} (${f}: ${dicts.tr[k] ? '' : 'TR '}${dicts.en[k] ? '' : 'EN'})`);
+    assert.deepStrictEqual(missing, []);
+});
+
 // ─── i18n: backend ilerleme anahtarları sözlükte var mı? ────────────────────
 test('i18n: backend be.* anahtarları TR ve EN sözlüklerinde mevcut', () => {
     const i18nSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'i18n.jsx'), 'utf8');
