@@ -186,6 +186,201 @@ test('downloader.runQueue: en çok 4 paralel; bir hata kalanları durdurur', asy
     assert.ok(started < 20, `hata sonrası yeni iş başlamamalıydı (${started})`);
 });
 
+// ─── services/api.cjs + hsession.cjs (mock API'ye karşı) ────────────────────
+const mock = require('../dev/mock-api/server.cjs');
+const { createApiClient, resolveBaseUrl, ApiError } = require('../electron/services/api.cjs');
+const { createSession, createMemoryStorage } = require('../electron/services/hsession.cjs');
+
+const fastSleep = () => new Promise((r) => setTimeout(r, 5));
+
+async function withMock(fn) {
+    Object.assign(mock.state, { scenario: 'normal' });
+    mock.cfg.accessTtl = 900;
+    mock.cfg.minVersion = null;
+    const server = await mock.start(0);
+    const base = `http://127.0.0.1:${server.address().port}`;
+    try { await fn(base); } finally { await new Promise((r) => server.close(r)); }
+}
+
+/** Mock'a bağlı istemci + oturum; login() cihaz kodu akışını otomatik onaylar. */
+function makeClient(base, { now, storage = createMemoryStorage(), events = [], appVersion = '1.0.0-alpha.7' } = {}) {
+    const session = createSession({ storage, onChange: (e) => events.push(e), sleep: fastSleep, ...(now ? { now } : {}) });
+    const api = createApiClient({
+        baseUrl: base, appVersion, getInstallId: () => 'install-uuid-test', session,
+        onEvent: (type, payload) => events.push({ type, ...payload }), sleep: fastSleep,
+    });
+    session.setTransport((path, body, auth) => api.post(path, body, { auth }));
+    const login = async () => {
+        const flow = await session.startDeviceLogin({ deviceName: 'TEST-PC', os: 'windows', osVersion: '10', arch: 'x64', appVersion });
+        await fetch(`${base}/__mock/approve`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userCode: flow.userCode }) });
+        return flow.done;
+    };
+    return { api, session, storage, events, login };
+}
+
+test('api.resolveBaseUrl: https zorunlu, yerel http yalnızca izinle', () => {
+    assert.strictEqual(resolveBaseUrl('https://api.hardsetups.com/'), 'https://api.hardsetups.com');
+    assert.strictEqual(resolveBaseUrl('http://api.hardsetups.com'), 'https://api.hardsetups.com');
+    assert.strictEqual(resolveBaseUrl('http://127.0.0.1:4000'), 'https://api.hardsetups.com');
+    assert.strictEqual(resolveBaseUrl('http://127.0.0.1:4000', { allowLocalHttp: true }), 'http://127.0.0.1:4000');
+    assert.strictEqual(resolveBaseUrl('çöp'), 'https://api.hardsetups.com');
+});
+
+test('api: sözleşme başlıkları gider; hata gövdesi ApiError olur (kod + destek kodu)', async () => {
+    let seen = null;
+    const srv = await startServer((req, res) => {
+        seen = req.headers;
+        res.writeHead(403, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: { code: 'LICENSE_REQUIRED', message: 'Lisansın yok', details: {}, requestId: 'req_42' } }));
+    });
+    try {
+        const api = createApiClient({ baseUrl: srv.base, appVersion: '1.2.3', getInstallId: () => 'kurulum-1', getLanguage: () => 'en', sleep: fastSleep });
+        await assert.rejects(api.get('/v1/launcher/x', { auth: 'none' }), (err) => {
+            assert.ok(err instanceof ApiError);
+            assert.deepStrictEqual([err.status, err.code, err.requestId], [403, 'LICENSE_REQUIRED', 'req_42']);
+            return true;
+        });
+        assert.strictEqual(seen['x-hl-version'], '1.2.3');
+        assert.strictEqual(seen['x-hl-device'], 'kurulum-1');
+        assert.strictEqual(seen['accept-language'], 'en');
+        assert.match(seen['user-agent'], /^HLauncher\/1\.2\.3 \(\S+ [^;]+; \w+\)$/);
+        assert.strictEqual(seen.authorization, undefined);
+    } finally { await srv.close(); }
+});
+
+test('api: GET 5xx ve ağ hatasında 3 kez dener; POST tekrar denenmez', async () => {
+    let hits = 0;
+    const srv = await startServer((req, res) => {
+        hits++;
+        if (req.method === 'GET' && hits < 3) { res.writeHead(502); return res.end(); }
+        res.writeHead(req.method === 'GET' ? 200 : 500, { 'content-type': 'application/json' });
+        res.end('{"ok":true}');
+    });
+    try {
+        const api = createApiClient({ baseUrl: srv.base, appVersion: '1.0.0', getInstallId: () => 'x', sleep: fastSleep });
+        assert.deepStrictEqual((await api.get('/v1/a', { auth: 'none' })).data, { ok: true });
+        assert.strictEqual(hits, 3);
+        hits = 10;
+        await assert.rejects(api.post('/v1/b', {}, { auth: 'none' }), { status: 500 });
+        assert.strictEqual(hits, 11);
+    } finally { await srv.close(); }
+});
+
+test('hsession: cihaz kodu girişi → token bellekte, yenileme token\'ı depoda; /me çalışır', async () => {
+    await withMock(async (base) => {
+        const c = makeClient(base);
+        const result = await c.login();
+        assert.strictEqual(result.state, 'success');
+        assert.strictEqual(result.user.username, 'mert');
+        assert.ok(c.storage.peek().refreshToken && c.storage.peek().deviceId);
+        assert.ok(!('accessToken' in c.storage.peek()), 'erişim token\'ı diske yazılmamalı');
+        const me = await c.api.get('/v1/launcher/me');
+        assert.strictEqual(me.data.wallet.balanceMinor, '25000');
+        assert.deepStrictEqual(c.session.snapshot(), { signedIn: true, user: result.user });
+    });
+});
+
+test('hsession: reddedilen ve süresi dolan kod doğru durumu verir; SLOW_DOWN sonrası giriş sürer', async () => {
+    await withMock(async (base) => {
+        mock.state.scenario = 'deny';
+        assert.strictEqual((await makeClient(base).login()).state, 'denied');
+        mock.state.scenario = 'expire';
+        assert.strictEqual((await makeClient(base).login()).state, 'expired');
+        mock.state.scenario = 'slowDown';
+        const waits = [];
+        const c = makeClient(base);
+        const slowSession = createSession({ storage: createMemoryStorage(), sleep: (ms) => { waits.push(ms); return fastSleep(); } });
+        slowSession.setTransport((path, body, auth) => c.api.post(path, body, { auth }));
+        const flow = await slowSession.startDeviceLogin({ deviceName: 'TEST-PC' });
+        await fetch(`${base}/__mock/approve`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userCode: flow.userCode }) });
+        assert.strictEqual((await flow.done).state, 'success');
+        assert.deepStrictEqual(waits, [5000, 10000]); // SLOW_DOWN → aralık +5 sn
+    });
+});
+
+test('hsession: süresi dolan erişim token\'ıyla 5 eşzamanlı istek → tek yenileme', async () => {
+    await withMock(async (base) => {
+        mock.cfg.accessTtl = 1;
+        const frozen = Date.now();
+        const c = makeClient(base, { now: () => frozen }); // oturum token'ı hâlâ geçerli sanıyor
+        await c.login();
+        await new Promise((r) => setTimeout(r, 1200)); // sunucuda süresi doldu
+        mock.cfg.accessTtl = 900;
+        const before = mock.state.stats.refreshCalls;
+        const results = await Promise.all(Array.from({ length: 5 }, () => c.api.get('/v1/launcher/me')));
+        assert.ok(results.every((r) => r.data.user.username === 'mert'));
+        assert.strictEqual(mock.state.stats.refreshCalls - before, 1);
+    });
+});
+
+test('hsession: yenileme yanıtı yolda kaybolursa 60 sn toleransıyla oturum sürer', async () => {
+    await withMock(async (base) => {
+        const c = makeClient(base);
+        await c.login();
+        const refreshBefore = c.storage.peek().refreshToken;
+        // İlk yenileme sunucuda işlenir ama yanıt "kaybolur"
+        let drop = true;
+        c.session.setTransport(async (path, body, auth) => {
+            const res = await c.api.post(path, body, { auth });
+            if (drop && path.endsWith('/token/refresh')) { drop = false; throw new ApiError({ code: 'NETWORK', message: 'kayıp' }); }
+            return res;
+        });
+        await assert.rejects(c.session.refresh(), { code: 'NETWORK' });
+        assert.strictEqual(c.storage.peek().refreshToken, refreshBefore); // eskisi hâlâ elde
+        assert.ok(await c.session.refresh()); // eski token'la tekrar → tolerans
+        assert.notStrictEqual(c.storage.peek().refreshToken, refreshBefore);
+        assert.strictEqual((await c.api.get('/v1/launcher/me')).status, 200);
+        assert.ok(mock.state.stats && [...mock.state.devices.values()].every((d) => !d.revoked));
+    });
+});
+
+test('hsession: panelden iptal edilen cihaz bir sonraki istekte oturumu kapatır', async () => {
+    await withMock(async (base) => {
+        const c = makeClient(base);
+        await c.login();
+        await fetch(`${base}/__mock/revoke`, { method: 'POST' });
+        await assert.rejects(c.api.get('/v1/launcher/me'), { code: 'DEVICE_REVOKED' });
+        assert.strictEqual(c.session.isSignedIn(), false);
+        assert.strictEqual(c.storage.peek(), null);
+        assert.ok(c.events.some((e) => e.signedIn === false && e.reason === 'DEVICE_REVOKED'));
+        await assert.rejects(c.api.get('/v1/launcher/me'), { code: 'NOT_SIGNED_IN' });
+    });
+});
+
+test('hsession: çıkış sunucuda cihazı kapatır ve yerel oturumu siler', async () => {
+    await withMock(async (base) => {
+        const c = makeClient(base);
+        await c.login();
+        await c.session.logout();
+        assert.strictEqual(c.session.isSignedIn(), false);
+        assert.strictEqual(c.storage.peek(), null);
+        assert.ok([...mock.state.devices.values()].every((d) => d.revoked));
+    });
+});
+
+test('api: 426 → outdated, 503 → maintenance olayı; config bakımda da cevap verir; 429 beklenip tekrarlanır', async () => {
+    await withMock(async (base) => {
+        const c = makeClient(base, { appVersion: '1.0.0-alpha.6' });
+        mock.cfg.minVersion = '1.0.0';
+        await assert.rejects(c.api.get('/v1/launcher/home', { auth: 'optional' }), { status: 426, code: 'LAUNCHER_OUTDATED' });
+        assert.ok(c.events.some((e) => e.type === 'outdated' && e.minVersion === '1.0.0'));
+        mock.cfg.minVersion = null;
+
+        mock.state.scenario = 'maintenance';
+        const cfg = await c.api.get('/v1/launcher/config', { auth: 'none' });
+        assert.strictEqual(cfg.data.maintenance.active, true);
+        await assert.rejects(c.api.get('/v1/launcher/home', { auth: 'optional' }), { status: 503, code: 'MAINTENANCE_MODE' });
+        assert.ok(c.events.some((e) => e.type === 'maintenance' && e.message));
+
+        mock.state.scenario = 'rateLimited';
+        setTimeout(() => { mock.state.scenario = 'normal'; }, 20);
+        const home = await c.api.get('/v1/launcher/home', { auth: 'optional' });
+        assert.strictEqual(home.status, 200);
+        const again = await c.api.get('/v1/launcher/home', { auth: 'optional', etag: home.etag });
+        assert.strictEqual(again.notModified, true);
+    });
+});
+
 // ─── Çalıştırıcı ────────────────────────────────────────────────────────────
 (async () => {
     let passed = 0;

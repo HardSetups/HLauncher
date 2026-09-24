@@ -8,7 +8,7 @@ export default defineConfig([
   globalIgnores(['dist', 'release']),
   // Node/Electron ana süreç dosyaları (CommonJS)
   {
-    files: ['launch-electron.js', 'electron/**/*.cjs', 'tests/**/*.cjs', 'scripts/**/*.cjs'],
+    files: ['launch-electron.js', 'electron/**/*.cjs', 'tests/**/*.cjs', 'scripts/**/*.cjs', 'dev/**/*.cjs'],
     extends: [js.configs.recommended],
     languageOptions: {
       globals: globals.node,

@@ -510,6 +510,20 @@ test('compat.sandboxDisabled: varsayılan açık; ayar ya da HL_NO_SANDBOX ile k
     assert.strictEqual(compat.sandboxDisabled(store({}), { HL_NO_SANDBOX: '1' }), true);
 });
 
+// ─── semver.cjs ─────────────────────────────────────────────────────────────
+const { compareVersions } = require('../electron/lib/semver.cjs');
+
+test('semver.compareVersions: ön sürümler sayısal, kararlı sürüm ön sürümden büyük', () => {
+    const lt = (a, b) => assert.ok(compareVersions(a, b) < 0, `${a} < ${b}`);
+    lt('1.0.0-alpha.6', '1.0.0-alpha.10');
+    lt('1.0.0-alpha.9', '1.0.0-beta.1');
+    lt('1.0.0-alpha.6', '1.0.0');
+    lt('1.0.0', '1.0.1');
+    lt('1.2.0', '1.10.0');
+    assert.strictEqual(compareVersions('v1.4.0', '1.4.0'), 0);
+    assert.ok(Number.isNaN(compareVersions('abc', '1.0.0')));
+});
+
 // ─── services/offline.cjs (çevrimdışı zarf, sözleşme §6) ────────────────────
 const offline = require('../electron/services/offline.cjs');
 const offlineVectors = require('./fixtures/launcher-offline-vectors.json');
