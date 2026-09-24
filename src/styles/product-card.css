@@ -2,16 +2,9 @@
    Ürün kartı (ProductCard.jsx) — vitrin, kütüphane önerileri ve ana sayfa
    aynı kartı kullanır; stiller kendi başına yeter (PortalPage yüklenmeden de).
    Ayrıca: ürün rafı (.pgrid), kapak / markalı desen (.hub-cover), rozet, fiyat.
-   Yalnızca token (index.css :root). Aşağıdaki üç yerel değişken (ışık çizgisi,
-   ızgara, gölge) birleştirmede TEMA'nın karşılık gelen token'larına bağlanmalı.
+   Yalnızca tema token'ları (index.css :root): --shadow-card, --hl, --ease, --t-*, --line-3,
+   --accent-glow, --ember. Hex yok.
    ════════════════════════════════════════════════════════════════════ */
-
-.pgrid, .pcard, .hub-cover {
-  --pc-light: rgba(255, 255, 255, 0.05);
-  --pc-grid: color-mix(in srgb, var(--text) 5%, transparent);
-  --pc-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --pc-shadow: inset 0 1px 0 var(--pc-light), 0 1px 0 rgba(0, 0, 0, 0.22), 0 12px 28px -18px rgba(0, 0, 0, 0.7);
-}
 
 /* Raf: auto-fit, az ürünle satırda boş sütun kalmaz; iki ürün yan yana */
 .pgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
@@ -33,10 +26,10 @@
   corner-shape: var(--shape);
   background: var(--raised);
   border: 1px solid var(--line);
-  box-shadow: var(--pc-shadow);
-  transition: border-color 160ms var(--pc-ease), transform 160ms var(--pc-ease);
+  box-shadow: var(--shadow-card);
+  transition: border-color var(--t-base) var(--ease), transform var(--t-base) var(--ease);
 }
-.pcard:hover { border-color: var(--line-2); transform: translateY(-2px); }
+.pcard:hover { border-color: var(--line-3); transform: translateY(-2px); }
 .pcard.is-skeleton {
   height: 270px;
   box-shadow: none;
@@ -62,7 +55,7 @@
 .pcard-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line); }
 .pcard-foot .price b { font-size: 16px; }
 .pcard-owned { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--ok); }
-.pcard-go { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; color: var(--text-2); white-space: nowrap; transition: color 140ms, gap 160ms var(--pc-ease); }
+.pcard-go { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; color: var(--text-2); white-space: nowrap; transition: color var(--t-fast), gap var(--t-base) var(--ease); }
 .pcard:hover .pcard-go { color: var(--text); gap: 7px; }
 
 /* Tek ürün: geniş, yatay vitrin kartı */
@@ -74,8 +67,9 @@
 .pcard.is-wide .pcard-desc { font-size: 13.5px; -webkit-line-clamp: 4; min-height: 0; }
 .pcard.is-wide .pcard-foot { margin-top: 10px; }
 .pcard.is-wide .price b { font-size: 21px; }
-.pcard.is-wide .pcard-go { height: 36px; padding: 0 14px; border-radius: var(--r-md); corner-shape: var(--shape); background: var(--raised-2); border: 1px solid var(--line-2); color: var(--text); }
-.pcard.is-wide:hover .pcard-go { background: var(--raised-3); }
+/* Geniş kartta ok, temanın .btn-secondary görünümünde (JSX'te sınıf eklenir) */
+.pcard.is-wide .pcard-go { height: 36px; padding: 0 14px; border-radius: var(--r-md); corner-shape: var(--shape); color: var(--text); }
+.pcard.is-wide:hover .pcard-go { background: var(--raised-3); border-color: var(--line-3); }
 
 /* Sıkı kart (ör. ana sayfa şeridi): tek satır açıklama, yalnızca ok */
 .pcard.is-compact .pcard-body { gap: 4px; padding: 10px 12px 12px; }
@@ -88,15 +82,15 @@
 
 /* Kapak / markalı desen (kapak yoksa ya da izinli host'ta değilse) */
 .hub-cover { position: relative; display: block; overflow: hidden; background: var(--raised-2); }
-.hub-cover > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform 500ms var(--pc-ease); }
+.hub-cover > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform calc(var(--t-slow) * 2) var(--ease); }
 .pcard:hover .hub-cover > img { transform: scale(1.035); }
 .hub-cover.is-pattern {
   display: grid;
   place-items: center;
   background:
-    radial-gradient(80% 110% at 18% 0%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 62%),
-    linear-gradient(var(--pc-grid) 1px, transparent 1px) -1px -1px / 16px 16px,
-    linear-gradient(90deg, var(--pc-grid) 1px, transparent 1px) -1px -1px / 16px 16px,
+    radial-gradient(80% 110% at 18% 0%, var(--accent-glow), transparent 62%),
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px) -1px -1px / 16px 16px,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px) -1px -1px / 16px 16px,
     var(--raised-2);
 }
 .hub-cover-mark {
@@ -106,15 +100,15 @@
   border-radius: var(--r-md);
   corner-shape: var(--shape);
   background: color-mix(in srgb, var(--bg) 45%, transparent);
-  box-shadow: inset 0 0 0 1px var(--line-2), inset 0 1px 0 var(--pc-light);
+  box-shadow: inset 0 0 0 1px var(--line-2), inset 0 1px 0 var(--hl);
 }
 
 /* Rozetler: görsel üstünde de okunur (dolu zemin) */
 .badges { display: inline-flex; flex-wrap: wrap; gap: 5px; }
 .badges > .badge { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 5px; font-size: 11px; font-weight: 700; line-height: 1; background: var(--raised-3); color: var(--text); }
 .badges > .badge.is-new { background: var(--accent); color: var(--on-accent); }
-.badges > .badge.is-sale { background: var(--ok); color: var(--bg); }
-.badges > .badge.is-bestseller { background: var(--warn); color: var(--bg); }
+.badges > .badge.is-sale { background: var(--ember); color: var(--bg); }  /* Kor: indirim */
+.badges > .badge.is-bestseller { background: var(--text); color: var(--bg); }
 .badges > .badge.is-updated { background: var(--raised-3); color: var(--text); }
 .badges > .badge.is-beta { background: color-mix(in srgb, var(--warn) 20%, var(--bg)); color: var(--warn); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 50%, transparent); }
 .badges > .badge.is-key { background: var(--raised-3); color: var(--text); box-shadow: inset 0 0 0 1px var(--line-2); }

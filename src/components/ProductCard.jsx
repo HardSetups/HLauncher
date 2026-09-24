@@ -85,7 +85,7 @@ export default function ProductCard({ product, imageHosts, onOpen, layout = 'gri
           {product.owned
             ? <span className="pcard-owned"><Check size={13} /> {t('hs.owned')}</span>
             : <Price minor={product.priceFromMinor} compareAt={product.compareAtMinor} currency={product.currency} from />}
-          <span className="pcard-go" aria-hidden="true"><span className="pcard-go-text">{product.owned ? t('hub.card.view') : t('hub.card.details')}</span> <ArrowRight size={14} /></span>
+          <span className={`pcard-go${wide ? ' btn-secondary' : ''}`} aria-hidden="true"><span className="pcard-go-text">{product.owned ? t('hub.card.view') : t('hub.card.details')}</span> <ArrowRight size={14} /></span>
         </span>
       </span>
     </button>

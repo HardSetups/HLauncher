@@ -2,21 +2,12 @@
    HardSetups merkezi: marka bandı, vitrin, kütüphane, ürün sayfası (alpha.7)
    - KIMLIK.md: katmanlı yüzeyler (zemin → yüzey → kart), üst kenarda ince ışık
      çizgisi, altta yumuşak gölge; tek vurgu yalnızca birincil eylemde / seçimde.
-   - Yalnızca token (index.css :root); hex yok. --accent-text henüz yoksa yedek.
+   - Yalnızca tema token'ları (index.css :root): --hl, --shadow-card, --ease, --t-*, --hover,
+     --line-3, --accent-text/-edge/-glow, --ember. Hex yok; kendi ışık/gölge sistemi yok.
    - index.css'teki .feed/.hero/.hs-item kuralları burada .hs-hub / .pview
      altında daha belirgin seçicilerle ezilir (e2e sınıfları korunur).
    ════════════════════════════════════════════════════════════════════ */
 
-/* Yerel değişkenler (ışık çizgisi, ızgara, gölge): birleştirmede TEMA'nın token'larına bağlanmalı; ürün kartı
-   aynılarını product-card.css'te --pc-* adıyla taşır. */
-.hs-hub, .pview {
-  --hub-accent-text: var(--accent-text, var(--text));
-  --hub-light: rgba(255, 255, 255, 0.05);
-  --hub-grid: color-mix(in srgb, var(--text) 5%, transparent);
-  --hub-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --hub-shadow: 0 1px 0 rgba(0, 0, 0, 0.22), 0 12px 28px -18px rgba(0, 0, 0, 0.7);
-  --hub-card: inset 0 1px 0 var(--hub-light), var(--hub-shadow);
-}
 
 /* ── Marka bandı ──────────────────────────────────────────────────── */
 .hs-hub .hub-band {
@@ -32,10 +23,10 @@
   corner-shape: var(--shape);
   overflow: hidden;
   background:
-    radial-gradient(90% 160% at 0% 0%, color-mix(in srgb, var(--accent) 9%, transparent) 0%, transparent 60%),
+    radial-gradient(90% 160% at 0% 0%, var(--accent-glow) 0%, transparent 60%),
     var(--raised);
   border: 1px solid var(--line);
-  box-shadow: var(--hub-card);
+  box-shadow: var(--shadow-card);
 }
 /* İnce blok ızgarası: sağa doğru belirir, içeriğin arkasında kalır */
 .hs-hub .hub-band::before {
@@ -43,7 +34,7 @@
   position: absolute;
   inset: 0;
   z-index: -1;
-  background-image: linear-gradient(var(--hub-grid) 1px, transparent 1px), linear-gradient(90deg, var(--hub-grid) 1px, transparent 1px);
+  background-image: linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
   background-size: 16px 16px;
   background-position: -1px -1px;
   -webkit-mask-image: linear-gradient(90deg, transparent 30%, black 100%);
@@ -66,14 +57,14 @@
   corner-shape: var(--shape);
   background: var(--raised-3);
   border: 1px solid var(--line-2);
-  box-shadow: inset 0 1px 0 var(--hub-light), inset 0 -3px 0 rgba(0, 0, 0, 0.22);
+  box-shadow: inset 0 1px 0 var(--hl), inset 0 -3px 0 rgba(0, 0, 0, 0.22);
   color: var(--text);
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 18px;
   letter-spacing: 0.02em;
 }
-.hub-mark::after { content: ''; position: absolute; right: 7px; bottom: 8px; width: 6px; height: 6px; background: var(--accent); }
+.hub-mark::after { content: ''; position: absolute; right: 7px; bottom: 8px; width: 6px; height: 6px; background: var(--accent-text); }
 .hub-mark.is-lg { width: 64px; height: 64px; font-size: 22px; margin-bottom: 6px; }
 
 .hub-band-side { grid-area: side; display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
@@ -92,7 +83,7 @@
   border: 1px solid var(--line-2);
 }
 .hub-wallet button { display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 0; corner-shape: round; }
-.hub-wallet button:hover { background: var(--raised-2); }
+.hub-wallet button:hover { background: var(--hover); }
 .hub-wallet-main > svg { color: var(--text-2); }
 .hub-wallet-text { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
 .hub-wallet-text small { font-size: 11px; font-weight: 500; color: var(--text-2); }
@@ -115,7 +106,7 @@
   background: color-mix(in srgb, var(--surface) 70%, transparent);
   border: 1px solid var(--line);
 }
-.hub-link:hover { color: var(--text); background: var(--raised-2); border-color: var(--line-2); }
+.hub-link:hover { color: var(--text); background: var(--hover); border-color: var(--line-3); }
 .hub-link > svg:first-child { color: var(--text-2); }
 .hub-link-ext { color: var(--text-3); }
 
@@ -124,7 +115,7 @@
 /* ── Vitrin ───────────────────────────────────────────────────────── */
 .hub-feed { gap: 30px; }
 .hs-hub .feed-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; }
-.hs-hub .feed-title { font-size: 15.5px; }
+.hs-hub .feed-title { font-size: 18px; }  /* ana sayfanın .section-head h2 ölçüsü */
 .hs-hub .feed-title svg { color: var(--text-2); }
 .feed-count {
   display: inline-grid;
@@ -140,7 +131,7 @@
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
 }
-.hub-feed .ann { box-shadow: inset 0 1px 0 var(--hub-light); }
+.hub-feed .ann { box-shadow: inset 0 1px 0 var(--hl); }
 .hub-skel-title { display: block; width: 150px; height: 16px; border-radius: 4px; background: var(--raised-2); }
 .hub-feed .feed-error { border-radius: var(--r-lg); corner-shape: var(--shape); background: var(--raised); border: 1px solid var(--line); }
 .hub-feed .feed-stale { text-align: center; color: var(--text-2); }
@@ -150,9 +141,9 @@
   height: clamp(230px, 36vh, 330px);
   flex-shrink: 0;
   background: var(--raised-2);
-  box-shadow: var(--hub-card);
+  box-shadow: var(--shadow-card);
 }
-.hub-feed .hero-img { transition: transform 700ms var(--hub-ease); }
+.hub-feed .hero-img { transition: transform calc(var(--t-slow) * 2.5) var(--ease); }
 .hub-feed .hero:hover .hero-img { transform: scale(1.025); }
 .hub-feed .hero-shade {
   background:
@@ -163,9 +154,9 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(70% 120% at 85% 10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 62%),
-    linear-gradient(var(--hub-grid) 1px, transparent 1px) -1px -1px / 20px 20px,
-    linear-gradient(90deg, var(--hub-grid) 1px, transparent 1px) -1px -1px / 20px 20px,
+    radial-gradient(70% 120% at 85% 10%, var(--accent-glow), transparent 62%),
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px) -1px -1px / 20px 20px,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px) -1px -1px / 20px 20px,
     var(--raised-2);
 }
 .hub-feed .hero-text { left: 30px; bottom: 28px; right: 38%; gap: 8px; align-items: flex-start; }
@@ -173,21 +164,8 @@
 .hub-feed .hero-sub { font-size: 14.5px; color: var(--text-2); max-width: 46ch; }
 .hub-feed .hero-text .badges { margin-bottom: 2px; }
 .hero-cta { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-top: 10px; }
-.hero-go {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 40px;
-  padding: 0 18px;
-  border-radius: var(--r-md);
-  corner-shape: var(--shape);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
-  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.22);
-  transition: filter 120ms var(--hub-ease);
-}
-.hero-card:hover .hero-go { filter: brightness(1.08); }
+.hero-go { height: 40px; padding: 0 18px; border-radius: var(--r-md); corner-shape: var(--shape); font-weight: 600; transition: background-color var(--t-fast) var(--ease); }
+.hero-card:hover .hero-go { background-color: var(--accent-hover); }
 .hero-cta .price b { font-size: 17px; color: var(--text); }
 .hero-cta .price-from, .hero-cta .price-old { color: var(--text-2); }
 .hero-owned { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 600; color: var(--ok); }
@@ -205,9 +183,9 @@
 }
 .hub-feed .hero-nav .icon-btn { color: var(--text); width: 28px; height: 28px; }
 .hub-feed .hero-dot { display: grid; place-items: center; width: 18px; height: 28px; padding: 0; border-radius: 0; corner-shape: round; background: none; }
-.hub-feed .hero-dot::before { content: ''; width: 6px; height: 6px; border-radius: 1px; background: color-mix(in srgb, var(--text) 38%, transparent); transition: width 180ms var(--hub-ease), background 180ms; }
+.hub-feed .hero-dot::before { content: ''; width: 6px; height: 6px; border-radius: 1px; background: color-mix(in srgb, var(--text) 38%, transparent); transition: width var(--t-base) var(--ease), background var(--t-base); }
 .hub-feed .hero-dot:hover::before { background: var(--text-2); }
-.hub-feed .hero-dot.is-active::before { width: 14px; background: var(--accent); }
+.hub-feed .hero-dot.is-active::before { width: 14px; background: var(--accent-edge); }
 
 /* İkili bölümler (güncellemeler + bitenler, kampanyalar + kuponlar) */
 .feed-duo { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 30px 22px; align-items: start; }
@@ -220,7 +198,7 @@
   corner-shape: var(--shape);
   background: var(--raised);
   border: 1px solid var(--line);
-  box-shadow: inset 0 1px 0 var(--hub-light);
+  box-shadow: inset 0 1px 0 var(--hl);
 }
 .hs-hub .feed-row.is-warn { border-color: color-mix(in srgb, var(--warn) 38%, transparent); background: color-mix(in srgb, var(--warn) 5%, var(--raised)); }
 .feed-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
@@ -240,9 +218,9 @@
   overflow: hidden;
   background: color-mix(in srgb, var(--accent) 6%, var(--raised));
   border: 1px solid var(--accent-line);
-  box-shadow: var(--hub-card);
+  box-shadow: var(--shadow-card);
 }
-.hs-hub .camp:not(.is-coupon)::before { content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; background: var(--accent); }
+.hs-hub .camp:not(.is-coupon)::before { content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; background: var(--accent-edge); }
 .hs-hub .camp-title { font-size: 19px; line-height: 1.2; }
 .hs-hub .camp-desc { font-size: 13px; color: var(--text-2); }
 .hs-hub .camp-foot { margin-top: 2px; }
@@ -261,11 +239,11 @@
   border: 1px solid var(--line-2);
   font-size: 12.5px;
 }
-.camp-product:hover { background: var(--raised-2); }
+.camp-product:hover { background: var(--raised-2); border-color: var(--line-3); }
 .camp-product > svg { color: var(--text-2); }
 .hs-hub .coupon { background: var(--surface); border-color: var(--accent-line); }
 .hs-hub .coupon:hover { background: var(--raised-2); }
-.hs-hub .coupon svg { color: var(--hub-accent-text); }
+.hs-hub .coupon svg { color: var(--accent-text); }
 .hs-hub .coupon.is-copied { border-style: solid; border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
 .hs-hub .coupon.is-copied svg:last-child { color: var(--ok); }
 
@@ -321,8 +299,8 @@
   corner-shape: var(--shape);
   background: var(--raised);
   border: 1px solid var(--line);
-  box-shadow: var(--hub-card);
-  transition: border-color 160ms var(--hub-ease);
+  box-shadow: var(--shadow-card);
+  transition: border-color var(--t-base) var(--ease);
 }
 .hub-feed .news-card:disabled { opacity: 1; cursor: default; }
 .hub-feed .news-card-img { width: 100%; aspect-ratio: 16 / 7; max-height: 230px; border-bottom: 1px solid var(--line); }
@@ -349,7 +327,7 @@
   corner-shape: var(--shape);
   background: var(--raised);
   border: 1px solid var(--line);
-  box-shadow: inset 0 1px 0 var(--hub-light);
+  box-shadow: inset 0 1px 0 var(--hl);
 }
 .hub-how-icon {
   display: grid;
@@ -378,10 +356,10 @@
   border-radius: var(--r-lg);
   corner-shape: var(--shape);
   background:
-    radial-gradient(60% 90% at 50% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 70%),
+    radial-gradient(60% 90% at 50% 0%, var(--accent-glow), transparent 70%),
     var(--raised);
   border: 1px solid var(--line);
-  box-shadow: var(--hub-card);
+  box-shadow: var(--shadow-card);
 }
 .hub-empty-icon {
   display: grid;
@@ -393,7 +371,7 @@
   corner-shape: var(--shape);
   background: var(--raised-3);
   border: 1px solid var(--line-2);
-  box-shadow: inset 0 1px 0 var(--hub-light);
+  box-shadow: inset 0 1px 0 var(--hl);
   color: var(--text);
 }
 .hub-empty-title { font-family: var(--font-display); font-size: 19px; font-weight: 600; }
@@ -415,7 +393,7 @@
   corner-shape: var(--shape);
   background: var(--raised);
   border: 1px solid var(--line);
-  box-shadow: inset 0 1px 0 var(--hub-light);
+  box-shadow: inset 0 1px 0 var(--hl);
 }
 .hub-stat b { font-family: var(--font-display); font-size: 22px; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .hub-stat span { font-size: 12px; color: var(--text-2); }
@@ -435,8 +413,8 @@
   overflow: hidden;
   background: var(--raised);
   border: 1px solid var(--line);
-  box-shadow: var(--hub-card);
-  transition: border-color 160ms var(--hub-ease);
+  box-shadow: var(--shadow-card);
+  transition: border-color var(--t-base) var(--ease);
 }
 .hs-hub .hs-item.is-installed { border-color: var(--line-2); }
 .hs-hub .hs-item.has-update { border-color: var(--accent-line); }
@@ -448,11 +426,11 @@
 .hs-hub .hs-item-title h3 { font-size: 19px; }
 .hs-hub .hs-item-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); }
 .hs-hub .hs-item-status.is-ok { color: var(--text); }
-.hs-hub .hs-item-status.is-accent { color: var(--hub-accent-text); font-weight: 600; }
+.hs-hub .hs-item-status.is-accent { color: var(--accent-text); font-weight: 600; }
 .hs-hub .hs-item-status.is-warn { color: var(--warn); }
 .hs-dot { width: 7px; height: 7px; flex-shrink: 0; background: var(--text-3); }
 .is-ok > .hs-dot { background: var(--ok); }
-.is-accent > .hs-dot { background: var(--accent); }
+.is-accent > .hs-dot { background: var(--accent-text); }
 .is-warn > .hs-dot { background: var(--warn); }
 .hs-item-meta { display: flex; flex-wrap: wrap; gap: 6px; }
 .hs-item-meta li {
@@ -489,17 +467,17 @@
   corner-shape: var(--shape);
   overflow: hidden;
   background:
-    radial-gradient(80% 160% at 0% 0%, color-mix(in srgb, var(--accent) 9%, transparent) 0%, transparent 60%),
+    radial-gradient(80% 160% at 0% 0%, var(--accent-glow) 0%, transparent 60%),
     var(--raised);
   border: 1px solid var(--line);
-  box-shadow: var(--hub-card);
+  box-shadow: var(--shadow-card);
 }
 .pview .pview-head::before {
   content: '';
   position: absolute;
   inset: 0;
   z-index: -1;
-  background-image: linear-gradient(var(--hub-grid) 1px, transparent 1px), linear-gradient(90deg, var(--hub-grid) 1px, transparent 1px);
+  background-image: linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
   background-size: 16px 16px;
   -webkit-mask-image: linear-gradient(90deg, transparent 40%, black 100%);
   mask-image: linear-gradient(90deg, transparent 40%, black 100%);
@@ -511,10 +489,10 @@
 .pview .pview-cta .price-old { color: var(--text-2); }
 .pview-plan-note { font-size: 12px; color: var(--text-2); text-align: right; }
 .pview-owned { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--ok); }
-.pview .gallery-main { box-shadow: var(--hub-card); }
+.pview .gallery-main { box-shadow: var(--shadow-card); }
 .pview .gallery-thumb { corner-shape: var(--shape); }
-.pview .pview-desc { padding: 18px 20px; border-radius: var(--r-lg); corner-shape: var(--shape); background: var(--raised); border: 1px solid var(--line); box-shadow: inset 0 1px 0 var(--hub-light); }
-.pview .pview-card { box-shadow: inset 0 1px 0 var(--hub-light), var(--hub-shadow); }
+.pview .pview-desc { padding: 18px 20px; border-radius: var(--r-lg); corner-shape: var(--shape); background: var(--raised); border: 1px solid var(--line); box-shadow: inset 0 1px 0 var(--hl); }
+.pview .pview-card { box-shadow: var(--shadow-card); }
 .pview .pview-card h3 { font-size: 14.5px; }
 
 /* ── Hareket azaltma ──────────────────────────────────────────────── */

@@ -65,7 +65,7 @@ function Hero({ items, imageHosts, products, onAction }) {
             {item.subtitle && <span className="hero-sub">{item.subtitle}</span>}
             {item.action && (
               <span className="hero-cta">
-                <span className="hero-go">
+                <span className="hero-go btn-primary">
                   {item.action.type === 'url' ? <>{t('hub.hero.open')} <ExternalLink size={14} /></> : <>{t('hub.hero.view')} <ArrowRight size={15} /></>}
                 </span>
                 {product && (product.owned
