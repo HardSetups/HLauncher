@@ -1,7 +1,8 @@
-// İlk açılış sihirbazı: dil + renk → hesap → bellek. settings.onboarded=true olunca kapanır.
+// İlk açılış sihirbazı: giriş kapısından (HardSetups hesabı + dil) sonra çalışır.
+// Sıra: vurgu rengi → Minecraft hesabı → bellek. settings.onboarded=true olunca kapanır.
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check } from 'lucide-react';
+import { Check, CheckCircle2 } from 'lucide-react';
 import { contrastText } from '../utils/color';
 import { ACCENTS } from '../utils/accents.js';
 import { useI18n } from '../i18n.jsx';
@@ -10,8 +11,8 @@ import AccountPanel from './AccountPanel.jsx';
 const ACCENT_CHOICES = ACCENTS.map((a) => a.color);
 const STEPS = 3;
 
-function Onboarding({ accent, account, setAccount, systemInfo, updateSetting, onError, onFinish }) {
-  const { t, lang, setLang } = useI18n();
+function Onboarding({ username, accent, account, setAccount, systemInfo, updateSetting, onError, onFinish }) {
+  const { t } = useI18n();
   const [step, setStep] = useState(0);
 
   const totalMem = systemInfo.totalMemGb || 16;
@@ -37,19 +38,10 @@ function Onboarding({ accent, account, setAccount, systemInfo, updateSetting, on
             <motion.div key="s0" {...slide} className="ob-step">
               <img src="logo.png" alt="" className="ob-logo" />
               <h2 className="modal-title">{t('ob.welcome')}</h2>
-              <p className="ob-text">{t('ob.welcome.desc')}</p>
-
-              <div className="field">
-                <span>{t('set.language')}</span>
-                <div className="seg">
-                  {[{ id: 'tr', label: 'Türkçe' }, { id: 'en', label: 'English' }].map((l) => (
-                    <button key={l.id} className={`seg-btn${lang === l.id ? ' is-active' : ''}`}
-                      onClick={() => { setLang(l.id); updateSetting('language', l.id); }}>
-                      {l.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {username && (
+                <p className="ob-text ob-signed-in"><CheckCircle2 size={15} /> {t('auth.ob.signedIn', { name: username })}</p>
+              )}
+              <p className="ob-text">{t('auth.ob.accent')}</p>
 
               <div className="field">
                 <span>{t('set.accent')}</span>
