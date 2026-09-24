@@ -3,10 +3,12 @@
    - KIMLIK.md: katmanlı yüzeyler (zemin → yüzey → kart), üst kenarda ince ışık
      çizgisi, altta yumuşak gölge; tek vurgu yalnızca birincil eylemde / seçimde.
    - Yalnızca token (index.css :root); hex yok. --accent-text henüz yoksa yedek.
-   - index.css'teki .feed/.hero/.pcard/.hs-item kuralları burada .hs-hub / .pview
+   - index.css'teki .feed/.hero/.hs-item kuralları burada .hs-hub / .pview
      altında daha belirgin seçicilerle ezilir (e2e sınıfları korunur).
    ════════════════════════════════════════════════════════════════════ */
 
+/* Yerel değişkenler (ışık çizgisi, ızgara, gölge): birleştirmede TEMA'nın token'larına bağlanmalı; ürün kartı
+   aynılarını product-card.css'te --pc-* adıyla taşır. */
 .hs-hub, .pview {
   --hub-accent-text: var(--accent-text, var(--text));
   --hub-light: rgba(255, 255, 255, 0.05);
@@ -305,71 +307,8 @@
 .coupon-value::after { bottom: -9px; }
 .coupon-body { display: flex; flex-direction: column; justify-content: center; gap: 10px; padding: 14px 16px 14px 18px; min-width: 0; }
 
-/* Ürün kartları */
-/* auto-fit: az ürünle satırda boş sütun kalmaz */
-.hs-hub .pgrid { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
-.hs-hub .pgrid.is-duo { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.hs-hub .pgrid.is-duo .pcard-cover { aspect-ratio: 21 / 9; }
-.hs-hub .pcard {
-  position: relative;
-  background: var(--raised);
-  border: 1px solid var(--line);
-  box-shadow: var(--hub-card);
-  transition: border-color 160ms var(--hub-ease), transform 160ms var(--hub-ease);
-}
-.hs-hub .pcard:hover { border-color: var(--line-2); transform: translateY(-2px); }
-.hs-hub .pcard.is-skeleton { height: 270px; box-shadow: none; }
-.hs-hub .pcard-cover { aspect-ratio: 16 / 9; flex-shrink: 0; border-bottom: 1px solid var(--line); }
-.hs-hub .pcard-cover .badges { position: absolute; top: 10px; left: 10px; z-index: 1; }
-.hs-hub .pcard-body { gap: 6px; padding: 14px 16px 14px; }
-.hs-hub .pcard-name { font-size: 17px; line-height: 1.25; }
-.hs-hub .pcard-desc { font-size: 12.5px; line-height: 1.45; min-height: calc(2 * 1.45em); }
-.hs-hub .pcard-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line); }
-.hs-hub .pcard-foot .price b { font-size: 16px; }
-.hs-hub .pcard-foot .price-from, .hs-hub .pcard-foot .price-old { color: var(--text-2); }
-.pcard-go { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; color: var(--text-2); transition: color 140ms, gap 160ms var(--hub-ease); white-space: nowrap; }
-.pcard:hover .pcard-go { color: var(--text); gap: 7px; }
-
-/* Tek ürün: geniş, yatay vitrin kartı */
-.hs-hub .pcard.is-wide { flex-direction: row; min-height: 232px; }
-.hs-hub .pcard.is-wide .pcard-cover { flex: 0 0 55%; aspect-ratio: auto; border-bottom: none; border-right: 1px solid var(--line); }
-.hs-hub .pcard.is-wide .pcard-body { gap: 8px; padding: 22px 24px 20px; justify-content: center; min-width: 0; }
-.hs-hub .pcard.is-wide .pcard-icon { margin-bottom: 4px; }
-.hs-hub .pcard.is-wide .pcard-name { font-size: 24px; line-height: 1.15; }
-.hs-hub .pcard.is-wide .pcard-desc { font-size: 13.5px; -webkit-line-clamp: 4; min-height: 0; }
-.hs-hub .pcard.is-wide .pcard-foot { margin-top: 10px; }
-.hs-hub .pcard.is-wide .price b { font-size: 21px; }
-.hs-hub .pcard.is-wide .pcard-go { height: 36px; padding: 0 14px; border-radius: var(--r-md); corner-shape: var(--shape); background: var(--raised-2); border: 1px solid var(--line-2); color: var(--text); }
-.hs-hub .pcard.is-wide:hover .pcard-go { background: var(--raised-3); }
-
-/* Kapak / markalı desen */
-.hub-cover { position: relative; display: block; overflow: hidden; background: var(--raised-2); }
-.hub-cover > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform 500ms var(--hub-ease); }
-.pcard:hover .hub-cover > img, .hs-item:hover .hub-cover > img { transform: scale(1.035); }
-.hub-cover.is-pattern {
-  display: grid;
-  place-items: center;
-  background:
-    radial-gradient(80% 110% at 18% 0%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 62%),
-    linear-gradient(var(--hub-grid) 1px, transparent 1px) -1px -1px / 16px 16px,
-    linear-gradient(90deg, var(--hub-grid) 1px, transparent 1px) -1px -1px / 16px 16px,
-    var(--raised-2);
-}
-.hub-cover-mark {
-  display: grid;
-  place-items: center;
-  padding: 8px;
-  border-radius: var(--r-md);
-  corner-shape: var(--shape);
-  background: color-mix(in srgb, var(--bg) 45%, transparent);
-  box-shadow: inset 0 0 0 1px var(--line-2), inset 0 1px 0 var(--hub-light);
-}
-
-/* Rozetler (görsel üstünde de okunur: dolu zemin) */
-.hs-hub .badge, .pview .badge { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 5px; font-size: 11px; line-height: 1; }
-.hs-hub .badge.is-updated, .pview .badge.is-updated { background: var(--raised-3); color: var(--text); }
-.badge.is-beta { background: var(--warn); color: var(--bg); }
-.badge.is-key { background: var(--raised-3); color: var(--text); box-shadow: inset 0 0 0 1px var(--line-2); }
+/* Ürün kartı, raf (.pgrid), kapak (.hub-cover), rozet ve fiyat: product-card.css (ProductCard.jsx) */
+.hs-item:hover .hub-cover > img { transform: scale(1.035); }
 
 /* Haberler */
 .hub-feed .feed-news { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
@@ -580,7 +519,7 @@
 
 /* ── Hareket azaltma ──────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  .hs-hub .pcard:hover, .hub-cover > img, .hub-feed .hero-img { transform: none !important; }
+  .hs-item:hover .hub-cover > img, .hub-feed .hero-img { transform: none !important; }
 }
 
 /* ── Alçak pencere: bant sıkışır, içerik daha erken başlar ─────────── */
@@ -601,5 +540,4 @@
   .hub-band-text p { font-size: 13px; }
   .hub-who { display: none; }
   .hub-feed .hero-text { right: 30%; }
-  .hs-hub .pcard.is-wide .pcard-cover { flex-basis: 50%; }
 }

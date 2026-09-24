@@ -1,7 +1,9 @@
 // Vitrin ürün kartı (sözleşme §4 ProductCard): kapak, ad, kısa açıklama, fiyat
 // (indirimliyse eski fiyat üstü çizili), rozetler (Yeni / İndirimde), sahipsen işaret.
 // Kapak yoksa ya da izinli host'ta değilse markalı desen + ürün ikonu gösterilir.
+// Stiller kendi dosyasında: ana sayfa kartı PortalPage (hub.css) yüklenmeden de gösterir.
 import { useState } from 'react';
+import '../styles/product-card.css';
 import { Check, ArrowRight } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { formatMinor } from '../utils/money.js';
@@ -59,15 +61,20 @@ export function ProductShelf({ products, imageHosts, onOpen }) {
   );
 }
 
-/** layout: 'grid' (dikey kart) | 'wide' (tek ürün: yatay, geniş vitrin kartı) */
-export default function ProductCard({ product, imageHosts, onOpen, layout = 'grid' }) {
+/**
+ * Tek ürün kartı tasarımı (vitrin, kütüphane önerileri, ana sayfa). Zorunlu: product, imageHosts,
+ * onOpen(product). İsteğe bağlı: layout 'grid' (dikey) | 'wide' (tek ürün: yatay, geniş);
+ * size 'default' | 'compact' (dar şeritler: tek satır açıklama, yalnızca ok).
+ */
+export default function ProductCard({ product, imageHosts, onOpen, layout = 'grid', size = 'default' }) {
   const { t } = useI18n();
   const cover = imgSrc(product.coverUrl, imageHosts);
   const icon = imgSrc(product.iconUrl, imageHosts);
   const wide = layout === 'wide';
+  const compact = size === 'compact' && !wide;
   return (
-    <button type="button" className={`pcard${wide ? ' is-wide' : ''}${product.owned ? ' is-owned' : ''}`} onClick={() => onOpen(product)}>
-      <CoverArt src={cover} seed={product.slug} icon={icon} iconSize={wide ? 72 : 52} className="pcard-cover">
+    <button type="button" className={`pcard${wide ? ' is-wide' : ''}${compact ? ' is-compact' : ''}${product.owned ? ' is-owned' : ''}`} onClick={() => onOpen(product)}>
+      <CoverArt src={cover} seed={product.slug} icon={icon} iconSize={wide ? 72 : compact ? 40 : 52} className="pcard-cover">
         <Badges badges={product.badges} />
       </CoverArt>
       <span className="pcard-body">
@@ -78,7 +85,7 @@ export default function ProductCard({ product, imageHosts, onOpen, layout = 'gri
           {product.owned
             ? <span className="pcard-owned"><Check size={13} /> {t('hs.owned')}</span>
             : <Price minor={product.priceFromMinor} compareAt={product.compareAtMinor} currency={product.currency} from />}
-          <span className="pcard-go">{product.owned ? t('hub.card.view') : t('hub.card.details')} <ArrowRight size={14} /></span>
+          <span className="pcard-go" aria-hidden="true"><span className="pcard-go-text">{product.owned ? t('hub.card.view') : t('hub.card.details')}</span> <ArrowRight size={14} /></span>
         </span>
       </span>
     </button>
