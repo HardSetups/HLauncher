@@ -483,6 +483,8 @@ function App() {
                     ? portalHome.news.map((n) => ({ title: n.title, text: n.excerpt, date: n.publishedAt ? n.publishedAt.slice(0, 10) : null, url: n.url }))
                     : news}
                   hsHighlight={portalHome ? hsHighlightOf(portalHome) : null}
+                  portal={portal}
+                  portalHome={portalHome}
                   launch={launch}
                   onPlay={(inst) => launchInstance(inst)}
                   onOpenInstance={openInstance}
