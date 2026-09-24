@@ -157,7 +157,13 @@ export default function HardSetupsCard({ portal, onError }) {
         <div className="hs-card-text">
           <span className="acct-type is-microsoft">{t('hs.connected')}</span>
           <h3 className="hs-username">{portal.user?.username}</h3>
-          {balance && <span className="hs-balance"><Wallet size={13} /> {t('hs.balance')}: <b>{balance}</b></span>}
+          {balance && (
+            <span className="hs-balance">
+              <Wallet size={13} /> {t('hs.balance')}: <b>{balance}</b>
+              <button className="link-btn" onClick={() => openLink('wallet')}>{t('hs.wallet')}</button>
+              <button className="link-btn" onClick={() => openLink('topup')}>{t('hs.buy.topup')}</button>
+            </span>
+          )}
         </div>
       </div>
       <div className="acct-actions">

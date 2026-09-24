@@ -9,7 +9,8 @@ import BrowsePage from './components/BrowsePage';
 import ServersPage from './components/ServersPage';
 import SettingsPage from './components/SettingsPage';
 import AccountPage from './components/AccountPage';
-import LibraryPage from './components/LibraryPage';
+import PortalPage from './components/PortalPage';
+import ProductView from './components/ProductView';
 import DownloadBar from './components/DownloadBar';
 import UpdateModal from './components/UpdateModal';
 import CreateInstanceModal from './components/CreateInstanceModal';
@@ -382,7 +383,8 @@ function App() {
           : [{ label: t('browse.title') }];
       }
       case 'servers': return [{ label: t('nav.servers') }];
-      case 'library': return [{ label: t('nav.library') }];
+      case 'hardsetups': return [{ label: t('nav.library') }];
+      case 'product': return [{ label: t('nav.library'), onClick: () => navigate({ page: 'hardsetups', tab: 'store' }) }, { label: view.title || view.slug || '' }];
       case 'settings': return [{ label: t('nav.settings') }];
       case 'account': return [{ label: t('nav.account') }];
       default: return [{ label: t('nav.home') }];
@@ -390,7 +392,7 @@ function App() {
   })();
 
   const pageMotion = { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0 }, transition: { duration: 0.14 } };
-  const pageKey = page === 'instance' ? `inst-${view.id}` : page === 'browse' ? `browse-${view.instanceId || ''}-${view.type || ''}` : page;
+  const pageKey = page === 'instance' ? `inst-${view.id}` : page === 'browse' ? `browse-${view.instanceId || ''}-${view.type || ''}` : page === 'product' ? `product-${view.slug}` : page;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -497,9 +499,14 @@ function App() {
                 />
               )}
 
-              {page === 'library' && (
-                <LibraryPage
+              {page === 'hardsetups' && (
+                <PortalPage
                   portal={portal}
+                  tab={view.tab || 'store'}
+                  setTab={(tab) => setView((v) => ({ ...v, tab }))}
+                  autoInstall={view.install || null}
+                  onAutoInstallDone={() => setView((v) => ({ ...v, install: null }))}
+                  onOpenProduct={(slug) => navigate({ page: 'product', slug })}
                   instances={instances}
                   launch={launch}
                   onPlay={(inst) => launchInstance(inst)}
@@ -508,6 +515,18 @@ function App() {
                   onInstancesRefresh={refreshInstances}
                   onError={setErrorMessage}
                   onNotice={setNotice}
+                />
+              )}
+
+              {page === 'product' && (
+                <ProductView
+                  slug={view.slug}
+                  portal={portal}
+                  onLoaded={(title) => setView((v) => (v.page === 'product' && v.title !== title ? { ...v, title } : v))}
+                  onBack={() => navigate({ page: 'hardsetups', tab: 'store' })}
+                  onOpenLibrary={() => navigate({ page: 'hardsetups', tab: 'library' })}
+                  onInstall={(slug) => navigate({ page: 'hardsetups', tab: 'library', install: slug })}
+                  onConnect={() => navigate({ page: 'account' })}
                 />
               )}
 

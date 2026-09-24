@@ -45,7 +45,10 @@ function statusLine(t, item) {
   return { tone: 'muted', text: item.latestVersion?.version ? t('hs.notInstalledV', { v: item.latestVersion.version }) : t('hs.notInstalled') };
 }
 
-export default function LibraryPage({ portal, instances, launch, onPlay, onStop, onOpenInstance, onInstancesRefresh, onError, onNotice }) {
+export default function LibraryPage({
+  portal, instances, launch, onPlay, onStop, onOpenInstance, onInstancesRefresh, onError, onNotice,
+  embedded = false, autoInstallSlug = null, onAutoInstallDone = () => {},
+}) {
   const { t } = useI18n();
   const { tasks, runTask } = useTasks();
   const api = window.electronAPI;
@@ -111,6 +114,15 @@ export default function LibraryPage({ portal, instances, launch, onPlay, onStop,
     onNotice(res.backupPath ? t('hs.uninstalled.backup') : t('hs.uninstalled'));
   };
 
+  // Satın almadan sonra "Şimdi kur": ürün kütüphanede görünür görünmez bir kez kurulur
+  useEffect(() => {
+    if (!autoInstallSlug || !lib.loaded) return;
+    const item = lib.items.find((i) => i.product.slug === autoInstallSlug);
+    onAutoInstallDone();
+    if (item && !item.instanceId && item.installable) install(item, 'INSTALL');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoInstallSlug, lib.loaded]);
+
   const runProblemAction = () => {
     const action = problem?.action;
     setProblem(null);
@@ -118,14 +130,14 @@ export default function LibraryPage({ portal, instances, launch, onPlay, onStop,
     else if (action?.kind) api.portalOpenLink(action.kind);
   };
 
-  if (!portal) return <div className="page-scroll hs-lib"><Loader2 className="spin" /></div>;
+  if (!portal) return <div className={embedded ? 'hs-lib' : 'page-scroll hs-lib'}><Loader2 className="spin" /></div>;
 
   const items = lib.items;
   return (
-    <div className="page-scroll hs-lib">
-      <header className="page-head">
+    <div className={embedded ? 'hs-lib' : 'page-scroll hs-lib'}>
+      <header className={embedded ? 'hs-lib-toolbar' : 'page-head'}>
         <div>
-          <h1>{t('hs.lib.title')}</h1>
+          {!embedded && <h1>{t('hs.lib.title')}</h1>}
           <p className="page-sub">{t('hs.lib.sub')}</p>
         </div>
         <div className="page-head-actions">

@@ -21,7 +21,8 @@ async function main() {
 
     const server = await mock.start(0);
     const base = `http://127.0.0.1:${server.address().port}`;
-    const env = { ...process.env, APPDATA: appData, HL_API_BASE: base };
+    // HL_EXTERNAL_BASE: Modrinth / Fabric meta da mock'tan (test internete çıkmaz)
+    const env = { ...process.env, APPDATA: appData, HL_API_BASE: base, HL_EXTERNAL_BASE: base };
     delete env.ELECTRON_RUN_AS_NODE; // açıksa main.cjs kendini yeniden başlatır, Playwright süreci kaybeder
     delete env.NODE_ENV;              // dist/ yüklensin (Vite gerekmez)
 
@@ -56,12 +57,42 @@ async function main() {
         await win.screenshot({ path: path.join(OUT, '03-bagli.png') });
         step(`bağlandı: ${username}, bakiye ${balance}`);
 
-        // Kütüphane: lisanslı ürünü kur → ayrı klasör → dünyaları yedekleyerek kaldır
+        // Vitrin → ürün sayfası → bakiye ile satın al → "Şimdi kur" → kütüphanede kurulur
         await win.click('.rail-library');
-        await win.waitForSelector('.hs-item .btn-primary', { timeout: 15000 });
+        await win.waitForSelector('.hero-card', { timeout: 15000 });
+        assert.strictEqual(await win.$$eval('.hero-dot', (d) => d.length), 2, 'bilinmeyen action türü gizlenmeli');
+        await win.waitForSelector('.camp .coupon');
+        await win.waitForSelector('.bell-count');
+        await win.waitForTimeout(300);
+        await win.screenshot({ path: path.join(OUT, '03a-vitrin.png') });
+        step('vitrin: hero, kampanya kuponu, öne çıkanlar, bildirim sayısı');
+
+        await win.click('.pcard:has-text("DoldurDoldur")');
+        await win.waitForSelector('.pview-head h1:has-text("DoldurDoldur")');
+        const md = await win.textContent('.pview-desc');
+        assert.ok(md.includes('<script>'), 'ham HTML metin olarak görünmeli, işlenmemeli');
+        assert.strictEqual(await win.$('.pview-desc script'), null);
+        await win.screenshot({ path: path.join(OUT, '03a2-urun.png') });
+        await win.click('.pview-cta .btn-primary');
+        await win.fill('.modal input', 'LAUNCHER10');
+        await win.click('.modal .btn-primary'); // Devam → teklif
+        await win.waitForSelector('.buy-sum tr.is-total');
+        await win.waitForTimeout(300);
+        await win.screenshot({ path: path.join(OUT, '03a3-onay.png') });
+        await win.click('.modal .btn-primary'); // öde
+        await win.waitForSelector('.modal-icon.tone-success', { timeout: 10000 });
+        assert.strictEqual(mock.state.stats.purchases, 1);
+        step('satın alındı: teklif → onay (toplam + sonraki bakiye) → sipariş');
+        await win.click('.modal .btn-primary'); // Şimdi kur → kütüphane
+        await win.waitForSelector('.hs-item.is-installed:has-text("DoldurDoldur") .btn-play', { timeout: 30000 });
+        assert.ok(fs.existsSync(path.join(appData, '.hlauncher', 'instances', 'hs-tiktok-doldurdoldur', 'hl-manifest.json')));
+        step('"Şimdi kur": ürün kütüphanede kendiliğinden kuruldu');
+
+        // Kütüphane: lisanslı ürünü kur → ayrı klasör → dünyaları yedekleyerek kaldır
+        await win.waitForSelector('.hs-item:has-text("Kum Fırtınası") .btn-primary', { timeout: 15000 });
         await win.screenshot({ path: path.join(OUT, '03b-kutuphane.png') });
-        await win.click('.hs-item .btn-primary');
-        await win.waitForSelector('.hs-item.is-installed .btn-play', { timeout: 30000 });
+        await win.click('.hs-item:has-text("Kum Fırtınası") .btn-primary');
+        await win.waitForSelector('.hs-item.is-installed:has-text("Kum Fırtınası") .btn-play', { timeout: 30000 });
         const instDir = path.join(appData, '.hlauncher', 'instances', 'hs-kum-firtinasi');
         for (const rel of ['mods/hardsetups-kumfirtinasi-1.4.0.jar', 'mods/fabric-api-0.116.17+1.21.1.jar', 'hl-manifest.json', 'config/hardsetups/ayarlar.json']) {
             assert.ok(fs.existsSync(path.join(instDir, ...rel.split('/'))), `kurulumda eksik: ${rel}`);
@@ -73,11 +104,11 @@ async function main() {
 
         fs.mkdirSync(path.join(instDir, 'saves', 'Dunya'), { recursive: true });
         fs.writeFileSync(path.join(instDir, 'saves', 'Dunya', 'level.dat'), 'dunya');
-        await win.click('.hs-item.is-installed .icon-btn-framed');
+        await win.click('.hs-item.is-installed:has-text("Kum Fırtınası") .icon-btn-framed');
         await win.click('.menu-panel .is-danger, .menu-panel button:has-text("Kaldır")');
         await win.waitForSelector('.check-row input:checked');
         await win.click('.modal .btn-danger');
-        await win.waitForSelector('.hs-item:not(.is-installed)', { timeout: 10000 });
+        await win.waitForSelector('.hs-item:not(.is-installed):has-text("Kum Fırtınası")', { timeout: 10000 });
         assert.ok(!fs.existsSync(instDir), 'örnek klasörü silinmeli');
         const backups = fs.readdirSync(path.join(appData, '.hlauncher', 'yedekler'));
         assert.ok(backups.some((f) => /^kum-firtinasi-dunyalar-.*\.zip$/.test(f)), `dünya yedeği yok: ${backups}`);
