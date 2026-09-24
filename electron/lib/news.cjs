@@ -1,4 +1,5 @@
-// Launcher haber beslemesi: depodaki news.json, GitHub raw üzerinden çekilir.
+// Launcher haber beslemesi: HLauncher-releases reposundaki news.json, GitHub raw
+// üzerinden çekilir (kaynak repo private olacağı için alpha.6'da oraya taşındı).
 // Sunucu sahibi değil, launcher ekibi içindir; sunucu duyuruları manifestten gelir.
 const fs = require('fs');
 const path = require('path');
@@ -6,7 +7,7 @@ const { httpGetJson } = require('./http.cjs');
 const { getRootPath } = require('./paths.cjs');
 const log = require('./logger.cjs');
 
-const NEWS_URL = 'https://raw.githubusercontent.com/HardSetups/HLauncher/main/news.json';
+const NEWS_URL = 'https://raw.githubusercontent.com/HardSetups/HLauncher-releases/main/news.json';
 const CACHE_MS = 30 * 60 * 1000; // 30 dakika
 const MAX_ITEMS = 20;
 

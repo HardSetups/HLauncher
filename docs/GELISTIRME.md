@@ -63,14 +63,25 @@ CI her push'ta lint+test+build koşar; **CI kırmızıyken asla tag atma**.
 
 Aynı anda iki kişi sürüm çıkarmaz — Discord'dan "alpha.N'i ben çıkarıyorum" de.
 
+Sürümler iki repoya yüklenir:
+- **HardSetups/HLauncher-releases** (herkese açık, yalnızca derlenmiş dosyalar):
+  alpha.6 ve sonrası kurulumların güncelleme kaynağı (`package.json` → `build.publish`).
+- **HardSetups/HLauncher** (bu repo): alpha.6 öncesi kurulumlar hâlâ buradan
+  güncellenir. Kaynak repo private olana kadar buraya da yüklenmeye devam eder.
+
 1. `npm version 1.0.0-alpha.N --no-git-tag-version`
-2. `CHANGELOG.md`'ye bölüm ekle (tarihiyle)
+2. `CHANGELOG.md`'ye bölüm ekle (tarihiyle) — sürüm notu buradan alınır
 3. Commit + push → **CI yeşilini bekle**
-4. `git tag v1.0.0-alpha.N && git push origin v1.0.0-alpha.N`
-5. CI, kurulum paketi + `latest.yml` ile **taslak release** üretir (birkaç dk)
-6. GitHub → Releases → taslağı düzenle → notları yaz → **Pre-release** işaretle → **Publish release**
-7. Doğrula: yeni exe'nin indirme linki çalışıyor mu, `latest.yml` yeni sürümü gösteriyor mu
-8. Kurulu launcher'lar otomatik güncellenir. Oyunculara duyuru: kökteki `news.json`'a kayıt ekleyip push'la
+4. `git tag v1.0.0-alpha.N && git push origin v1.0.0-alpha.N` (CI paketi derleyip
+   artifact olarak saklar; yayın yapmaz)
+5. `npm run release -- --publish` — paketler, `latest.yml`'i exe ile doğrular,
+   `release/out/<sürüm>/` altına `SHA256SUMS.txt` ile toplar ve iki repoya
+   **Pre-release** olarak yükler. GitHub kimliği `git credential` yöneticisinden okunur.
+   (Yalnızca paketlemek için: `npm run release`)
+6. Doğrula: iki repoda da exe ve `latest.yml` yeni sürümü gösteriyor mu
+7. Kurulu launcher'lar otomatik güncellenir. Oyunculara duyuru:
+   **HLauncher-releases** reposundaki `news.json`'a kayıt ekleyip push'la
+   (alpha.6 öncesi launcher'lar bu repodaki kopyayı okur; private'a geçişe kadar ikisini aynı tut)
 
 ## 4.5 Otomatik kurulu kolaylıklar
 

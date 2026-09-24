@@ -1,6 +1,8 @@
 // Otomatik güncelleme (electron-updater + GitHub Releases).
-// - Kaynak: package.json → build.publish (HardSetups/HLauncher). Sürüm bir
-//   ön sürümse (1.0.0-alpha.N) aynı kanaldaki Pre-release'ler de görülür.
+// - Kaynak: package.json → build.publish (HardSetups/HLauncher-releases: yalnızca
+//   derlenmiş dosyalar, herkese açık). alpha.6 öncesi kurulumlar kaynak repoyu
+//   dinlediği için sürümler scripts/release.cjs ile iki repoya birden yüklenir.
+//   Sürüm bir ön sürümse (1.0.0-alpha.N) Pre-release'ler de görülür.
 // - Açılışta ve açık kaldığı sürece her CHECK_INTERVAL'de bir denetler;
 //   Ayarlar'daki anahtar kapatılırsa zamanlayıcı durur (yeniden başlatma gerekmez).
 // - Güncelleme arka planda iner; "hazır" olunca arayüz kullanıcıya sorar.

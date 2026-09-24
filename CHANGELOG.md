@@ -1,11 +1,14 @@
 # Değişiklik Günlüğü
 
-## 1.0.0-alpha.6 — yayımlanmadı
+## 1.0.0-alpha.6 — 2026-09-24
 
 ### Güvenlik düzeltmesi
 - **Oyun oturum anahtarı log dosyasına yazılıyordu:** oyun her açıldığında Minecraft erişim token'ı (`--accessToken`) `logs\hlauncher.log` dosyasına düz metin olarak giriyordu. Artık her log satırı yazılmadan önce süzülüyor; token, lisans anahtarı ve cihaz kodu `[gizli]` olarak görünüyor
 - Önceki sürümlerin yazdığı log dosyaları ilk açılışta bir kez temizleniyor
 - Bu token'lar en geç 24 saatte kendiliğinden geçersiz olur. Son 24 saat içinde log dosyanı bir yerde paylaştıysan o paylaşımı sil
+
+### Güncelleme kaynağı
+- Otomatik güncellemeler ve launcher haberleri artık **HardSetups/HLauncher-releases** reposundan geliyor (yalnızca derlenmiş sürümler). Oyuncu tarafında yapılacak bir şey yok
 
 ## 1.0.0-alpha.5 — 2026-09-23
 
