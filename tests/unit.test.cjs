@@ -431,6 +431,131 @@ test('redact.scrubLogFiles: eski log dosyalarındaki token temizlenir, başka do
     assert.ok(fs.readFileSync(path.join(dir, 'notlar.txt'), 'utf8').includes(FAKE_JWT));
 });
 
+// ─── safepath.cjs ───────────────────────────────────────────────────────────
+const { normalizeRelative, safeJoin, isValidFolderName } = require('../electron/lib/safepath.cjs');
+
+test('safepath: kötü yol listesinin tamamı reddedilir', () => {
+    const bad = [
+        '', '..', '../x.jar', 'mods/../../x', 'mods/..\\..\\x', '/etc/passwd', '\\\\server\\share\\x',
+        '//server/share', 'C:\\Windows\\x.dll', 'c:x.jar', '\\\\?\\C:\\x', 'mods/x.jar:ads', 'mods/con',
+        'mods/NUL.jar', 'CON', 'lpt1.txt', 'mods/x.jar.', 'mods/x.jar ', 'mods./x.jar', 'mods/a\u0000b.jar',
+        'mods/<x>.jar', 'mods/x?.jar', 'a'.repeat(300),
+    ];
+    for (const p of bad) assert.throws(() => normalizeRelative(p, { allowDir: true }), { code: 'EUNSAFEPATH' }, `reddedilmeliydi: ${JSON.stringify(p)}`);
+});
+
+test('safepath: geçerli yollar normal biçime çevrilir', () => {
+    assert.strictEqual(normalizeRelative('mods\\x.jar'), 'mods/x.jar');
+    assert.strictEqual(normalizeRelative('./config//hardsetups/ayarlar.json'), 'config/hardsetups/ayarlar.json');
+    assert.strictEqual(normalizeRelative('mods/', { allowDir: true }), 'mods/');
+    assert.strictEqual(normalizeRelative('.hardsetups/lisans-damgasi.json'), '.hardsetups/lisans-damgasi.json');
+    assert.throws(() => normalizeRelative('mods/'), { code: 'EUNSAFEPATH' });
+});
+
+test('safepath.safeJoin: sonuç her zaman kökün içinde', () => {
+    const base = path.join(tmpAppData, 'instance');
+    assert.strictEqual(safeJoin(base, 'mods/x.jar'), path.join(base, 'mods', 'x.jar'));
+    assert.throws(() => safeJoin(base, '../instance-2/x.jar'), { code: 'EUNSAFEPATH' });
+});
+
+test('safepath.isValidFolderName: sözleşme §7.1 kuralı', () => {
+    for (const ok of ['kum-firtinasi', 'tiktok-doldurdoldur', 'a1']) assert.ok(isValidFolderName(ok), ok);
+    for (const no of ['a', '-x', 'Kum', 'kum_firtinasi', 'con', 'com1', 'x'.repeat(49), '../x', 'kum firtinasi']) {
+        assert.ok(!isValidFolderName(no), no);
+    }
+});
+
+// ─── links.cjs ──────────────────────────────────────────────────────────────
+const links = require('../electron/lib/links.cjs');
+
+test('links.isAllowedLink: yalnızca https + izinli host', () => {
+    assert.ok(links.isAllowedLink('https://hardsetups.com/launcher'));
+    assert.ok(links.isAllowedLink('https://magaza.hardsetups.com/urun/x'));
+    assert.ok(links.isAllowedLink('https://www.youtube.com/watch?v=1'));
+    assert.ok(!links.isAllowedLink('http://hardsetups.com'));
+    assert.ok(!links.isAllowedLink('https://evilhardsetups.com'));
+    assert.ok(!links.isAllowedLink('https://hardsetups.com.evil.site'));
+    assert.ok(!links.isAllowedLink('https://hardsetups.com@evil.site/'));
+    assert.ok(!links.isAllowedLink('file:///C:/Windows/system32/calc.exe'));
+    assert.ok(!links.isAllowedLink('javascript:alert(1)'));
+    assert.ok(!links.isAllowedLink('https://x.youtube.com', ['youtube.com']));
+});
+
+test('links.isAllowedDownload: https zorunlu, yerel http yalnızca izinle', () => {
+    const hosts = ['cdn.hardsetups.com', 'cdn.modrinth.com'];
+    assert.ok(links.isAllowedDownload('https://cdn.hardsetups.com/a.zip', hosts));
+    assert.ok(!links.isAllowedDownload('http://cdn.hardsetups.com/a.zip', hosts));
+    assert.ok(!links.isAllowedDownload('https://s3.amazonaws.com/a.zip', hosts));
+    assert.ok(!links.isAllowedDownload('http://127.0.0.1:4000/a.zip', hosts));
+    assert.ok(links.isAllowedDownload('http://127.0.0.1:4000/a.zip', hosts, { allowLocalHttp: true }));
+});
+
+// ─── compat.cjs ─────────────────────────────────────────────────────────────
+const compat = require('../electron/lib/compat.cjs');
+
+test('compat.isSandboxCrash: yalnızca açılıştaki STATUS_BREAKPOINT çökmesi', () => {
+    assert.ok(compat.isSandboxCrash({ reason: 'crashed', exitCode: -2147483645 }, 5000));
+    assert.ok(compat.isSandboxCrash({ reason: 'launch-failed', exitCode: 2147483651 }, 1000));
+    assert.ok(!compat.isSandboxCrash({ reason: 'crashed', exitCode: -2147483645 }, 60000)); // geç çökme
+    assert.ok(!compat.isSandboxCrash({ reason: 'crashed', exitCode: 1 }, 1000));
+    assert.ok(!compat.isSandboxCrash({ reason: 'clean-exit', exitCode: -2147483645 }, 1000));
+    assert.ok(!compat.isSandboxCrash(null, 1000));
+});
+
+test('compat.sandboxDisabled: varsayılan açık; ayar ya da HL_NO_SANDBOX ile kapanır', () => {
+    const store = (v) => ({ get: () => v });
+    assert.strictEqual(compat.sandboxDisabled(store({ noSandbox: false }), {}), false);
+    assert.strictEqual(compat.sandboxDisabled(store(undefined), {}), false);
+    assert.strictEqual(compat.sandboxDisabled(store({ noSandbox: true }), {}), true);
+    assert.strictEqual(compat.sandboxDisabled(store({}), { HL_NO_SANDBOX: '1' }), true);
+});
+
+// ─── services/offline.cjs (çevrimdışı zarf, sözleşme §6) ────────────────────
+const offline = require('../electron/services/offline.cjs');
+const offlineVectors = require('./fixtures/launcher-offline-vectors.json');
+
+test('offline.canonicalJson: lisans protokolü §3 örnekleri', () => {
+    assert.strictEqual(offline.canonicalJson({ b: 1, a: 2 }), '{"a":2,"b":1}');
+    assert.strictEqual(offline.canonicalJson({ z: { d: 1, c: 2 }, a: 3 }), '{"a":3,"z":{"c":2,"d":1}}');
+    assert.strictEqual(offline.canonicalJson({ items: [3, null, 2] }), '{"items":[3,null,2]}');
+    assert.strictEqual(offline.canonicalJson({ a: null, b: true }), '{"b":true}');
+    assert.strictEqual(offline.canonicalJson({ tr: 'ığüşöçİĞÜŞÖÇ' }), '{"tr":"ığüşöçİĞÜŞÖÇ"}');
+    assert.strictEqual(offline.canonicalJson({ s: 'a"b\\c\n\u0001' }), '{"s":"a\\"b\\\\c\\n\\u0001"}');
+    assert.throws(() => offline.canonicalJson({ x: 1.5 }));
+});
+
+test('offline.verifyEnvelope: yedi test vektörünün hepsi beklendiği gibi', () => {
+    const keyring = offline.buildKeyring(Object.fromEntries(offlineVectors.keys.map((k) => [k.kid, k.publicKeyRawBase64url])));
+    const now = Date.parse(offlineVectors.checkAt);
+    assert.strictEqual(offlineVectors.vectors.length, 7);
+    for (const v of offlineVectors.vectors) {
+        if (v.expect.signatureValid) assert.strictEqual(offline.signingInput(v.envelope), v.signingInput, v.name);
+        const r = offline.verifyEnvelope(v.envelope, { deviceId: offlineVectors.deviceId, now, keyring });
+        assert.strictEqual(r.signatureValid, v.expect.signatureValid, `${v.name}: signatureValid`);
+        assert.strictEqual(r.usable, v.expect.envelopeUsable, `${v.name}: usable`);
+        if (v.expect.reason) assert.strictEqual(r.reason, v.expect.reason, `${v.name}: reason`);
+        assert.deepStrictEqual(r.playable, v.expect.playable, `${v.name}: playable`);
+    }
+});
+
+test('offline: gömülü üretim anahtarı sözleşmedeki parmak izine sahip, test anahtarı gömülü değil', () => {
+    const spki = offline.keyFromRaw(offline.EMBEDDED_KEYS.ed1).export({ format: 'der', type: 'spki' });
+    assert.strictEqual(require('crypto').createHash('sha256').update(spki).digest('hex'),
+        'ff729e2188507bab4e37d20828367aae28a4df8381525868de883032a02ed8aa');
+    assert.ok(!Object.keys(offline.EMBEDDED_KEYS).includes('test-ed1'));
+    const valid = offlineVectors.vectors.find((v) => v.name === 'valid');
+    // Test anahtarıyla imzalı zarf, gömülü anahtarlarla asla geçmez
+    assert.strictEqual(offline.verifyEnvelope(valid.envelope, { deviceId: offlineVectors.deviceId, now: Date.parse(offlineVectors.checkAt) }).usable, false);
+});
+
+test('offline.clockTrusted: saat 5 dakikadan fazla geri alınmışsa güvenilmez', () => {
+    const ref = '2026-09-24T12:00:00.000Z';
+    assert.ok(offline.clockTrusted(Date.parse('2026-09-24T12:00:00Z'), ref));
+    assert.ok(offline.clockTrusted(Date.parse('2026-09-24T11:56:00Z'), ref));
+    assert.ok(!offline.clockTrusted(Date.parse('2026-09-24T11:54:00Z'), ref));
+    assert.ok(offline.clockTrusted(Date.now(), null));
+});
+
 // ─── i18n: backend ilerleme anahtarları sözlükte var mı? ────────────────────
 test('i18n: backend be.* anahtarları TR ve EN sözlüklerinde mevcut', () => {
     const i18nSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'i18n.jsx'), 'utf8');

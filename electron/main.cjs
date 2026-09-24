@@ -12,17 +12,16 @@ if (process.env.ELECTRON_RUN_AS_NODE) {
     process.exit(0);
 }
 
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, session } = require('electron');
 const os = require('os');
 const path = require('path');
 
 app.commandLine.appendSwitch('disable-gpu-cache');
-// Bazı Windows sistemlerinde (sürücü/antivirüs etkileşimi) Chromium'un korumalı
-// alt süreçleri (GPU, ağ servisi, renderer) kurulu konumdan başlatılınca
-// STATUS_BREAKPOINT ile çöküyor: pencere ya hiç açılmıyor ya da görünmez
-// kalıyor. Uygulama yalnızca yerel paketlenmiş içerik yüklediği için paketli
-// sürümde sandbox'ı kapatmak güvenli ve sorunu kökten çözüyor.
-if (app.isPackaged) {
+// Chromium sandbox'ı açık. Yalnızca STATUS_BREAKPOINT çökmesinin görüldüğü
+// makinelerde kapanır (ayrıntı ve otomatik geri dönüş: lib/compat.cjs).
+const compat = require('./lib/compat.cjs');
+const NO_SANDBOX = compat.sandboxDisabled(require('./lib/store.cjs').getStore());
+if (NO_SANDBOX) {
     app.commandLine.appendSwitch('no-sandbox');
 }
 
@@ -50,9 +49,36 @@ function startApp() {
     const optifineLoader = require('./lib/loaders/optifine.cjs');
     const updater = require('./lib/updater.cjs');
     const { getNews } = require('./lib/news.cjs');
+    const links = require('./lib/links.cjs');
 
     process.on('uncaughtException', (err) => log.error(`[MAIN] Yakalanmamış hata: ${err.stack || err.message}`));
     process.on('unhandledRejection', (reason) => log.error(`[MAIN] İşlenmemiş promise reddi: ${reason}`));
+
+    // Sandbox'lı alt süreç açılışta STATUS_BREAKPOINT ile düşerse bu makinede
+    // sandbox'ı kalıcı olarak kapatıp bir kez yeniden başla (lib/compat.cjs).
+    const startedAt = Date.now();
+    const onProcessGone = (kind, details) => {
+        log.warn(`[MAIN] Alt süreç kapandı (${kind}): ${details.type || ''} ${details.reason} ${details.exitCode}`);
+        if (NO_SANDBOX || !compat.isSandboxCrash(details, Date.now() - startedAt)) return;
+        log.warn('[MAIN] STATUS_BREAKPOINT: sandbox bu makinede kapatılıyor, yeniden başlatılıyor');
+        getStore().set('compat', { ...getStore().get('compat'), noSandbox: true });
+        app.relaunch();
+        app.exit(0);
+    };
+    app.on('child-process-gone', (_e, details) => onProcessGone('child', details));
+    app.on('render-process-gone', (_e, _wc, details) => onProcessGone('renderer', details));
+
+    // Tarayıcıda yalnızca https + izinli host açılır (sözleşme §2).
+    const openExternalSafe = (url) => {
+        if (links.isAllowedLink(url)) {
+            shell.openExternal(url);
+            return true;
+        }
+        let host = '';
+        try { host = new URL(url).host; } catch { /* geçersiz adres */ }
+        log.warn(`[MAIN] İzinsiz bağlantı açılmadı: ${host || '(geçersiz adres)'}`);
+        return false;
+    };
 
     let mainWindow;
 
@@ -70,14 +96,17 @@ function startApp() {
                 preload: path.join(__dirname, 'preload.cjs'),
                 nodeIntegration: false,
                 contextIsolation: true,
+                sandbox: true,
+                webSecurity: true,
+                allowRunningInsecureContent: false,
             },
         });
         if (saved?.maximized) mainWindow.maximize();
 
         // Güvenlik: renderer yeni pencere açamaz ve uygulama dışına gezinemez.
-        // https linkler (Discord, haberler) sistem tarayıcısında açılır.
+        // İzinli https bağlantılar (Discord, haberler, mağaza) sistem tarayıcısında açılır.
         mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-            if (/^https:\/\//.test(url)) shell.openExternal(url);
+            openExternalSafe(url);
             return { action: 'deny' };
         });
         mainWindow.webContents.on('will-navigate', (e, url) => {
@@ -86,9 +115,11 @@ function startApp() {
                 : url.startsWith('file://');
             if (!allowed) {
                 e.preventDefault();
-                if (/^https:\/\//.test(url)) shell.openExternal(url);
+                openExternalSafe(url);
             }
         });
+        // <webview> hiçbir koşulda eklenemez
+        mainWindow.webContents.on('will-attach-webview', (e) => e.preventDefault());
 
         // Büyüt/küçült durumunu arayüze bildir (başlık çubuğu simgesi için)
         mainWindow.on('maximize', () => mainWindow.webContents.send('window-maximized', true));
@@ -136,7 +167,14 @@ function startApp() {
     });
 
     app.whenReady().then(() => {
-        log.info(`[MAIN] HLauncher ${app.getVersion()} başladı (veri: ${getRootPath()})`);
+        log.info(`[MAIN] HLauncher ${app.getVersion()} başladı (veri: ${getRootPath()}, sandbox: ${NO_SANDBOX ? 'kapalı' : 'açık'})`);
+
+        // Kamera, mikrofon, bildirim, konum vb. hiçbir tarayıcı izni verilmez;
+        // yalnızca panoya yazma (UUID / adres kopyalama) serbest.
+        const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write']);
+        session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => callback(ALLOWED_PERMISSIONS.has(permission)));
+        session.defaultSession.setPermissionCheckHandler((_wc, permission) => ALLOWED_PERMISSIONS.has(permission));
+
         createWindow();
         updater.initUpdater(app, getStore(), mainWindow);
 

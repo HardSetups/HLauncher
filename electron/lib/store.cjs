@@ -22,6 +22,7 @@ const DEFAULTS = {
     servers: [],                // [{ id, name, address, favorite, manifestUrl?, addedAt }]
     activeInstanceId: 'default',
     windowBounds: null,         // { width, height, x, y, maximized }
+    compat: { noSandbox: false }, // lib/compat.cjs — yalnızca main süreç yazar
 };
 
 function deepMerge(base, extra) {

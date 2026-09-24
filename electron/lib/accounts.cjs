@@ -4,9 +4,12 @@ const { Authenticator } = require('minecraft-launcher-core');
 const { getStore } = require('./store.cjs');
 const log = require('./logger.cjs');
 
-// Yenileme token'ı Electron safeStorage ile (DPAPI) şifrelenerek saklanır;
-// safeStorage yoksa (test ortamı) düz metne düşer. Eski düz metin kayıtlar
-// ilk kullanımda şifreliye taşınır.
+// Yenileme token'ı Electron safeStorage ile (DPAPI) şifrelenerek saklanır.
+// safeStorage kullanılamıyorsa token diske HİÇ yazılmaz: yalnızca bu oturumun
+// belleğinde yaşar, launcher kapanınca yeniden giriş gerekir. Eski düz metin
+// kayıtlar ilk yenilemede şifreliye taşınır ya da diskten silinir.
+let memoryRefresh = null;
+
 function encryptToken(text) {
     try {
         const { safeStorage } = require('electron');
@@ -14,7 +17,21 @@ function encryptToken(text) {
             return `enc:${safeStorage.encryptString(text).toString('base64')}`;
         }
     } catch { /* electron dışı ortam */ }
-    return text;
+    return null;
+}
+
+/** Diske yazılacak değeri döndürür; şifreleme yoksa token'ı belleğe alır. */
+function persistableRefresh(token) {
+    const encrypted = encryptToken(token);
+    memoryRefresh = encrypted ? null : token;
+    if (!encrypted) log.warn('[ACCOUNT] Şifreli depolama yok: Microsoft oturumu yalnızca bellekte tutulacak');
+    return encrypted;
+}
+
+function readRefresh(account) {
+    if (account.refresh) return decryptToken(account.refresh);
+    if (memoryRefresh) return memoryRefresh;
+    throw new Error('Microsoft oturumunun süresi doldu. Hesap sekmesinden tekrar giriş yapın.');
 }
 
 function decryptToken(stored) {
@@ -40,7 +57,7 @@ async function loginMicrosoft() {
         type: 'microsoft',
         name: mc.profile.name,
         uuid: mc.profile.id,
-        refresh: encryptToken(xbox.save()),
+        refresh: persistableRefresh(xbox.save()),
     };
     getStore().set('account', account);
     log.info(`[ACCOUNT] Microsoft girişi: ${account.name}`);
@@ -60,6 +77,7 @@ function loginOffline(name) {
 
 function logout() {
     mcCache = null;
+    memoryRefresh = null;
     getStore().set('account', null);
 }
 
@@ -82,10 +100,10 @@ async function refreshMinecraft() {
     try {
         const { Auth } = require('msmc');
         const auth = new Auth('select_account');
-        const xbox = await auth.refresh(decryptToken(account.refresh));
+        const xbox = await auth.refresh(readRefresh(account));
         const mc = await xbox.getMinecraft();
         // Tazelenen token'ı (şifreli) sakla ki oturum süresiz devam etsin
-        getStore().set('account', { ...account, refresh: encryptToken(xbox.save()), name: mc.profile?.name || account.name });
+        getStore().set('account', { ...account, refresh: persistableRefresh(xbox.save()), name: mc.profile?.name || account.name });
         mcCache = { mc, uuid: account.uuid, expires: Date.now() + MC_CACHE_MS };
         return mc;
     } catch (err) {
