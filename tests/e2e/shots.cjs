@@ -5,6 +5,8 @@
 //
 // --no-login: HardSetups hesabı bağlanmadan (giriş ekranı / kilit görünümü)
 // --fresh:    ilk kurulum (onboarding) — config.json yazılmaz
+// --accent=#10b981: vurgu rengi (config.json settings.accent)
+// --empty-home: vitrin boş gelir (canlıdaki gibi; ürün kataloğu dolu kalır)
 // Giriş arayüzden bağımsız yapılır: portalLoginStart IPC'si çağrılır, kod mock'ta onaylanır.
 const fs = require('fs');
 const os = require('os');
@@ -25,12 +27,24 @@ const [W, H] = opt('size', '1280x800').split('x').map(Number);
     if (!flag('fresh')) {
         fs.mkdirSync(path.join(appData, '.hlauncher'), { recursive: true });
         fs.writeFileSync(path.join(appData, '.hlauncher', 'config.json'), JSON.stringify({
-            settings: { onboarded: true, checkUpdates: false },
+            settings: { onboarded: true, checkUpdates: false, ...(opt('accent') ? { accent: opt('accent') } : {}) },
             account: { type: 'offline', name: 'Oyuncu' },
             lastSeenVersion: require(path.join(ROOT, 'package.json')).version,
         }));
     }
     const server = await mock.start(0);
+    if (flag('empty-home')) {
+        // Vitrin boş: /v1/launcher/home tüm bölümleri boş döner, diğer uçlar mock'ta kalır
+        const handlers = server.listeners('request');
+        server.removeAllListeners('request');
+        server.on('request', (req, res) => {
+            if (req.url.startsWith('/v1/launcher/home')) {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ hero: [], announcements: [], featured: [], campaigns: [], coupons: [], news: [], updates: [], expiring: [] }));
+            }
+            return handlers.forEach((h) => h.call(server, req, res));
+        });
+    }
     const base = `http://127.0.0.1:${server.address().port}`;
     if (opt('scenario')) mock.state.scenario = opt('scenario');
     const env = { ...process.env, APPDATA: appData, HL_API_BASE: base, HL_EXTERNAL_BASE: base, HL_USER_DATA: path.join(appData, 'electron-user') };
@@ -62,12 +76,26 @@ const [W, H] = opt('size', '1280x800').split('x').map(Number);
             const res = await win.evaluate(() => globalThis.electronAPI.portalLoginStart());
             if (res?.ok) {
                 await fetch(`${base}/__mock/approve`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userCode: res.userCode }) });
-                await win.waitForTimeout(2500);
+                // Oturum açılana kadar bekle (cihaz kodu yoklaması birkaç saniyede bir)
+                for (let i = 0; i < 40; i++) {
+                    const st = await win.evaluate(() => globalThis.electronAPI.portalState()).catch(() => null);
+                    if (st?.state?.signedIn && st.state.wallet) break;
+                    await win.waitForTimeout(250);
+                }
+                await win.waitForTimeout(800);
                 await win.keyboard.press('Escape').catch(() => {});
             } else console.log('  – giriş başlatılamadı', res?.error);
         }
         await shot(win, '02-sonraki');
-        if (await clickIf(win, '.rail-home')) await shot(win, '03-ana-sayfa');
+        if (await clickIf(win, '.rail-home')) {
+            await shot(win, '03-ana-sayfa');
+            // Ana sayfanın alt bölümleri (haberler, kaldığın yerden devam, kütüphane)
+            await win.mouse.move(W / 2, H / 2);
+            await win.mouse.wheel(0, 600);
+            await shot(win, '03b-ana-sayfa-orta');
+            await win.mouse.wheel(0, 2000);
+            await shot(win, '03c-ana-sayfa-alt');
+        }
         if (await clickIf(win, '.rail-library')) {
             await shot(win, '04-vitrin');
             await win.mouse.wheel(0, 700);

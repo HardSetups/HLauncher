@@ -1,6 +1,7 @@
 // HLauncher'a özel ikon seti. Ortak dil: köşeli çizgiler (kare uç, keskin
 // birleşim) + her ikonda tek bir dolu "piksel". Piksel rengi --px değişkeninden
-// gelir; ray/düğme aktifken vurgu rengine döner — launcher'ın imza detayı.
+// gelir; ray/düğme aktifken vurgu metni rengine (--accent-text) döner —
+// launcher'ın imza detayı.
 const base = {
   width: 22,
   height: 22,
@@ -96,6 +97,28 @@ export function IconLibrary(props) {
       <path d="M4 8 7 5h10l3 3v12H4z" />
       <path d="M4 11.5h16" />
       <rect x="10.75" y="10" width="2.5" height="3.5" {...px} />
+    </Svg>
+  );
+}
+
+// Mağaza: pahlı alışveriş çantası, sapı kesik köşeli, ortada piksel
+export function IconStore(props) {
+  return (
+    <Svg {...props}>
+      <path d="M4.5 8.5h15l-1.5 11.5H6z" />
+      <path d="M9 8.5V6l1.5-1.5h3L15 6v2.5" />
+      <rect x="10.75" y="12.25" width="2.5" height="2.5" {...px} />
+    </Svg>
+  );
+}
+
+// Duyuru: köşeli megafon, ağız önünde piksel
+export function IconAnnounce(props) {
+  return (
+    <Svg {...props}>
+      <path d="M4 9.5h4l8-4.5v14l-8-4.5H4z" />
+      <path d="M8 14.5 9.5 20H12l-1.2-5" />
+      <rect x="18.5" y="10.75" width="2.5" height="2.5" {...px} />
     </Svg>
   );
 }
