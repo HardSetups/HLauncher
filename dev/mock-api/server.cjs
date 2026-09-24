@@ -618,7 +618,7 @@ async function handle(req, res) {
         const message = field('message');
         if (subject.length < 5 || subject.length > 200 || message.length < 10 || message.length > 20000) return fail(res, req, 422, 'VALIDATION_FAILED', 'Konu ya da açıklama uzunluğu geçersiz');
         const names = [...raw.matchAll(/name="logs"; filename="([^"]*)"/g)].map((m) => m[1]);
-        if (names.length > 5) return fail(res, req, 422, 'ATTACHMENT_REJECTED', 'En çok 5 dosya', { reason: 'tooManyFiles' });
+        if (names.length > 5) return fail(res, req, 422, 'ATTACHMENT_LIMIT', 'En fazla 5 dosya eklenebilir.', { reason: 'tooManyFiles', max: 5 }); // v1.7.1
         const badExt = names.filter((n) => !/\.(log|txt|json|gz)$/i.test(n));
         if (badExt.length) return fail(res, req, 422, 'ATTACHMENT_REJECTED', 'İzinsiz dosya türü', { files: badExt });
         if (rawBody.length > 10 * 1024 * 1024) return fail(res, req, 413, 'PAYLOAD_TOO_LARGE', 'Dosyalar 10 MB\'ı geçiyor');

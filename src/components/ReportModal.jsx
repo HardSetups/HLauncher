@@ -15,7 +15,8 @@ function reportErrorText(t, error) {
     case 'REPORT_DISABLED': return t('hs.report.disabled');
     case 'TICKET_DUPLICATE': return t('hs.report.duplicate', { ticket: d.ticketNo ?? '' });
     case 'TICKET_OPEN_LIMIT': return t('hs.report.openLimit');
-    case 'ATTACHMENT_REJECTED': return d.reason === 'tooManyFiles' ? t('hs.report.tooManyFiles') : t('hs.report.fileRejected');
+    case 'ATTACHMENT_LIMIT': return t('hs.report.tooManyFiles'); // v1.7.1 (sunucu v0.9.1+)
+    case 'ATTACHMENT_REJECTED': return d.reason === 'tooManyFiles' ? t('hs.report.tooManyFiles') : t('hs.report.fileRejected'); // v0.9.0 5+ dosyayı da böyle döndürür
     case 'PAYLOAD_TOO_LARGE': return t('hs.report.tooLarge');
     case 'RATE_LIMITED': return t('hs.report.rateLimited');
     default: return portalErrorText(t, error);
