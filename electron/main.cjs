@@ -474,7 +474,7 @@ function startApp() {
     ipcMain.handle('portal:dismiss-announcement', portalCall('Duyuru', (id) => ({ dismissed: portal.dismissAnnouncement(id) })));
     ipcMain.handle('portal:product', portalCall('Ürün', (slug) => portal.product(String(slug || ''))));
     ipcMain.handle('portal:quote', portalCall('Teklif', (productSlug, plan, coupon) => portal.quote(String(productSlug || ''), String(plan || ''), coupon ? String(coupon) : null)));
-    ipcMain.handle('portal:purchase', portalCall('Satın alma', (quoteId) => portal.purchase(String(quoteId || ''))));
+    ipcMain.handle('portal:purchase', portalCall('Satın alma', (quoteId, consents) => portal.purchase(String(quoteId || ''), Array.isArray(consents) ? consents.map(String) : [])));
     ipcMain.handle('portal:notifications', portalCall('Bildirimler', (cursor) => portal.notifications(cursor ? String(cursor) : null)));
     // Sorun bildir (§10): önizleme temizlenmiş içerik; gönderimde dosyalar yeniden toplanır
     ipcMain.handle('portal:report-preview', portalCall('Rapor önizleme', (instanceId) => portal.reportPreview(instanceId ? String(instanceId) : null)));

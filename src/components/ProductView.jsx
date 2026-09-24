@@ -56,34 +56,61 @@ function PurchaseModal({ open, product, plan, onClose, onInstall }) {
   const [coupon, setCoupon] = useState('');
   const [quote, setQuote] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null); // { text, topupUrl? }
+  const [error, setError] = useState(null); // { text, url?, urlLabel? }
   const [order, setOrder] = useState(null);
+  const [accepted, setAccepted] = useState(new Set()); // v1.6: belge onayları, işaretsiz başlar
 
-  useEffect(() => { if (open) { setStep('form'); setQuote(null); setError(null); setOrder(null); } }, [open, plan?.slug]);
+  useEffect(() => { if (open) { setStep('form'); setQuote(null); setError(null); setOrder(null); setAccepted(new Set()); } }, [open, plan?.slug]);
 
   const fmt = (m) => formatMinor(m, product.currency || 'TRY', lang);
-  const getQuote = async () => {
-    setBusy(true); setError(null);
+  // Hata kodu → metin + (varsa) tarayıcıda açılacak adres (sözleşme v1.6 §8)
+  const describe = (e) => {
+    const d = e?.details || {};
+    switch (e?.code) {
+      case 'INSUFFICIENT_BALANCE': return { text: t('hs.buy.insufficient', { amount: fmt(d.shortfallMinor) }), url: d.topupUrl, urlLabel: t('hs.buy.topup') };
+      case 'EMAIL_NOT_VERIFIED': return { text: t('hs.buy.emailNotVerified'), kind: 'account', urlLabel: t('hs.myAccount') };
+      case 'CONFLICT': return d.reason === 'billingProfileRequired'
+        ? { text: t('hs.buy.billingRequired'), url: d.manageUrl, urlLabel: t('hs.buy.billingManage') }
+        : { text: portalErrorText(t, e) };
+      case 'CONSENT_REQUIRED': return { text: t('hs.buy.consentRequired') };
+      case 'COUPON_INVALID': return { text: t('hs.buy.couponInvalid') };
+      case 'PURCHASE_DISABLED': return { text: t('hs.buy.disabled') };
+      default: return { text: portalErrorText(t, e) };
+    }
+  };
+  const getQuote = async (keepError = false) => {
+    setBusy(true);
+    if (!keepError) setError(null);
     try {
       const res = await api.portalQuote(product.slug, plan.slug, coupon.trim() || null);
-      if (!res.ok) { setError({ text: portalErrorText(t, res.error) }); return; }
+      if (!res.ok) { setError(describe(res.error)); setStep('form'); return; }
       setQuote(res.quote);
+      setAccepted(new Set());
       setStep('confirm');
     } finally { setBusy(false); }
   };
   const buy = async () => {
     setBusy(true); setError(null);
     try {
-      const res = await api.portalPurchase(quote.quoteId);
+      const res = await api.portalPurchase(quote.quoteId, [...accepted]);
       if (res.ok) { setOrder(res); setStep('done'); return; }
       const e = res.error || {};
-      if (e.code === 'QUOTE_EXPIRED') { setError({ text: t('hs.buy.quoteExpired') }); setStep('form'); return; }
-      if (e.code === 'INSUFFICIENT_BALANCE') { setError({ text: t('hs.buy.insufficient', { amount: fmt(e.details?.shortfallMinor) }), topupUrl: e.details?.topupUrl }); return; }
-      if (e.code === 'PURCHASE_DISABLED') { setError({ text: t('hs.buy.disabled') }); return; }
-      setError({ text: portalErrorText(t, e) });
+      // Teklif eskidi ya da fiyat değişti → yeni teklif al, kullanıcı yeni tutarı onaylasın
+      if (e.code === 'QUOTE_EXPIRED' || e.code === 'PRICE_CHANGED') {
+        setError({ text: e.code === 'PRICE_CHANGED' ? t('hs.buy.priceChanged') : t('hs.buy.quoteExpired') });
+        setBusy(false);
+        await getQuote(true);
+        return;
+      }
+      if (e.code === 'COUPON_INVALID') { setError(describe(e)); setStep('form'); return; }
+      setError(describe(e));
     } finally { setBusy(false); }
   };
+  const openErrorLink = (err) => (err?.url ? api.portalOpenUrl(err.url) : err?.kind ? api.portalOpenLink(err.kind) : null);
   const topup = (url) => (url ? api.portalOpenUrl(url) : api.portalOpenLink('topup'));
+  const consents = quote?.consents || [];
+  const billingReady = quote?.billingProfile?.ready !== false;
+  const allAccepted = consents.every((c) => accepted.has(c.key));
 
   if (!product || !plan) return null;
   const after = quote ? subtractMinor(quote.balanceMinor, quote.totalMinor) : null;
@@ -98,14 +125,16 @@ function PurchaseModal({ open, product, plan, onClose, onInstall }) {
         step === 'form' ? (
           <>
             <button className="btn-ghost" onClick={onClose}>{t('common.cancel')}</button>
-            <button className="btn-primary" onClick={getQuote} disabled={busy}>{busy ? <Loader2 size={15} className="spin" /> : null} {t('hs.buy.continue')}</button>
+            <button className="btn-primary" onClick={() => getQuote()} disabled={busy}>{busy ? <Loader2 size={15} className="spin" /> : null} {t('hs.buy.continue')}</button>
           </>
         ) : step === 'confirm' ? (
           <>
             <button className="btn-ghost" onClick={() => setStep('form')} disabled={busy}>{t('common.back')}</button>
             {quote && !quote.sufficient
-              ? <button className="btn-primary" onClick={() => topup(null)}><Wallet size={15} /> {t('hs.buy.topup')}</button>
-              : <button className="btn-primary" onClick={buy} disabled={busy} autoFocus>{busy ? <Loader2 size={15} className="spin" /> : <ShoppingCart size={15} />} {t('hs.buy.confirm', { amount: fmt(quote?.totalMinor) })}</button>}
+              ? <button className="btn-primary" onClick={() => topup(quote.topupUrl)}><Wallet size={15} /> {t('hs.buy.topup')}</button>
+              : !billingReady
+                ? <button className="btn-primary" onClick={() => api.portalOpenUrl(quote.billingProfile.manageUrl)}><ExternalLink size={15} /> {t('hs.buy.billingManage')}</button>
+                : <button className="btn-primary" onClick={buy} disabled={busy || !allAccepted}>{busy ? <Loader2 size={15} className="spin" /> : <ShoppingCart size={15} />} {t('hs.buy.confirm', { amount: fmt(quote?.totalMinor) })}</button>}
           </>
         ) : (
           <>
@@ -143,13 +172,29 @@ function PurchaseModal({ open, product, plan, onClose, onInstall }) {
       {step === 'confirm' && quote && !quote.sufficient && (
         <p className="buy-warn"><AlertTriangle size={14} /> {t('hs.buy.insufficient', { amount: fmt(quote.shortfallMinor) })}</p>
       )}
+      {step === 'confirm' && quote && quote.sufficient && !billingReady && (
+        <p className="buy-warn"><AlertTriangle size={14} /> {t('hs.buy.billingRequired')}</p>
+      )}
+      {step === 'confirm' && quote && quote.sufficient && billingReady && consents.length > 0 && (
+        <div className="buy-consents">
+          {consents.map((c) => (
+            <label key={c.key} className="check-row">
+              <input type="checkbox" checked={accepted.has(c.key)} onChange={(e) => setAccepted((s) => { const n = new Set(s); if (e.target.checked) n.add(c.key); else n.delete(c.key); return n; })} />
+              <span>
+                {c.url ? <button type="button" className="md-link" onClick={(e) => { e.preventDefault(); api.portalOpenUrl(c.url); }}>{c.title}</button> : c.title}
+                {' '}{t('hs.buy.consentSuffix')}
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
       {step === 'done' && order && (
         <p className="modal-text">{t('hs.buy.doneText', { order: order.orderNo || '' })}</p>
       )}
       {error && (
         <p className="buy-warn" style={{ whiteSpace: 'pre-wrap' }}>
           <AlertTriangle size={14} /> {error.text}
-          {error.topupUrl && <button className="link-btn" onClick={() => topup(error.topupUrl)}><Wallet size={13} /> {t('hs.buy.topup')}</button>}
+          {(error.url || error.kind) && <button className="link-btn" onClick={() => openErrorLink(error)}><ExternalLink size={13} /> {error.urlLabel}</button>}
         </p>
       )}
     </Modal>
@@ -241,7 +286,11 @@ export default function ProductView({ slug, portal, onBack, onOpenLibrary, onIns
               <h3>{t('hs.product.reviews')}</h3>
               <ul className="reviews">
                 {product.reviews.map((r, i) => (
-                  <li key={i}><span className="review-head"><b>{r.author}</b> <Stars value={r.rating} /></span>{r.text && <p>{r.text}</p>}</li>
+                  <li key={i}>
+                    <span className="review-head"><b>{r.author}</b> <Stars value={r.rating} /></span>
+                    {r.title && <b className="review-title">{r.title}</b>}
+                    {r.text && <p>{r.text}</p>}
+                  </li>
                 ))}
               </ul>
             </section>

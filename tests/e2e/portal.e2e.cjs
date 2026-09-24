@@ -94,9 +94,12 @@ async function main() {
         await win.fill('.modal input', 'LAUNCHER10');
         await win.click('.modal .btn-primary'); // Devam → teklif
         await win.waitForSelector('.buy-sum tr.is-total');
+        await win.waitForSelector('.buy-consents input:not(:checked)'); // sözleşme kutusu işaretsiz başlar
+        assert.ok(await win.$eval('.modal-foot .btn-primary', (b) => b.disabled), 'onay verilmeden öde düğmesi pasif olmalı');
+        await win.check('.buy-consents input');
         await win.waitForTimeout(300);
         await win.screenshot({ path: path.join(OUT, '03a3-onay.png') });
-        await win.click('.modal .btn-primary'); // öde
+        await win.click('.modal-foot .btn-primary'); // öde
         await win.waitForSelector('.modal-icon.tone-success', { timeout: 10000 });
         assert.strictEqual(mock.state.stats.purchases, 1);
         step('satın alındı: teklif → onay (toplam + sonraki bakiye) → sipariş');

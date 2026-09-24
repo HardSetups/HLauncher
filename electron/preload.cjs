@@ -70,7 +70,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     portalDismissAnnouncement: (id) => ipcRenderer.invoke('portal:dismiss-announcement', id),
     portalProduct:      (slug) => ipcRenderer.invoke('portal:product', slug),
     portalQuote:        (productSlug, plan, coupon) => ipcRenderer.invoke('portal:quote', productSlug, plan, coupon),
-    portalPurchase:     (quoteId) => ipcRenderer.invoke('portal:purchase', quoteId),
+    portalPurchase:     (quoteId, consents) => ipcRenderer.invoke('portal:purchase', quoteId, consents),
     portalNotifications: (cursor) => ipcRenderer.invoke('portal:notifications', cursor),
     portalNotificationsRead: (opts) => ipcRenderer.invoke('portal:notifications-read', opts),
     portalReportPreview: (instanceId) => ipcRenderer.invoke('portal:report-preview', instanceId),

@@ -28,7 +28,7 @@ function Hero({ items, imageHosts, onAction }) {
   return (
     <div className="hero">
       <AnimatePresence mode="wait" initial={false}>
-        <motion.button key={item.id} type="button" className="hero-card" onClick={() => onAction(item.action)}
+        <motion.button key={item.id} type="button" className={`hero-card${item.action ? '' : ' is-static'}`} onClick={() => item.action && onAction(item.action)} aria-disabled={!item.action}
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
           {img && <img className="hero-img" src={img} alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} />}
           <span className="hero-shade" />

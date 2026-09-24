@@ -1340,3 +1340,11 @@ button.news-item:hover { background: var(--raised); }
 .hs-highlight .account-text span { white-space: normal; }
 .hs-highlight-coupon { align-self: flex-start; margin-top: 4px; padding: 1px 6px; border-radius: 4px; border: 1px dashed var(--accent-line); font-family: Consolas, 'Cascadia Mono', monospace; font-size: 11.5px; color: var(--text); }
 .hs-highlight { color: var(--text); }
+.buy-consents { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; }
+.buy-consents .check-row { margin-top: 6px; align-items: flex-start; }
+.buy-consents .check-row input { margin-top: 2px; flex-shrink: 0; }
+.review-title { color: var(--text); font-size: 13.5px; }
+.badge.is-updated { background: var(--raised-3); color: var(--text); }
+.badge.is-bestseller { background: var(--warn); color: #1a1204; }
+.hero-card.is-static { cursor: default; }
+.notif-more { display: flex; justify-content: center; padding: 6px 0 2px; }

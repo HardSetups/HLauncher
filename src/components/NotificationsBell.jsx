@@ -9,19 +9,29 @@ import { relativeTime } from '../utils/format.js';
 function List({ onError }) {
   const { t, lang } = useI18n();
   const api = window.electronAPI;
-  const [state, setState] = useState({ loading: true, items: [] });
+  const [state, setState] = useState({ loading: true, items: [], nextCursor: null });
+  const [more, setMore] = useState(false);
 
   // Menü her açıldığında taze liste (bileşen menüyle birlikte bağlanır)
   useEffect(() => {
     let cancelled = false;
     api.portalNotifications().then((res) => {
       if (cancelled) return;
-      if (res.ok) setState({ loading: false, items: res.items });
-      else { setState({ loading: false, items: [] }); onError?.(res.error?.message); }
-    }).catch(() => { if (!cancelled) setState({ loading: false, items: [] }); });
+      if (res.ok) setState({ loading: false, items: res.items, nextCursor: res.nextCursor });
+      else { setState({ loading: false, items: [], nextCursor: null }); onError?.(res.error?.message); }
+    }).catch(() => { if (!cancelled) setState({ loading: false, items: [], nextCursor: null }); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Sayfa başına 20 (v1.6); nextCursor null ise son sayfa
+  const loadMore = async () => {
+    setMore(true);
+    try {
+      const res = await api.portalNotifications(state.nextCursor);
+      if (res.ok) setState((s) => ({ ...s, items: [...s.items, ...res.items], nextCursor: res.nextCursor }));
+    } finally { setMore(false); }
+  };
 
   const open = async (n) => {
     if (!n.readAt) {
@@ -56,6 +66,11 @@ function List({ onError }) {
               </button>
             </li>
           ))}
+          {state.nextCursor && (
+            <li className="notif-more">
+              <button className="link-btn" onClick={loadMore} disabled={more}>{more ? <Loader2 size={13} className="spin" /> : null} {t('hs.notif.more')}</button>
+            </li>
+          )}
         </ul>
       )}
     </div>

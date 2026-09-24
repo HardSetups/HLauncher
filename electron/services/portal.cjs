@@ -502,6 +502,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
     const HOME_MIN_INTERVAL_MS = 5 * 60 * 1000;
     const HOME_FOCUS_INTERVAL_MS = 60 * 1000;
     const ACTION_TYPES = new Set(['product', 'url']);
+    const BADGES = new Set(['NEW', 'UPDATED', 'BESTSELLER', 'SALE']); // v1.6
     let homeCache = null; // { at, etag, signedIn, data }
 
     const arr = (v) => (Array.isArray(v) ? v : []);
@@ -515,10 +516,14 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
             slug: str(p.slug, 64), name: str(p.name, 120), shortDescription: str(p.shortDescription, 300),
             iconUrl: str(p.iconUrl, 2048), coverUrl: str(p.coverUrl, 2048),
             priceFromMinor: str(p.priceFromMinor, 20), compareAtMinor: str(p.compareAtMinor, 20), currency: str(p.currency, 3) || 'TRY',
-            badges: arr(p.badges).filter((b) => ['NEW', 'SALE'].includes(b)), owned: p.owned === true,
+            badges: arr(p.badges).filter((b) => BADGES.has(b)), owned: p.owned === true,
         } : null);
         return {
-            hero: arr(data?.hero).map((h) => ({ id: str(h.id, 64), title: str(h.title, 120), subtitle: str(h.subtitle, 300), imageUrl: str(h.imageUrl, 2048), action: action(h.action) })).filter((h) => h.action),
+            // action null olabilir (tıklanmaz); bilinmeyen tür ise öğe gizlenir (§4)
+            hero: arr(data?.hero)
+                .filter((h) => h.action == null || ACTION_TYPES.has(h.action.type))
+                .map((h) => ({ id: str(h.id, 64), title: str(h.title, 120), subtitle: str(h.subtitle, 300), imageUrl: str(h.imageUrl, 2048), action: action(h.action) }))
+                .filter((h) => h.title),
             announcements: arr(data?.announcements).filter((a) => !dismissed.has(a.id)).map((a) => ({
                 id: str(a.id, 64), text: str(a.text, 500), variant: ['INFO', 'WARNING', 'SUCCESS', 'CRITICAL'].includes(a.variant) ? a.variant : 'INFO',
                 link: a.link?.url ? { label: str(a.link.label, 60), url: str(a.link.url, 2048) } : null, dismissible: a.dismissible !== false,
@@ -578,15 +583,25 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         return { quote: data };
     }
 
-    async function purchase(quoteId) {
+    /** consents: kullanıcının onay penceresinde işaretlediği belge anahtarları (v1.6). */
+    async function purchase(quoteId, consents = []) {
         requirePurchase();
         if (typeof quoteId !== 'string' || !quoteId || quoteId.length > 128) throw codedError('VALIDATION', 'Geçersiz teklif');
+        const accepted = (Array.isArray(consents) ? consents : []).filter((k) => typeof k === 'string' && /^[\w.:-]{1,64}$/.test(k)).slice(0, 20);
         if (!purchaseKeys.has(quoteId)) purchaseKeys.set(quoteId, crypto.randomUUID());
-        const { data } = await api.post('/v1/launcher/purchase', { quoteId }, { idempotencyKey: purchaseKeys.get(quoteId) });
-        log.info(`[PORTAL] Satın alındı: sipariş ${data?.orderNo}`);
+        let data;
+        try {
+            ({ data } = await api.post('/v1/launcher/purchase', { quoteId, consents: accepted }, { idempotencyKey: purchaseKeys.get(quoteId) }));
+        } catch (err) {
+            // Kesin ret (4xx): sipariş oluşmadı → sonraki denemede yeni anahtar. Ağ/5xx: sonuç
+            // belirsiz → aynı anahtar korunur, tekrar gönderim ilk siparişi döndürür.
+            if (err?.status >= 400 && err.status < 500) purchaseKeys.delete(quoteId);
+            throw err;
+        }
+        log.info(`[PORTAL] Satın alındı: sipariş ${data?.orderNo}${data?.reused ? ' (aynı sipariş, tekrar gönderim)' : ''}`);
         homeCache = null; // "owned" ve kampanyalar değişti
         await Promise.all([refreshMe({ force: true }), library.refresh().catch(() => null)]);
-        return { orderNo: data?.orderNo || null, licenseId: data?.licenseId || null };
+        return { orderNo: data?.orderNo || null, licenseId: data?.licenseId || null, status: data?.status || null, reused: data?.reused === true };
     }
 
     /** Bildirimler (§9). */

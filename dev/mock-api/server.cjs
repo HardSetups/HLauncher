@@ -538,24 +538,33 @@ async function handle(req, res) {
         if (!prod) return fail(res, req, 404, 'NOT_FOUND', 'Ürün bulunamadı');
         const total = BigInt(prod.priceMinor);
         const balance = state.scenario === 'insufficientBalance' ? 1000n : state.wallet;
+        if (body.couponCode && body.couponCode !== 'LAUNCHER10') return fail(res, req, 422, 'COUPON_INVALID', 'Kupon geçersiz');
         return send(res, 200, {
             quoteId: `q_${rid()}_${body.product}`, subtotalMinor: String(total), discountMinor: '0', totalMinor: String(total),
             balanceMinor: String(balance), sufficient: balance >= total, shortfallMinor: String(balance >= total ? 0n : total - balance), expiresIn: 120,
+            // v1.6
+            currency: 'TRY',
+            consents: [{ key: 'mesafeli-satis', title: 'Mesafeli satış sözleşmesi', url: 'https://hardsetups.com/sozlesmeler/mesafeli-satis' }],
+            billingProfile: { ready: true, manageUrl: 'https://hardsetups.com/hesap/fatura' },
+            topupUrl: 'https://hardsetups.com/cuzdan/yukle',
         });
     }
     if (p === '/v1/launcher/purchase' && req.method === 'POST') {
-        if (!req.headers['idempotency-key']) return fail(res, req, 422, 'VALIDATION_FAILED', 'Idempotency-Key gerekli');
+        if (!req.headers['idempotency-key']) return fail(res, req, 422, 'VALIDATION_FAILED', 'Idempotency-Key gerekli', { reason: 'idempotencyKeyRequired' });
+        // Aynı Idempotency-Key → her zaman ilk siparişin yanıtı (reused: true), para ikinci kez çekilmez
+        const idem = req.headers['idempotency-key'];
+        if (state.purchases.has(idem)) return send(res, 200, { ...state.purchases.get(idem), reused: true });
         if (state.scenario === 'insufficientBalance') {
             return fail(res, req, 409, 'INSUFFICIENT_BALANCE', 'Bakiyen yetersiz', { shortfallMinor: '28900', topupUrl: 'https://hardsetups.com/cuzdan/yukle' });
         }
-        // Aynı Idempotency-Key → ilk siparişin yanıtı (ikinci kez para çekilmez)
-        const idem = req.headers['idempotency-key'];
-        if (state.purchases.has(idem)) return send(res, 200, state.purchases.get(idem));
+        if (!(Array.isArray(body.consents) && body.consents.includes('mesafeli-satis'))) {
+            return fail(res, req, 422, 'CONSENT_REQUIRED', 'Sözleşmeleri onaylaman gerekiyor', { missing: ['mesafeli-satis'] });
+        }
         const slug = String(body.quoteId || '').split('_').slice(2).join('_');
         if (!PRODUCTS[slug]) return fail(res, req, 409, 'QUOTE_EXPIRED', 'Teklifin süresi doldu');
         state.wallet -= BigInt(PRODUCTS[slug].priceMinor);
         state.owned.add(slug);
-        const order = { orderNo: `HS-${Date.now()}`, licenseId: `lic-${slug}` };
+        const order = { orderNo: `HS-${Date.now()}`, status: 'COMPLETED', licenseId: `lic-${slug}`, reused: false };
         state.purchases.set(idem, order);
         state.stats.purchases = (state.stats.purchases || 0) + 1;
         return send(res, 200, order);

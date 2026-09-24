@@ -756,8 +756,12 @@ test('portal: bakiye ile satın alma — teklif, onay, aynı teklif iki kez gön
         await login();
         const { quote } = await portal.quote('tiktok-doldurdoldur', 'aylik', 'LAUNCHER10');
         assert.deepStrictEqual([quote.totalMinor, quote.sufficient], ['19900', true]);
-        const [a, b] = await Promise.all([portal.purchase(quote.quoteId), portal.purchase(quote.quoteId)]);
+        assert.deepStrictEqual(quote.consents.map((c) => c.key), ['mesafeli-satis']);
+        await assert.rejects(portal.quote('tiktok-doldurdoldur', 'aylik', 'SAHTEKUPON'), { code: 'COUPON_INVALID' });
+        await assert.rejects(portal.purchase(quote.quoteId, []), { code: 'CONSENT_REQUIRED' }); // onaysız sipariş yok
+        const [a, b] = await Promise.all([portal.purchase(quote.quoteId, ['mesafeli-satis']), portal.purchase(quote.quoteId, ['mesafeli-satis'])]);
         assert.strictEqual(a.orderNo, b.orderNo);
+        assert.ok([a.reused, b.reused].includes(true), 'ikinci gönderim aynı sipariş (reused)');
         assert.strictEqual(mock.state.stats.purchases, 1);
         assert.strictEqual(portal.publicState().wallet.balanceMinor, String(25000n - 19900n));
         const view = await portal.libraryView({ refresh: false });
@@ -771,7 +775,7 @@ test('portal: yetersiz bakiye 409 (eksik tutar + yükleme adresi); satın alma k
         mock.state.scenario = 'insufficientBalance';
         const { quote } = await portal.quote('kum-firtinasi', 'aylik');
         assert.strictEqual(quote.sufficient, false);
-        await assert.rejects(portal.purchase(quote.quoteId), (err) => err.code === 'INSUFFICIENT_BALANCE' && err.status === 409 && !!err.details.topupUrl);
+        await assert.rejects(portal.purchase(quote.quoteId, ['mesafeli-satis']), (err) => err.code === 'INSUFFICIENT_BALANCE' && err.status === 409 && !!err.details.topupUrl);
         mock.state.scenario = 'purchaseDisabled';
         await portal.loadConfig();
         await assert.rejects(portal.quote('kum-firtinasi', 'aylik'), { code: 'PURCHASE_DISABLED' });
