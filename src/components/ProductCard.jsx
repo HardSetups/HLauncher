@@ -1,15 +1,18 @@
 // Vitrin ürün kartı (sözleşme §4 ProductCard): kapak, ad, kısa açıklama, fiyat
 // (indirimliyse eski fiyat üstü çizili), rozetler (Yeni / İndirimde), sahipsen işaret.
-import { Check } from 'lucide-react';
+// Kapak yoksa ya da izinli host'ta değilse markalı desen + ürün ikonu gösterilir.
+import { useState } from 'react';
+import { Check, ArrowRight } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { formatMinor } from '../utils/money.js';
 import { imgSrc } from '../utils/portal.js';
+import { InstanceIcon } from './ui.jsx';
 
-export function Badges({ badges }) {
+export function Badges({ badges, className = '' }) {
   const { t } = useI18n();
   if (!badges?.length) return null;
   return (
-    <span className="badges">
+    <span className={`badges ${className}`}>
       {badges.map((b) => <span key={b} className={`badge is-${b.toLowerCase()}`}>{t(`hs.badge.${b}`)}</span>)}
     </span>
   );
@@ -29,22 +32,53 @@ export function Price({ minor, compareAt, currency, from = false }) {
   );
 }
 
-export default function ProductCard({ product, imageHosts, onOpen }) {
-  const { t } = useI18n();
-  const cover = imgSrc(product.coverUrl || product.iconUrl, imageHosts);
+/**
+ * Kapak görseli ya da markalı desen. src: zaten süzülmüş (imgSrc) adres ya da null.
+ * seed: desendeki ürün ikonu için kimlik; icon: süzülmüş ikon adresi (isteğe bağlı).
+ */
+export function CoverArt({ src, seed, icon = null, iconSize = 56, className = '', children }) {
+  const [failed, setFailed] = useState(null);
+  const show = src && failed !== src;
   return (
-    <button type="button" className="pcard" onClick={() => onOpen(product)}>
-      <span className="pcard-cover">
-        {cover ? <img src={cover} alt="" loading="lazy" onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} /> : null}
+    <span className={`hub-cover${show ? '' : ' is-pattern'} ${className}`}>
+      {show
+        ? <img src={src} alt="" loading="lazy" draggable={false} onError={() => setFailed(src)} />
+        : <span className="hub-cover-mark"><InstanceIcon instance={{ id: seed, iconUrl: icon }} size={iconSize} /></span>}
+      {children}
+    </span>
+  );
+}
+
+/** Ürün rafı: tek ürün geniş kart, iki ürün yan yana, fazlası ızgara. onOpen(slug). */
+export function ProductShelf({ products, imageHosts, onOpen }) {
+  if (products.length === 1) return <ProductCard product={products[0]} imageHosts={imageHosts} onOpen={() => onOpen(products[0].slug)} layout="wide" />;
+  return (
+    <div className={`pgrid${products.length === 2 ? ' is-duo' : ''}`}>
+      {products.map((p) => <ProductCard key={p.slug} product={p} imageHosts={imageHosts} onOpen={() => onOpen(p.slug)} />)}
+    </div>
+  );
+}
+
+/** layout: 'grid' (dikey kart) | 'wide' (tek ürün: yatay, geniş vitrin kartı) */
+export default function ProductCard({ product, imageHosts, onOpen, layout = 'grid' }) {
+  const { t } = useI18n();
+  const cover = imgSrc(product.coverUrl, imageHosts);
+  const icon = imgSrc(product.iconUrl, imageHosts);
+  const wide = layout === 'wide';
+  return (
+    <button type="button" className={`pcard${wide ? ' is-wide' : ''}${product.owned ? ' is-owned' : ''}`} onClick={() => onOpen(product)}>
+      <CoverArt src={cover} seed={product.slug} icon={icon} iconSize={wide ? 72 : 52} className="pcard-cover">
         <Badges badges={product.badges} />
-      </span>
+      </CoverArt>
       <span className="pcard-body">
+        {wide && <InstanceIcon instance={{ id: product.slug, iconUrl: icon }} size={44} className="pcard-icon" />}
         <span className="pcard-name ellipsis">{product.name}</span>
         {product.shortDescription && <span className="pcard-desc">{product.shortDescription}</span>}
         <span className="pcard-foot">
           {product.owned
             ? <span className="pcard-owned"><Check size={13} /> {t('hs.owned')}</span>
             : <Price minor={product.priceFromMinor} compareAt={product.compareAtMinor} currency={product.currency} from />}
+          <span className="pcard-go">{product.owned ? t('hub.card.view') : t('hub.card.details')} <ArrowRight size={14} /></span>
         </span>
       </span>
     </button>

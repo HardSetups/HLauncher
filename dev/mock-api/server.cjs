@@ -31,6 +31,8 @@ const SCENARIOS = new Set([
     'notDeployed',      // canlı v0.8.10 gibi: /v1/launcher/* 404, yalnızca by-license çalışır
     'reportDisabled',   // v1.7: features.report=false; rapor 403 REPORT_DISABLED
     'telemetryOn',      // v1.7: features.telemetry=true
+    'sparse',           // canlıdaki gibi: vitrin boş, katalogda tek ürün
+    'emptyStore',       // vitrin de katalog da boş (boş durum tasarımı için)
 ]);
 
 const TEST_SEED = crypto.createHash('sha256').update('hardsetups-launcher-offline-vectors-v1').digest();
@@ -131,14 +133,88 @@ function makePng(size, [r, g, b]) {
     }));
     return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 }
-const ICON_COLORS = { 'kum-firtinasi': [214, 150, 60], 'tiktok-doldurdoldur': [70, 140, 220] };
+const ICON_COLORS = { 'kum-firtinasi': [214, 150, 60], 'tiktok-doldurdoldur': [70, 140, 220], 'kale-savunmasi': [96, 150, 80] };
+
+// Kapak görseli (16:9, piksel sanatı manzara): vitrin/kütüphane tasarımını gerçekçi görmek için.
+// Blok blok üretilir; tek renkli geniş alanlar sayesinde PNG küçük kalır.
+const COVER_SCENES = {
+    'kum-firtinasi': { sky: [[38, 22, 30], [86, 40, 36], [158, 78, 48], [214, 134, 72]], sun: [246, 204, 138], far: [140, 84, 48], near: [196, 136, 74], top: [226, 176, 104], sunAt: [0.7, 0.34], streaks: true },
+    'tiktok-doldurdoldur': { sky: [[14, 16, 36], [26, 28, 66], [48, 44, 108], [84, 62, 142]], sun: [226, 218, 255], far: [36, 40, 84], near: [56, 68, 132], top: [112, 140, 222], sunAt: [0.24, 0.3], stars: true },
+    'kale-savunmasi': { sky: [[14, 22, 32], [26, 42, 58], [48, 76, 92], [90, 124, 134]], sun: [234, 230, 206], far: [36, 58, 54], near: [52, 90, 58], top: [98, 144, 76], sunAt: [0.8, 0.26], castle: [24, 28, 34] },
+};
+function makeCover(slug) {
+    const s = COVER_SCENES[slug];
+    const B = 12; const W = 80; const H = 45; // 80×45 blok × 12 px = 960×540
+    const hash = (x, y) => { let h = (x * 374761393 + y * 668265263) ^ 0x5bf03635; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+    const shade = (c, k) => c.map((v) => Math.max(0, Math.min(255, Math.round(v * k))));
+    const horizon = H * 0.6;
+    const farH = (x) => H * 0.58 + 2.6 * Math.sin(x * 0.13 + 1) + 1.8 * Math.sin(x * 0.31);
+    const nearH = (x) => H * 0.74 + 2.8 * Math.sin(x * 0.085 + 2) + 1.4 * Math.sin(x * 0.27 + 0.5);
+    const block = (x, y) => {
+        const n = 0.94 + hash(x, y) * 0.1; // ince doku
+        if (y >= Math.round(nearH(x))) return shade(y === Math.round(nearH(x)) ? s.top : s.near, n * (1 - (y - nearH(x)) * 0.025));
+        if (s.castle && x >= 48 && x <= 64) {
+            const base = Math.round(farH(56));
+            const tower = (x >= 48 && x <= 51) || (x >= 61 && x <= 64);
+            const top = tower ? base - 13 : base - 9;
+            const crenel = y === top && x % 2 === 0;
+            if (y >= top && !crenel && !(x >= 55 && x <= 57 && y >= base - 4)) return shade(s.castle, n);
+        }
+        if (y >= Math.round(farH(x))) return shade(s.far, n);
+        const [sx, sy] = [s.sunAt[0] * W, s.sunAt[1] * H];
+        if ((x - sx) ** 2 + ((y - sy) * 1.1) ** 2 < 22) return shade(s.sun, n);
+        if (s.stars && hash(x * 7, y * 3) > 0.985) return [230, 230, 250];
+        if (s.streaks && y > 8 && y < horizon - 4 && hash(Math.floor(x / 6), y) > 0.93) return shade(s.sky[3], 1.08);
+        const band = Math.min(3, Math.floor((y / horizon) * 4 + (hash(x, y) - 0.5) * 0.35)); // bant sınırında titreşim
+        return shade(s.sky[Math.max(0, band)], n);
+    };
+    const w = W * B; const h = H * B;
+    const rows = [];
+    for (let by = 0; by < H; by++) {
+        const line = Buffer.alloc(1 + w * 3);
+        for (let bx = 0; bx < W; bx++) {
+            const [r, g, b] = block(bx, by);
+            for (let i = 0; i < B; i++) line.set([r, g, b], 1 + (bx * B + i) * 3);
+        }
+        for (let i = 0; i < B; i++) rows.push(line);
+    }
+    const chunk = (type, data) => {
+        const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+        const td = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+        const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td));
+        return Buffer.concat([len, td, crc]);
+    };
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+    return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(Buffer.concat(rows))), chunk('IEND', Buffer.alloc(0))]);
+}
+const coverCache = new Map();
 
 const fakeJar = (id, version) => makeZip([{ name: 'fabric.mod.json', data: Buffer.from(JSON.stringify({ schemaVersion: 1, id, version, depends: { fabricloader: '>=0.16.0' } })) }]);
 
 // ─── Katalog ────────────────────────────────────────────────────────────────
+// beta: ?channel=BETA / channel: BETA isteyene verilen daha yeni sürüm (Ayarlar › Beta sürümlerini de kur)
+// featured: false → vitrinin "öne çıkanlar"ında yok, yalnızca katalogda (/products)
 const PRODUCTS = {
-    'kum-firtinasi': { name: 'Kum Fırtınası', gameId: 'kumfirtinasi', folder: 'HardSetups-KumFirtinasi', version: '1.4.0', priceMinor: '29900', compareAtMinor: '39900', badges: ['NEW', 'SALE'] },
-    'tiktok-doldurdoldur': { name: 'DoldurDoldur', gameId: 'dolduroldur', folder: 'HardSetups-DoldurDoldur', version: '0.2.0', priceMinor: '19900', compareAtMinor: null, badges: [] },
+    'kum-firtinasi': {
+        name: 'Kum Fırtınası', gameId: 'kumfirtinasi', folder: 'HardSetups-KumFirtinasi', version: '1.4.0', beta: '1.5.0-beta.1', priceMinor: '29900', compareAtMinor: '39900', badges: ['NEW', 'SALE'],
+        short: 'Kum fırtınalarının ortasında hayatta kalma macerası. Su bul, sığınak kur, çölü geç.',
+        features: ['Tek oyunculu ve çok oyunculu', 'Dinamik kum fırtınaları', 'Türkçe arayüz ve görevler'],
+    },
+    'tiktok-doldurdoldur': {
+        name: 'DoldurDoldur', gameId: 'dolduroldur', folder: 'HardSetups-DoldurDoldur', version: '0.2.0', priceMinor: '19900', compareAtMinor: null, badges: [],
+        short: 'TikTok canlı yayınında izleyicilerin hediyeleriyle sandığı doldur; yayını oyuna çevir.',
+        features: ['TikTok Live bağlantısı', 'Hediyeye göre oyun içi olaylar', 'Yayıncı paneli'],
+    },
+    'kale-savunmasi': {
+        name: 'Kale Savunması', gameId: 'kalesavunmasi', folder: 'HardSetups-KaleSavunmasi', version: '2.1.0', priceMinor: '24900', compareAtMinor: null, badges: ['BESTSELLER'], featured: false,
+        short: 'Dalga dalga gelen saldırılara karşı kaleni kur, tuzaklarını yerleştir, arkadaşlarınla savun.',
+        features: ['4 kişiye kadar ortak oyun', '30 dalga, 3 zorluk', 'Kule ve tuzak geliştirmeleri'],
+    },
+};
+const productVersion = (slug, channel) => {
+    const p = PRODUCTS[slug];
+    return channel === 'BETA' && p.beta ? { id: `v-${p.beta}`, version: p.beta, channel: 'BETA' } : { id: `v-${p.version}`, version: p.version, channel: 'STABLE' };
 };
 
 function buildFiles(slug) {
@@ -240,8 +316,8 @@ function issuePair(deviceId) {
 function productCard(slug, withOwned, base) {
     const p = PRODUCTS[slug];
     return {
-        slug, name: p.name, shortDescription: `${p.name} — HardSetups mod paketi`,
-        iconUrl: `${base}/img/${slug}.png`, coverUrl: `${base}/img/${slug}.png`,
+        slug, name: p.name, shortDescription: p.short,
+        iconUrl: `${base}/img/${slug}.png`, coverUrl: `${base}/img/${slug}-kapak.png`,
         priceFromMinor: p.priceMinor, compareAtMinor: p.compareAtMinor, currency: 'TRY', badges: p.badges,
         owned: withOwned ? state.owned.has(slug) : false,
     };
@@ -302,9 +378,13 @@ async function handle(req, res) {
     }
 
     // Ürün resimleri (imageHosts: 127.0.0.1)
-    const img = /^\/img\/([a-z0-9-]+)\.png$/.exec(p);
+    const img = /^\/img\/([a-z0-9-]+?)(-kapak)?\.png$/.exec(p);
     if (img && PRODUCTS[img[1]]) {
         res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'max-age=3600' });
+        if (img[2]) {
+            if (!coverCache.has(img[1])) coverCache.set(img[1], makeCover(img[1]));
+            return res.end(coverCache.get(img[1]));
+        }
         return res.end(makePng(64, ICON_COLORS[img[1]] || [120, 120, 120]));
     }
 
@@ -446,14 +526,17 @@ async function handle(req, res) {
         const personal = !a.error;
         const etag = `${state.homeEtag}-${personal ? 'p' : 'a'}`;
         if (req.headers['if-none-match'] === etag) { res.writeHead(304, { ETag: etag }); return res.end(); }
+        if (['sparse', 'emptyStore'].includes(state.scenario)) {
+            return send(res, 200, { hero: [], announcements: [], featured: [], campaigns: [], coupons: [], news: [], updates: [], expiring: [] }, { ETag: etag });
+        }
         return send(res, 200, {
             hero: [
-                { id: 'h1', title: 'Kum Fırtınası çıktı', subtitle: 'Çölün ortasında hayatta kal', imageUrl: `${base}/img/kum-firtinasi.png`, action: { type: 'product', slug: 'kum-firtinasi' } },
-                { id: 'h2', title: 'DoldurDoldur', subtitle: 'TikTok canlı yayınları için', imageUrl: `${base}/img/tiktok-doldurdoldur.png`, action: { type: 'product', slug: 'tiktok-doldurdoldur' } },
+                { id: 'h1', title: 'Kum Fırtınası çıktı', subtitle: 'Çölün ortasında hayatta kal', imageUrl: `${base}/img/kum-firtinasi-kapak.png`, action: { type: 'product', slug: 'kum-firtinasi' } },
+                { id: 'h2', title: 'DoldurDoldur', subtitle: 'TikTok canlı yayınları için', imageUrl: `${base}/img/tiktok-doldurdoldur-kapak.png`, action: { type: 'product', slug: 'tiktok-doldurdoldur' } },
                 { id: 'h3', title: 'Bilinmeyen tür gizlenmeli', subtitle: '', imageUrl: null, action: { type: 'gizemli', slug: 'x' } },
             ],
             announcements: [{ id: 'a1', text: 'Launcher portalı test ediliyor', variant: 'INFO', link: { label: 'İncele', url: 'https://hardsetups.com/launcher' }, dismissible: true }],
-            featured: Object.keys(PRODUCTS).map((s) => productCard(s, personal, base)),
+            featured: Object.keys(PRODUCTS).filter((s) => PRODUCTS[s].featured !== false).map((s) => productCard(s, personal, base)),
             campaigns: [{ id: 'c1', title: 'Launcher\'a özel %10', description: 'Launcher\'dan alışverişte geçerli', couponCode: 'LAUNCHER10', endsAt: new Date(Date.now() + 3 * 86400e3).toISOString(), products: ['kum-firtinasi'] }],
             // v1.7 (L5): hesaba özel kuponlar yalnızca girişliyken; bozuk tür/değer launcher'da elenir
             coupons: personal ? [
@@ -461,13 +544,17 @@ async function handle(req, res) {
                 { code: 'SABIT-50', type: 'FIXED', value: 5000, endsAt: null, description: null },
                 { code: 'BOZUK', type: 'BOGO', value: 1 },
             ] : [],
-            news: [{ id: 'n1', title: 'Kum Fırtınası 1.4 yayında', excerpt: 'Yeni harita, yeni yaratıklar.', imageUrl: `${base}/img/kum-firtinasi.png`, url: 'https://hardsetups.com/haber/kum-firtinasi-1-4', publishedAt: new Date().toISOString() }],
+            news: [
+                { id: 'n1', title: 'Kum Fırtınası 1.4 yayında', excerpt: 'Yeni harita, yeni yaratıklar.', imageUrl: `${base}/img/kum-firtinasi-kapak.png`, url: 'https://hardsetups.com/haber/kum-firtinasi-1-4', publishedAt: new Date().toISOString() },
+                { id: 'n2', title: 'Kale Savunması 2.1: ortak oyun', excerpt: 'Artık dört kişiye kadar arkadaşlarınla aynı kaleyi savunabilirsin.', imageUrl: `${base}/img/kale-savunmasi-kapak.png`, url: 'https://hardsetups.com/haber/kale-savunmasi-2-1', publishedAt: new Date(Date.now() - 4 * 86400e3).toISOString() },
+            ],
             updates: personal ? [{ product: 'kum-firtinasi', version: '1.4.0', publishedAt: new Date().toISOString(), changelog: '- Yeni harita' }] : [],
             expiring: [],
         }, { ETag: etag });
     }
     if (p === '/v1/launcher/products' && req.method === 'GET') {
-        return send(res, 200, { products: Object.keys(PRODUCTS).map((s) => productCard(s, !authed(req).error, base)) }); // §5
+        const slugs = state.scenario === 'emptyStore' ? [] : state.scenario === 'sparse' ? ['kum-firtinasi'] : Object.keys(PRODUCTS);
+        return send(res, 200, { products: slugs.map((s) => productCard(s, !authed(req).error, base)) }); // §5
     }
     const productMatch = /^\/v1\/launcher\/products\/([a-z0-9-]+)$/.exec(p);
     if (productMatch && req.method === 'GET') {
@@ -475,9 +562,9 @@ async function handle(req, res) {
         if (!PRODUCTS[slug]) return fail(res, req, 404, 'NOT_FOUND', 'Ürün bulunamadı');
         return send(res, 200, {
             ...productCard(slug, !authed(req).error, base),
-            description: `## ${PRODUCTS[slug].name}\n\nMock ürün açıklaması. <script>alert(1)</script> ham HTML işlenmemeli.\n\n[Mağaza](https://magaza.hardsetups.com)`,
-            gallery: [{ type: 'image', url: `${base}/img/${slug}.png`, thumbUrl: `${base}/img/${slug}.png` }, { type: 'video', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumbUrl: `${base}/img/${slug}.png` }],
-            features: ['Tek oyunculu', 'Türkçe'],
+            description: `## ${PRODUCTS[slug].name}\n\n${PRODUCTS[slug].short}\n\nMock ürün açıklaması. <script>alert(1)</script> ham HTML işlenmemeli.\n\n- Kendi klasörüne kurulur, diğer profillerine dokunmaz\n- Güncellemeler kütüphaneden tek tıkla\n\n[Mağaza](https://magaza.hardsetups.com)`,
+            gallery: [{ type: 'image', url: `${base}/img/${slug}-kapak.png`, thumbUrl: `${base}/img/${slug}-kapak.png` }, { type: 'video', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumbUrl: `${base}/img/${slug}-kapak.png` }],
+            features: PRODUCTS[slug].features,
             requirements: { minecraft: '1.21.1', loader: 'fabric', ramMinMb: 2048, ramRecommendedMb: 4096 },
             rating: { average: 4.8, count: 37 }, reviews: [{ author: 'oyuncu1', rating: 5, text: 'Çok iyi', createdAt: new Date().toISOString() }],
             plans: [{ slug: 'aylik', name: 'Aylık', durationDays: 30, priceMinor: PRODUCTS[slug].priceMinor, compareAtMinor: PRODUCTS[slug].compareAtMinor, maxActivations: 2 }],
@@ -519,11 +606,12 @@ async function handle(req, res) {
     }
     if (p === '/v1/launcher/library' && req.method === 'GET') {
         const now = new Date();
+        const channel = url.searchParams.get('channel') === 'BETA' ? 'BETA' : 'STABLE';
         const items = Object.keys(PRODUCTS).filter((s) => state.owned.has(s)).map((slug, i) => ({
             licenseId: `lic-${i + 1}`, keyLast4: '7F2A',
-            product: { slug, name: PRODUCTS[slug].name, iconUrl: `${base}/img/${slug}.png`, coverUrl: `${base}/img/${slug}.png` },
+            product: { slug, name: PRODUCTS[slug].name, iconUrl: `${base}/img/${slug}.png`, coverUrl: `${base}/img/${slug}-kapak.png` },
             status: { suspended: 'SUSPENDED', buildPending: 'PENDING_BUILD' }[state.scenario] || 'ACTIVE', expiresAt: null,
-            latestVersion: { id: `v-${PRODUCTS[slug].version}`, version: PRODUCTS[slug].version, channel: 'STABLE', publishedAt: now.toISOString() },
+            latestVersion: { ...productVersion(slug, channel), publishedAt: now.toISOString() },
             installable: !['suspended', 'buildPending'].includes(state.scenario),
             reason: { suspended: 'suspended', buildPending: 'buildPending' }[state.scenario] || null,
         }));
@@ -544,7 +632,7 @@ async function handle(req, res) {
         if (state.scenario === 'activationLimit') return fail(res, req, 409, 'LICENSE_ACTIVATION_LIMIT', 'Cihaz sınırına ulaştın', { used: 2, limit: 2, manageUrl: 'https://hardsetups.com/hesap/cihazlar' });
         const installId = `inst_${rid()}`;
         state.installs.set(installId, { product: slug, expiresAt: Date.now() + 3600e3 });
-        return send(res, 200, installManifest(installId, slug, base));
+        return send(res, 200, installManifest(installId, slug, base, false, body.channel === 'BETA' ? 'BETA' : 'STABLE'));
     }
     const urlsMatch = /^\/v1\/launcher\/install\/([\w-]+)\/urls$/.exec(p);
     if (urlsMatch && req.method === 'POST') {
@@ -641,14 +729,14 @@ function buildFilesCached(slug) {
 const sha256 = (b) => crypto.createHash('sha256').update(b).digest('hex');
 const sha512 = (b) => crypto.createHash('sha512').update(b).digest('hex');
 
-function installManifest(installId, slug, base, fresh = false) {
+function installManifest(installId, slug, base, fresh = false, channel = 'STABLE') {
     const p = PRODUCTS[slug];
     const f = buildFilesCached(slug);
     const exp = state.scenario === 'expiredUrls' && !fresh ? Date.now() - 1000 : Date.now() + 300e3;
     return {
         installId,
         instance: { id: slug, folderName: slug, displayName: p.name },
-        version: { id: `v-${p.version}`, version: p.version, channel: 'STABLE' },
+        version: productVersion(slug, channel),
         minecraft: { version: '1.21.1' },
         loader: state.scenario === 'noLoaderPin'
             ? { type: 'fabric', version: null, profileUrl: null }
