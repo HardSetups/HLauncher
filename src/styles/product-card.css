@@ -3,7 +3,8 @@
    aynı kartı kullanır; stiller kendi başına yeter (PortalPage yüklenmeden de).
    Ayrıca: ürün rafı (.pgrid), kapak / markalı desen (.hub-cover), rozet, fiyat.
    Yalnızca tema token'ları (index.css :root): --shadow-card, --hl, --ease, --t-*, --line-3,
-   --accent-glow, --ember. Hex yok.
+   --accent-glow, --glass, --ember. Hex yok. Kapak her zaman sabit oranlı blok (16:9; ikili rafta 21:9),
+   görsel mutlak konumlu ve object-fit: cover — kart kapağı uzamaz.
    ════════════════════════════════════════════════════════════════════ */
 
 /* Raf: auto-fit, az ürünle satırda boş sütun kalmaz; iki ürün yan yana */
@@ -99,7 +100,7 @@
   padding: 8px;
   border-radius: var(--r-md);
   corner-shape: var(--shape);
-  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  background: var(--glass);
   box-shadow: inset 0 0 0 1px var(--line-2), inset 0 1px 0 var(--hl);
 }
 

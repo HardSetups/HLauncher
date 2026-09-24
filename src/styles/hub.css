@@ -176,7 +176,7 @@
   padding: 3px;
   border-radius: var(--r-md);
   corner-shape: var(--shape);
-  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  background: var(--glass);
   border: 1px solid color-mix(in srgb, var(--text) 9%, transparent);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
@@ -243,7 +243,7 @@
 .camp-product > svg { color: var(--text-2); }
 .hs-hub .coupon { background: var(--surface); border-color: var(--accent-line); }
 .hs-hub .coupon:hover { background: var(--raised-2); }
-.hs-hub .coupon svg { color: var(--accent-text); }
+.hs-hub .coupon svg { color: var(--text-2); }
 .hs-hub .coupon.is-copied { border-style: solid; border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
 .hs-hub .coupon.is-copied svg:last-child { color: var(--ok); }
 
