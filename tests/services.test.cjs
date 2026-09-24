@@ -381,6 +381,147 @@ test('api: 426 → outdated, 503 → maintenance olayı; config bakımda da ceva
     });
 });
 
+// ─── services/installer.cjs (sözleşme §7, mock API'ye karşı) ────────────────
+const installer = require('../electron/services/installer.cjs');
+
+async function installerContext(base) {
+    const c = makeClient(base);
+    await c.login();
+    const getManifest = async (action = 'INSTALL', product = 'kum-firtinasi') =>
+        (await c.api.post('/v1/launcher/install', { product, action, channel: 'STABLE', installedVersionId: null })).data;
+    const refreshUrlsFor = (installId) => async () => {
+        const r = await c.api.post(`/v1/launcher/install/${installId}/urls`, {});
+        return Object.fromEntries(r.data.files.map((f) => [f.id, f.url]));
+    };
+    const sync = (manifest, instanceDir, extra = {}) => installer.syncProduct({
+        manifest, instanceDir, allowedHosts: ['cdn.hardsetups.com'], allowLocalHttp: true,
+        refreshUrls: refreshUrlsFor(manifest.installId), ...extra,
+    });
+    return { c, getManifest, sync };
+}
+const exists = (dir, rel) => fs.existsSync(path.join(dir, ...rel.split('/')));
+
+test('installer: kurulum yalnızca extract öneklerini açar, lisans ayarını birleştirir, hl-manifest yazar', async () => {
+    await withMock(async (base) => {
+        const { getManifest, sync } = await installerContext(base);
+        const dir = path.join(tmpDir(), 'hs-kum-firtinasi');
+        const r = await sync(await getManifest(), dir);
+        assert.strictEqual(r.downloaded, 2);
+        for (const rel of ['mods/hardsetups-core-0.2.0.jar', 'mods/hardsetups-kumfirtinasi-1.4.0.jar', 'mods/fabric-api-0.116.17+1.21.1.jar', '.hardsetups/lisans-damgasi.json']) {
+            assert.ok(exists(dir, rel), `eksik: ${rel}`);
+        }
+        assert.ok(!exists(dir, 'README.txt') && !exists(dir, 'HardSetups-KumFirtinasi'), 'extract dışı üye açılmamalı');
+        assert.ok(!exists(dir, '.hl-staging'));
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'config/hardsetups/ayarlar.json'), 'utf8')), { 'lisans.anahtar.kumfirtinasi': 'HSMN-OPQR-STUV-WXYZ' });
+        const m = installer.readInstalled(dir);
+        assert.strictEqual(m.files.length, 4);
+        assert.ok(m.files.every((f) => /^[a-f0-9]{64}$/.test(f.sha256)));
+        assert.strictEqual(m.version.version, '1.4.0');
+    });
+});
+
+test('installer: aynı sürüm tekrar senkronize edilince hiçbir şey inmez', async () => {
+    await withMock(async (base) => {
+        const { getManifest, sync } = await installerContext(base);
+        const dir = path.join(tmpDir(), 'hs-kum-firtinasi');
+        await sync(await getManifest(), dir);
+        const again = await sync(await getManifest('UPDATE'), dir);
+        assert.strictEqual(again.downloaded, 0);
+        assert.strictEqual(again.reused, 2);
+    });
+});
+
+test('installer: güncellemede eski yönetilen dosya silinir, kullanıcı jar\'ı .yedek\'e taşınır; dünyalar ve ayarlar korunur', async () => {
+    await withMock(async (base) => {
+        const { getManifest, sync } = await installerContext(base);
+        const dir = path.join(tmpDir(), 'hs-kum-firtinasi');
+        await sync(await getManifest(), dir);
+        fs.writeFileSync(path.join(dir, 'mods', 'kullanicinin-modu.jar'), 'x');
+        fs.mkdirSync(path.join(dir, 'saves', 'Dunya'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'saves', 'Dunya', 'level.dat'), 'dunya');
+        fs.writeFileSync(path.join(dir, 'options.txt'), 'fov:90');
+        fs.writeFileSync(path.join(dir, 'config', 'hardsetups', 'ayarlar.json'), JSON.stringify({ 'hud.olcek': '2', 'lisans.anahtar.kumfirtinasi': 'HSMN-OPQR-STUV-WXYZ' }));
+
+        const next = await getManifest('UPDATE');
+        next.files = next.files.filter((f) => f.id !== 'f2'); // yeni sürüm fabric-api'yi bırakıyor
+        const r = await sync(next, dir);
+        assert.deepStrictEqual(r.removed, ['mods/fabric-api-0.116.17+1.21.1.jar']);
+        assert.deepStrictEqual(r.movedAside, ['mods/kullanicinin-modu.jar']);
+        assert.ok(exists(dir, 'mods/.yedek/kullanicinin-modu.jar'));
+        assert.strictEqual(fs.readFileSync(path.join(dir, 'saves', 'Dunya', 'level.dat'), 'utf8'), 'dunya');
+        assert.strictEqual(fs.readFileSync(path.join(dir, 'options.txt'), 'utf8'), 'fov:90');
+        assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'config/hardsetups/ayarlar.json'), 'utf8'))['hud.olcek'], '2');
+    });
+});
+
+test('installer: onarma yalnızca bozuk dosyanın kaynağını yeniden indirir', async () => {
+    await withMock(async (base) => {
+        const { getManifest, sync } = await installerContext(base);
+        const dir = path.join(tmpDir(), 'hs-kum-firtinasi');
+        await sync(await getManifest(), dir);
+        fs.writeFileSync(path.join(dir, 'mods', 'hardsetups-core-0.2.0.jar'), 'bozuldu');
+        assert.deepStrictEqual(installer.verifyInstalled(dir).bad, ['mods/hardsetups-core-0.2.0.jar']);
+        const r = await sync(await getManifest('REPAIR'), dir);
+        assert.strictEqual(r.downloaded, 1); // yalnızca arşiv; fabric-api sağlam
+        assert.deepStrictEqual(installer.verifyInstalled(dir).bad, []);
+    });
+});
+
+test('installer: süresi dolan imzalı adres install/:id/urls ile tazelenir', async () => {
+    await withMock(async (base) => {
+        const { getManifest, sync } = await installerContext(base);
+        mock.state.scenario = 'expiredUrls';
+        const manifest = await getManifest();
+        const before = mock.state.stats.urlsCalls;
+        await sync(manifest, path.join(tmpDir(), 'hs-kum-firtinasi'));
+        assert.strictEqual(mock.state.stats.urlsCalls - before, 1); // tek tazeleme tüm dosyalara yeter
+    });
+});
+
+test('installer: sunucudaki dosya bozuksa kurulum durur, önceki kurulum olduğu gibi kalır', async () => {
+    await withMock(async (base) => {
+        const { getManifest, sync } = await installerContext(base);
+        const dir = path.join(tmpDir(), 'hs-kum-firtinasi');
+        await sync(await getManifest(), dir);
+        const before = fs.readFileSync(path.join(dir, 'hl-manifest.json'), 'utf8');
+        fs.writeFileSync(path.join(dir, 'mods', 'hardsetups-core-0.2.0.jar'), 'bozuldu');
+        mock.state.scenario = 'corruptFile';
+        await assert.rejects(sync(await getManifest('REPAIR'), dir), { code: 'EHASHMISMATCH' });
+        assert.strictEqual(fs.readFileSync(path.join(dir, 'hl-manifest.json'), 'utf8'), before);
+        assert.ok(exists(dir, 'mods/fabric-api-0.116.17+1.21.1.jar'));
+    });
+});
+
+test('installer: güvensiz yol içeren bildirim hiçbir şey indirmeden reddedilir', async () => {
+    await withMock(async (base) => {
+        const { getManifest, sync } = await installerContext(base);
+        for (const mutate of [
+            (m) => { m.files[1].path = '../../evil.jar'; },
+            (m) => { m.files[0].extract[0].to = 'C:/Windows/'; },
+            (m) => { m.licenseConfig.path = '..\\..\\x.json'; },
+            (m) => { m.instance.folderName = '../x'; },
+            (m) => { delete m.files[1].sha512; },
+        ]) {
+            const m = await getManifest();
+            mutate(m);
+            const dir = path.join(tmpDir(), 'hs-x');
+            await assert.rejects(sync(m, dir), (err) => ['EUNSAFEPATH', 'EBADMANIFEST'].includes(err.code));
+            assert.ok(!exists(dir, 'mods'));
+        }
+    });
+});
+
+test('installer: kaldırma önce dünyaları yedekler, sonra örnek klasörünü siler', async () => {
+    const dir = path.join(tmpDir(), 'hs-kum-firtinasi');
+    fs.mkdirSync(path.join(dir, 'saves', 'Dunya'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'saves', 'Dunya', 'level.dat'), 'dunya');
+    const backupDir = tmpDir();
+    const { backupPath } = installer.uninstallProduct(dir, { backupDir, label: 'kum-firtinasi', now: () => Date.parse('2026-09-24T12:00:00Z') });
+    assert.ok(backupPath.endsWith('kum-firtinasi-dunyalar-20260924-120000.zip'));
+    assert.ok(fs.statSync(backupPath).size > 0);
+    assert.ok(!fs.existsSync(dir));
+});
+
 // ─── Çalıştırıcı ────────────────────────────────────────────────────────────
 (async () => {
     let passed = 0;

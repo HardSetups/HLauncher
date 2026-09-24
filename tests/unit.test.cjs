@@ -570,6 +570,50 @@ test('offline.clockTrusted: saat 5 dakikadan fazla geri alınmışsa güvenilmez
     assert.ok(offline.clockTrusted(Date.now(), null));
 });
 
+// ─── services/licenseconfig.cjs (sözleşme §7.5) ─────────────────────────────
+const { mergeLicenseConfig } = require('../electron/services/licenseconfig.cjs');
+const LC = (entries) => ({ path: 'config/hardsetups/ayarlar.json', schemaVersion: 2, format: 'flat-map', entries });
+const lcFile = (dir) => path.join(dir, 'config', 'hardsetups', 'ayarlar.json');
+
+test('licenseConfig: dosya yoksa yalnızca entries ile oluşturulur', () => {
+    const dir = fs.mkdtempSync(path.join(tmpAppData, 'inst-'));
+    assert.deepStrictEqual(mergeLicenseConfig(dir, LC({ 'lisans.anahtar.kumfirtinasi': 'HSMN-OPQR' })), { changed: true, corruptBackup: null });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(lcFile(dir), 'utf8')), { 'lisans.anahtar.kumfirtinasi': 'HSMN-OPQR' });
+});
+
+test('licenseConfig: birleştirir; modun diğer ayarları ve eski lisans.anahtar korunur, değer birebir', () => {
+    const dir = fs.mkdtempSync(path.join(tmpAppData, 'inst-'));
+    fs.mkdirSync(path.dirname(lcFile(dir)), { recursive: true });
+    fs.writeFileSync(lcFile(dir), JSON.stringify({ 'hud.olcek': '1.5', 'lisans.anahtar': 'ESKI-ANAHTAR', 'arena.renk': 'kirmizi' }));
+    mergeLicenseConfig(dir, LC({ 'lisans.anahtar.dolduroldur': ' hsmn-opqr stuv ' }));
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(lcFile(dir), 'utf8')), {
+        'hud.olcek': '1.5', 'lisans.anahtar': 'ESKI-ANAHTAR', 'arena.renk': 'kirmizi', 'lisans.anahtar.dolduroldur': ' hsmn-opqr stuv ',
+    });
+    assert.ok(!fs.existsSync(`${lcFile(dir)}.yedek`) && !fs.existsSync(`${lcFile(dir)}.tmp`));
+    assert.strictEqual(mergeLicenseConfig(dir, LC({ 'lisans.anahtar.dolduroldur': ' hsmn-opqr stuv ' })).changed, false);
+});
+
+test('licenseConfig: bozuk dosya .bozuk-<zaman> olarak saklanır, yeni dosya yazılır', () => {
+    const dir = fs.mkdtempSync(path.join(tmpAppData, 'inst-'));
+    fs.mkdirSync(path.dirname(lcFile(dir)), { recursive: true });
+    fs.writeFileSync(lcFile(dir), '{ bozuk json');
+    const r = mergeLicenseConfig(dir, LC({ 'lisans.anahtar.x': 'K' }), { now: Date.parse('2026-09-24T12:30:00Z') });
+    assert.ok(r.corruptBackup.endsWith('ayarlar.json.bozuk-20260924-123000'));
+    assert.strictEqual(fs.readFileSync(r.corruptBackup, 'utf8'), '{ bozuk json');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(lcFile(dir), 'utf8')), { 'lisans.anahtar.x': 'K' });
+});
+
+test('licenseConfig: güvensiz yol, yanlış biçim ve metin olmayan değer reddedilir; hata mesajı değeri içermez', () => {
+    const dir = fs.mkdtempSync(path.join(tmpAppData, 'inst-'));
+    assert.throws(() => mergeLicenseConfig(dir, { ...LC({ a: 'b' }), path: '../../x.json' }), { code: 'EUNSAFEPATH' });
+    assert.throws(() => mergeLicenseConfig(dir, { ...LC({ a: 'b' }), format: 'json' }), { code: 'EBADLICENSECONFIG' });
+    assert.throws(() => mergeLicenseConfig(dir, LC({ a: 5 })), { code: 'EBADLICENSECONFIG' });
+    assert.throws(() => mergeLicenseConfig(dir, LC({ ['__proto__']: 'x' })), { code: 'EBADLICENSECONFIG' });
+    try { mergeLicenseConfig(dir, LC({ 'lisans.anahtar.x': 5, gizli: 'GIZLI-DEGER' })); } catch (err) {
+        assert.ok(!err.message.includes('GIZLI-DEGER'));
+    }
+});
+
 // ─── i18n: arayüzdeki her t('…') anahtarı iki sözlükte de var mı? ───────────
 test('i18n: src/ içindeki tüm sabit t(\'…\') anahtarları TR ve EN sözlüklerinde mevcut', () => {
     const i18nSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'i18n.jsx'), 'utf8');
