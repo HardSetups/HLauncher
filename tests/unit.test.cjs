@@ -562,6 +562,15 @@ test('offline: gömülü üretim anahtarı sözleşmedeki parmak izine sahip, te
     assert.strictEqual(offline.verifyEnvelope(valid.envelope, { deviceId: offlineVectors.deviceId, now: Date.parse(offlineVectors.checkAt) }).usable, false);
 });
 
+test('offline: aynı kid için birden çok anahtar denenir (geliştirme); dev anahtar biçimi süzülür', () => {
+    const vectorKey = offlineVectors.keys[0];
+    const ring = offline.buildKeyring({ [vectorKey.kid]: [offline.EMBEDDED_KEYS.ed1, vectorKey.publicKeyRawBase64url] });
+    const valid = offlineVectors.vectors.find((v) => v.name === 'valid');
+    assert.strictEqual(offline.verifyEnvelope(valid.envelope, { deviceId: offlineVectors.deviceId, now: Date.parse(offlineVectors.checkAt), keyring: ring }).usable, true);
+    assert.deepStrictEqual(offline.parseDevKeys('ed1:KGJ8PRAeqEZrcFM--GO6fb3A_Us21m6HHOgRGX-Cl_s, bozuk, x:kisa'), { ed1: ['KGJ8PRAeqEZrcFM--GO6fb3A_Us21m6HHOgRGX-Cl_s'] });
+    assert.deepStrictEqual(offline.parseDevKeys(undefined), {});
+});
+
 test('offline.clockTrusted: saat 5 dakikadan fazla geri alınmışsa güvenilmez', () => {
     const ref = '2026-09-24T12:00:00.000Z';
     assert.ok(offline.clockTrusted(Date.parse('2026-09-24T12:00:00Z'), ref));

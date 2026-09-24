@@ -194,7 +194,7 @@ const { createSession, createMemoryStorage } = require('../electron/services/hse
 const fastSleep = () => new Promise((r) => setTimeout(r, 5));
 
 async function withMock(fn) {
-    Object.assign(mock.state, { scenario: 'normal' });
+    Object.assign(mock.state, { scenario: 'normal', wallet: 25000n, owned: new Set(['kum-firtinasi']), purchases: new Map(), readNotifications: new Set() });
     mock.cfg.accessTtl = 900;
     mock.cfg.minVersion = null;
     const server = await mock.start(0);
@@ -734,6 +734,57 @@ test('portal: lisansa özel dosya hazırlanıyorsa 409 CONFLICT buildNotReady; k
         const item = view.items.find((i) => i.product.slug === 'kum-firtinasi');
         assert.deepStrictEqual([item.status, item.installable, item.reason], ['PENDING_BUILD', false, 'buildPending']);
         await assert.rejects(portal.installProduct('kum-firtinasi', 'INSTALL'), (err) => err.code === 'CONFLICT' && err.details.reason === 'buildNotReady');
+    });
+});
+
+test('portal.home: bilinmeyen action türü gizlenir, ETag ile 304, kapatılan duyuru bir daha gelmez', async () => {
+    await withPortal(async ({ portal }) => {
+        const first = await portal.home();
+        assert.deepStrictEqual(first.home.hero.map((h) => h.id), ['h1', 'h2']); // 'gizemli' tür gizlendi
+        assert.strictEqual(first.home.campaigns[0].couponCode, 'LAUNCHER10');
+        assert.strictEqual((await portal.home()).cached, true); // 5 dk dolmadan sunucuya gidilmez
+        assert.strictEqual((await portal.home({ reason: 'refresh' })).cached, true); // gidildi, 304 geldi
+        portal.dismissAnnouncement('a1');
+        assert.deepStrictEqual((await portal.home()).home.announcements, []);
+    });
+});
+
+test('portal: bakiye ile satın alma — teklif, onay, aynı teklif iki kez gönderilse de tek sipariş', async () => {
+    await withPortal(async ({ portal, login }) => {
+        await login();
+        const { quote } = await portal.quote('tiktok-doldurdoldur', 'aylik', 'LAUNCHER10');
+        assert.deepStrictEqual([quote.totalMinor, quote.sufficient], ['19900', true]);
+        const [a, b] = await Promise.all([portal.purchase(quote.quoteId), portal.purchase(quote.quoteId)]);
+        assert.strictEqual(a.orderNo, b.orderNo);
+        assert.strictEqual(mock.state.stats.purchases, 1);
+        assert.strictEqual(portal.publicState().wallet.balanceMinor, String(25000n - 19900n));
+        const view = await portal.libraryView({ refresh: false });
+        assert.ok(view.items.some((i) => i.product.slug === 'tiktok-doldurdoldur'), 'satın alınan ürün kütüphanede');
+    });
+});
+
+test('portal: yetersiz bakiye 409 (eksik tutar + yükleme adresi); satın alma kapalıysa istek gönderilmez', async () => {
+    await withPortal(async ({ portal, login }) => {
+        await login();
+        mock.state.scenario = 'insufficientBalance';
+        const { quote } = await portal.quote('kum-firtinasi', 'aylik');
+        assert.strictEqual(quote.sufficient, false);
+        await assert.rejects(portal.purchase(quote.quoteId), (err) => err.code === 'INSUFFICIENT_BALANCE' && err.status === 409 && !!err.details.topupUrl);
+        mock.state.scenario = 'purchaseDisabled';
+        await portal.loadConfig();
+        await assert.rejects(portal.quote('kum-firtinasi', 'aylik'), { code: 'PURCHASE_DISABLED' });
+    });
+});
+
+test('portal: bildirimler listelenir, tümü okundu yapılınca okunmamış sayısı sıfırlanır', async () => {
+    await withPortal(async ({ portal, login }) => {
+        await login();
+        await portal.refreshMe({ force: true });
+        assert.strictEqual(portal.publicState().unreadNotifications, 2);
+        const list = await portal.notifications();
+        assert.strictEqual(list.items.length, 2);
+        await portal.markNotificationsRead({ all: true });
+        assert.strictEqual(portal.publicState().unreadNotifications, 0);
     });
 });
 

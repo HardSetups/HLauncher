@@ -20,10 +20,27 @@ function keyFromRaw(rawBase64url) {
     return crypto.createPublicKey({ key: Buffer.concat([ED25519_SPKI_PREFIX, raw]), format: 'der', type: 'spki' });
 }
 
+/** kid → anahtar listesi. Değer tek anahtar ya da dizi olabilir (geliştirmede aynı kid'e iki anahtar). */
 function buildKeyring(rawKeys) {
     const ring = new Map();
-    for (const [kid, raw] of Object.entries(rawKeys)) ring.set(kid, keyFromRaw(raw));
+    for (const [kid, raw] of Object.entries(rawKeys)) {
+        for (const r of Array.isArray(raw) ? raw : [raw]) ring.set(kid, [...(ring.get(kid) || []), keyFromRaw(r)]);
+    }
     return ring;
+}
+
+/**
+ * Geliştirme anahtarları: "kid:ham32base64url,kid:…" (HL_DEV_OFFLINE_KEYS). Yalnızca
+ * paketlenmemiş sürümde çağrılır; üretim anahtarlarının YANINA eklenir.
+ */
+function parseDevKeys(text) {
+    const out = {};
+    for (const part of String(text || '').split(',').map((s) => s.trim()).filter(Boolean)) {
+        const m = /^([\w:.-]{1,32}):([A-Za-z0-9_-]{43})$/.exec(part);
+        if (!m) continue;
+        out[m[1]] = [...(out[m[1]] || []), m[2]];
+    }
+    return out;
 }
 
 const DEFAULT_KEYRING = buildKeyring(EMBEDDED_KEYS);
@@ -93,14 +110,14 @@ function verifyEnvelope(envelope, { deviceId, now = Date.now(), keyring = DEFAUL
     const result = (signatureValid, reason, playable = {}) => ({ signatureValid, usable: !reason, reason, playable });
     if (!envelope || typeof envelope !== 'object') return result(false, 'missing');
 
-    const key = keyring.get(envelope.kid);
-    if (!key) return result(false, 'unknownKid');
+    const keys = keyring.get(envelope.kid);
+    if (!keys?.length) return result(false, 'unknownKid');
 
     let valid = false;
     try {
         const signature = Buffer.from(String(envelope.signature || ''), 'base64url');
-        valid = signature.length === 64 &&
-            crypto.verify(null, Buffer.from(signingInput(envelope), 'utf8'), key, signature);
+        const input = Buffer.from(signingInput(envelope), 'utf8');
+        valid = signature.length === 64 && keys.some((key) => crypto.verify(null, input, key, signature));
     } catch { valid = false; }
     if (!valid) return result(false, 'badSignature');
 
@@ -128,6 +145,6 @@ function clockTrusted(now, referenceIssuedAt) {
 }
 
 module.exports = {
-    EMBEDDED_KEYS, keyFromRaw, buildKeyring,
+    EMBEDDED_KEYS, keyFromRaw, buildKeyring, parseDevKeys,
     canonicalJson, signingInput, verifyEnvelope, clockTrusted,
 };

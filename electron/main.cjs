@@ -415,6 +415,16 @@ function startApp() {
     ipcMain.handle('portal:logout', portalCall('Çıkış', async () => { await portal.logout(); return {}; }));
     ipcMain.handle('portal:open-link', portalCall('Bağlantı', (kind) => ({ opened: portal.openLink(String(kind || '')) })));
     ipcMain.handle('portal:open-url', portalCall('Bağlantı', (url) => ({ opened: portal.openUrl(url) })));
+    // Vitrin, ürün, satın alma, bildirimler (C3)
+    ipcMain.handle('portal:home', portalCall('Vitrin', (reason) => portal.home({ reason: ['open', 'focus', 'refresh'].includes(reason) ? reason : 'open' })));
+    ipcMain.handle('portal:dismiss-announcement', portalCall('Duyuru', (id) => ({ dismissed: portal.dismissAnnouncement(id) })));
+    ipcMain.handle('portal:product', portalCall('Ürün', (slug) => portal.product(String(slug || ''))));
+    ipcMain.handle('portal:quote', portalCall('Teklif', (productSlug, plan, coupon) => portal.quote(String(productSlug || ''), String(plan || ''), coupon ? String(coupon) : null)));
+    ipcMain.handle('portal:purchase', portalCall('Satın alma', (quoteId) => portal.purchase(String(quoteId || ''))));
+    ipcMain.handle('portal:notifications', portalCall('Bildirimler', (cursor) => portal.notifications(cursor ? String(cursor) : null)));
+    ipcMain.handle('portal:notifications-read', portalCall('Bildirim okundu', (opts) => portal.markNotificationsRead({
+        ids: Array.isArray(opts?.ids) ? opts.ids.map(String) : null, all: opts?.all === true,
+    })));
 
     // ── Profiller ───────────────────────────────────────────────────────────
     ipcMain.handle('instances:list', () => instances.list());

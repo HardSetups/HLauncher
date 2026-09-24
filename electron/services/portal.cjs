@@ -236,14 +236,22 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
 
     // ── Kütüphane ve yönetilen örnekler (C2) ─────────────────────────────────
 
-    // Geliştirmede yerel mock, zarfı sözleşme vektörlerinin TEST anahtarıyla imzalar;
-    // o anahtar yalnızca paketlenmemiş + yerel API ile eklenir, üretimde asla.
+    // Geliştirme anahtarları YALNIZCA paketlenmemiş sürümde ve yerel API ile, üretim
+    // anahtarlarının yanına eklenir (paketli sürümde hiçbiri okunmaz):
+    //   - mock: sözleşme vektörlerinin TEST anahtarı (test-ed1)
+    //   - HL_DEV_OFFLINE_KEYS="ed1:<ham32base64url>": lokal HardSetupsWeb'in kendi anahtar halkası
+    //     (lokal ortam da kid=ed1 kullanır; aynı kid için birden çok anahtar denenir)
     function devKeyring() {
         if (!isDev || !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(baseUrl)) return undefined;
+        const raw = { ...offline.EMBEDDED_KEYS };
         try {
             const vectors = require('../../tests/fixtures/launcher-offline-vectors.json');
-            return offline.buildKeyring({ ...offline.EMBEDDED_KEYS, ...Object.fromEntries(vectors.keys.map((k) => [k.kid, k.publicKeyRawBase64url])) });
-        } catch { return undefined; }
+            for (const k of vectors.keys) raw[k.kid] = k.publicKeyRawBase64url;
+        } catch { /* fixture yoksa geç */ }
+        for (const [kid, keys] of Object.entries(offline.parseDevKeys(process.env.HL_DEV_OFFLINE_KEYS))) {
+            raw[kid] = [...[].concat(raw[kid] || []), ...keys];
+        }
+        try { return offline.buildKeyring(raw); } catch { return undefined; }
     }
     library = createLibrary({ api, dataRoot, getDeviceId: () => session.getDeviceId(), log, keyring: devKeyring() });
 
@@ -489,6 +497,117 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         return { backupPath };
     }
 
+    // ── Vitrin, ürün, satın alma, bildirimler (C3) ───────────────────────────
+
+    const HOME_MIN_INTERVAL_MS = 5 * 60 * 1000;
+    const HOME_FOCUS_INTERVAL_MS = 60 * 1000;
+    const ACTION_TYPES = new Set(['product', 'url']);
+    let homeCache = null; // { at, etag, signedIn, data }
+
+    const arr = (v) => (Array.isArray(v) ? v : []);
+    const str = (v, max = 500) => (typeof v === 'string' ? v.slice(0, max) : null);
+
+    /** Vitrin yanıtını renderer için süzer: bilinmeyen action türü gizlenir (§4), kapatılan duyuru çıkarılır. */
+    function sanitizeHome(data) {
+        const dismissed = new Set(arr(store.get('dismissedAnnouncements')));
+        const action = (a) => (a && ACTION_TYPES.has(a.type) ? { type: a.type, slug: str(a.slug, 64), url: str(a.url, 2048) } : null);
+        const card = (p) => (p && typeof p.slug === 'string' ? {
+            slug: str(p.slug, 64), name: str(p.name, 120), shortDescription: str(p.shortDescription, 300),
+            iconUrl: str(p.iconUrl, 2048), coverUrl: str(p.coverUrl, 2048),
+            priceFromMinor: str(p.priceFromMinor, 20), compareAtMinor: str(p.compareAtMinor, 20), currency: str(p.currency, 3) || 'TRY',
+            badges: arr(p.badges).filter((b) => ['NEW', 'SALE'].includes(b)), owned: p.owned === true,
+        } : null);
+        return {
+            hero: arr(data?.hero).map((h) => ({ id: str(h.id, 64), title: str(h.title, 120), subtitle: str(h.subtitle, 300), imageUrl: str(h.imageUrl, 2048), action: action(h.action) })).filter((h) => h.action),
+            announcements: arr(data?.announcements).filter((a) => !dismissed.has(a.id)).map((a) => ({
+                id: str(a.id, 64), text: str(a.text, 500), variant: ['INFO', 'WARNING', 'SUCCESS', 'CRITICAL'].includes(a.variant) ? a.variant : 'INFO',
+                link: a.link?.url ? { label: str(a.link.label, 60), url: str(a.link.url, 2048) } : null, dismissible: a.dismissible !== false,
+            })).filter((a) => a.text),
+            featured: arr(data?.featured).map(card).filter(Boolean),
+            campaigns: arr(data?.campaigns).map((c) => ({
+                id: str(c.id, 64), title: str(c.title, 120), description: str(c.description, 500), couponCode: str(c.couponCode, 40),
+                endsAt: str(c.endsAt, 40), products: arr(c.products).map((s) => str(s, 64)).filter(Boolean),
+            })).filter((c) => c.title),
+            news: arr(data?.news).map((n) => ({ id: str(n.id, 64), title: str(n.title, 160), excerpt: str(n.excerpt, 400), imageUrl: str(n.imageUrl, 2048), url: str(n.url, 2048), publishedAt: str(n.publishedAt, 40) })).filter((n) => n.title),
+            updates: arr(data?.updates).map((u) => ({ product: str(u.product, 64), version: str(u.version, 40), publishedAt: str(u.publishedAt, 40), changelog: str(u.changelog, 4000) })).filter((u) => u.product),
+            expiring: arr(data?.expiring).map((e) => ({ licenseId: str(e.licenseId, 64), product: str(e.product, 64), expiresAt: str(e.expiresAt, 40), renewUrl: str(e.renewUrl, 2048) })).filter((e) => e.product),
+        };
+    }
+
+    /** GET /home (§4): ETag'li; en sık 5 dk'da bir, odaklanınca dakikada bir. Girişsiz de çalışır. */
+    async function home({ reason = 'open' } = {}) {
+        if (state.outdated) throw codedError('LAUNCHER_OUTDATED', 'Bu launcher sürümü HardSetups tarafından artık desteklenmiyor');
+        const signedIn = session.isSignedIn();
+        const age = homeCache ? Date.now() - homeCache.at : Infinity;
+        const minAge = reason === 'refresh' ? 0 : reason === 'focus' ? HOME_FOCUS_INTERVAL_MS : HOME_MIN_INTERVAL_MS;
+        if (homeCache && homeCache.signedIn === signedIn && age < minAge) return { home: sanitizeHome(homeCache.data), cached: true };
+        const res = await api.get('/v1/launcher/home', { auth: 'optional', etag: homeCache?.signedIn === signedIn ? homeCache.etag : undefined });
+        if (res.notModified && homeCache) homeCache.at = Date.now();
+        else homeCache = { at: Date.now(), etag: res.etag, signedIn, data: res.data };
+        return { home: sanitizeHome(homeCache.data), cached: !!res.notModified };
+    }
+
+    function dismissAnnouncement(id) {
+        if (typeof id !== 'string' || !id || id.length > 64) return false;
+        store.set('dismissedAnnouncements', [...new Set([...arr(store.get('dismissedAnnouncements')), id])].slice(-200));
+        return true;
+    }
+
+    /** GET /products/:slug (§5). */
+    async function product(slug) {
+        if (state.outdated) throw codedError('LAUNCHER_OUTDATED', 'Bu launcher sürümü HardSetups tarafından artık desteklenmiyor');
+        if (typeof slug !== 'string' || !/^[a-z0-9-]{1,64}$/.test(slug)) throw codedError('VALIDATION', 'Geçersiz ürün');
+        const { data } = await api.get(`/v1/launcher/products/${slug}`, { auth: 'optional' });
+        return { product: data };
+    }
+
+    // Satın alma (§8): yalnızca bakiye. Aynı teklif her zaman aynı Idempotency-Key ile gider
+    // (çift tıklama / ağ tekrarı iki kez satın almaz).
+    const purchaseKeys = new Map(); // quoteId → Idempotency-Key
+
+    function requirePurchase() {
+        requireReady();
+        if (state.config?.features?.purchase === false) throw codedError('PURCHASE_DISABLED', 'Launcher\'dan satın alma şu an kapalı');
+    }
+
+    async function quote(productSlug, plan, couponCode = null) {
+        requirePurchase();
+        if (!/^[a-z0-9-]{1,64}$/.test(String(productSlug)) || !/^[\w-]{1,64}$/.test(String(plan))) throw codedError('VALIDATION', 'Geçersiz ürün ya da plan');
+        const coupon = couponCode ? String(couponCode).trim().slice(0, 40) : null;
+        const { data } = await api.post('/v1/launcher/purchase/quote', { product: productSlug, plan, couponCode: coupon || null });
+        return { quote: data };
+    }
+
+    async function purchase(quoteId) {
+        requirePurchase();
+        if (typeof quoteId !== 'string' || !quoteId || quoteId.length > 128) throw codedError('VALIDATION', 'Geçersiz teklif');
+        if (!purchaseKeys.has(quoteId)) purchaseKeys.set(quoteId, crypto.randomUUID());
+        const { data } = await api.post('/v1/launcher/purchase', { quoteId }, { idempotencyKey: purchaseKeys.get(quoteId) });
+        log.info(`[PORTAL] Satın alındı: sipariş ${data?.orderNo}`);
+        homeCache = null; // "owned" ve kampanyalar değişti
+        await Promise.all([refreshMe({ force: true }), library.refresh().catch(() => null)]);
+        return { orderNo: data?.orderNo || null, licenseId: data?.licenseId || null };
+    }
+
+    /** Bildirimler (§9). */
+    async function notifications(cursor = null) {
+        requireReady();
+        const q = cursor && /^[\w.=-]{1,200}$/.test(cursor) ? `?cursor=${encodeURIComponent(cursor)}` : '';
+        const { data } = await api.get(`/v1/launcher/notifications${q}`);
+        return {
+            items: arr(data?.items).map((n) => ({ id: str(n.id, 64), title: str(n.title, 160), body: str(n.body, 1000), url: str(n.url, 2048), createdAt: str(n.createdAt, 40), readAt: str(n.readAt, 40) })),
+            nextCursor: str(data?.nextCursor, 200),
+        };
+    }
+
+    async function markNotificationsRead({ ids = null, all = false } = {}) {
+        requireReady();
+        const body = all ? { all: true } : { ids: arr(ids).map((i) => str(i, 64)).filter(Boolean).slice(0, 100) };
+        await api.post('/v1/launcher/notifications/read', body);
+        await refreshMe({ force: true });
+        return {};
+    }
+
     /**
      * HardSetups ürünü açılabilir mi? minVersion altında hiçbiri (§2, v1.3.2);
      * hesapla kurulanlar lisans durumuna / çevrimdışı zarfa bakar (§6.3);
@@ -525,6 +644,13 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         installByLicense,
         uninstallProduct,
         launchCheck,
+        home,
+        dismissAnnouncement,
+        product,
+        quote,
+        purchase,
+        notifications,
+        markNotificationsRead,
     };
 }
 

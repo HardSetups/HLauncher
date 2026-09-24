@@ -166,6 +166,7 @@ const state = {
     access: new Map(),        // accessToken → { deviceId, expiresAt }
     installs: new Map(),      // installId → { product, expiresAt, results: [] }
     owned: new Set(['kum-firtinasi']),
+    purchases: new Map(),     // Idempotency-Key → sipariş
     readNotifications: new Set(),
     stats: { refreshCalls: 0, installCalls: 0, urlsCalls: 0, results: [], reports: 0, byLicense: 0 },
     homeEtag: `"home-${Date.now()}"`,
@@ -440,11 +441,15 @@ async function handle(req, res) {
         const etag = `${state.homeEtag}-${personal ? 'p' : 'a'}`;
         if (req.headers['if-none-match'] === etag) { res.writeHead(304, { ETag: etag }); return res.end(); }
         return send(res, 200, {
-            hero: [{ id: 'h1', title: 'Kum Fırtınası çıktı', subtitle: 'Çölün ortasında hayatta kal', imageUrl: `${base}/img/kum-firtinasi.png`, action: { type: 'product', slug: 'kum-firtinasi' } }],
+            hero: [
+                { id: 'h1', title: 'Kum Fırtınası çıktı', subtitle: 'Çölün ortasında hayatta kal', imageUrl: `${base}/img/kum-firtinasi.png`, action: { type: 'product', slug: 'kum-firtinasi' } },
+                { id: 'h2', title: 'DoldurDoldur', subtitle: 'TikTok canlı yayınları için', imageUrl: `${base}/img/tiktok-doldurdoldur.png`, action: { type: 'product', slug: 'tiktok-doldurdoldur' } },
+                { id: 'h3', title: 'Bilinmeyen tür gizlenmeli', subtitle: '', imageUrl: null, action: { type: 'gizemli', slug: 'x' } },
+            ],
             announcements: [{ id: 'a1', text: 'Launcher portalı test ediliyor', variant: 'INFO', link: { label: 'İncele', url: 'https://hardsetups.com/launcher' }, dismissible: true }],
             featured: Object.keys(PRODUCTS).map((s) => productCard(s, personal, base)),
-            campaigns: [],
-            news: [],
+            campaigns: [{ id: 'c1', title: 'Launcher\'a özel %10', description: 'Launcher\'dan alışverişte geçerli', couponCode: 'LAUNCHER10', endsAt: new Date(Date.now() + 3 * 86400e3).toISOString(), products: ['kum-firtinasi'] }],
+            news: [{ id: 'n1', title: 'Kum Fırtınası 1.4 yayında', excerpt: 'Yeni harita, yeni yaratıklar.', imageUrl: `${base}/img/kum-firtinasi.png`, url: 'https://hardsetups.com/haber/kum-firtinasi-1-4', publishedAt: new Date().toISOString() }],
             updates: personal ? [{ product: 'kum-firtinasi', version: '1.4.0', publishedAt: new Date().toISOString(), changelog: '- Yeni harita' }] : [],
             expiring: [],
         }, { ETag: etag });
@@ -543,11 +548,17 @@ async function handle(req, res) {
         if (state.scenario === 'insufficientBalance') {
             return fail(res, req, 409, 'INSUFFICIENT_BALANCE', 'Bakiyen yetersiz', { shortfallMinor: '28900', topupUrl: 'https://hardsetups.com/cuzdan/yukle' });
         }
+        // Aynı Idempotency-Key → ilk siparişin yanıtı (ikinci kez para çekilmez)
+        const idem = req.headers['idempotency-key'];
+        if (state.purchases.has(idem)) return send(res, 200, state.purchases.get(idem));
         const slug = String(body.quoteId || '').split('_').slice(2).join('_');
         if (!PRODUCTS[slug]) return fail(res, req, 409, 'QUOTE_EXPIRED', 'Teklifin süresi doldu');
         state.wallet -= BigInt(PRODUCTS[slug].priceMinor);
         state.owned.add(slug);
-        return send(res, 200, { orderNo: `HS-${Date.now()}`, licenseId: `lic-${slug}` });
+        const order = { orderNo: `HS-${Date.now()}`, licenseId: `lic-${slug}` };
+        state.purchases.set(idem, order);
+        state.stats.purchases = (state.stats.purchases || 0) + 1;
+        return send(res, 200, order);
     }
     if (p === '/v1/launcher/notifications' && req.method === 'GET') {
         const items = [
