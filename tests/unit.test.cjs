@@ -524,10 +524,10 @@ test('offline.canonicalJson: lisans protokolü §3 örnekleri', () => {
     assert.throws(() => offline.canonicalJson({ x: 1.5 }));
 });
 
-test('offline.verifyEnvelope: yedi test vektörünün hepsi beklendiği gibi', () => {
+test('offline.verifyEnvelope: sözleşme v1.2 test vektörlerinin (8) hepsi beklendiği gibi', () => {
     const keyring = offline.buildKeyring(Object.fromEntries(offlineVectors.keys.map((k) => [k.kid, k.publicKeyRawBase64url])));
     const now = Date.parse(offlineVectors.checkAt);
-    assert.strictEqual(offlineVectors.vectors.length, 7);
+    assert.strictEqual(offlineVectors.vectors.length, 8);
     for (const v of offlineVectors.vectors) {
         if (v.expect.signatureValid) assert.strictEqual(offline.signingInput(v.envelope), v.signingInput, v.name);
         const r = offline.verifyEnvelope(v.envelope, { deviceId: offlineVectors.deviceId, now, keyring });

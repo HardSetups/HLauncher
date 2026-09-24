@@ -9,7 +9,7 @@
     "dev": "concurrently -k \"vite\" \"wait-on tcp:127.0.0.1:5173 && cross-env NODE_ENV=development node launch-electron.js\"",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node tests/unit.test.cjs",
+    "test": "node tests/unit.test.cjs && node tests/services.test.cjs",
     "test:integration": "node tests/integration.test.cjs",
     "preview": "vite preview",
     "electron": "electron .",

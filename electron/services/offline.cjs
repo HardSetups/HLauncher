@@ -69,10 +69,13 @@ function canonicalString(input) {
     return `${out}"`;
 }
 
-/** İmza girdisi: kid ve signature çıkarılmış zarfın kanonik JSON'u. */
-function signingInput(envelope) {
-    const body = { ...(envelope || {}) };
-    delete body.kid;
+/**
+ * İmza girdisi: yalnızca `signature` çıkarılmış gövdenin kanonik JSON'u; `kid`
+ * (ve varsa `alg`) girdide KALIR. Lisans protokolü yanıtlarıyla aynı tek kural
+ * (sözleşme v1.2 §6.1, license-protocol.md §3).
+ */
+function signingInput(signed) {
+    const body = { ...(signed || {}) };
     delete body.signature;
     return canonicalJson(body);
 }
