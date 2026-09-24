@@ -36,8 +36,9 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     watch: {
-      // electron-builder çıktıları izlenmesin — paketleme sırasında EBUSY çökmesini önler
-      ignored: ['**/release/**', '**/installer/**'],
+      // electron-builder çıktıları, belgeler ve arşivler izlenmesin — paketleme ya da bir arşiv
+      // programı dosyayı kilitlerken EBUSY ile Vite (ve launcher) çöküyordu
+      ignored: ['**/release/**', '**/installer/**', '**/docs/**', '**/*.{rar,zip,7z}'],
     },
   },
   build: {
