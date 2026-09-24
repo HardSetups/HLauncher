@@ -13,6 +13,21 @@ const log = require('./logger.cjs');
 const CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3 saat
 const FIRST_CHECK_DELAY_MS = 8 * 1000;        // açılışı yavaşlatma
 
+// Güncelleme kaynağı (sözleşme §12). 'github': HardSetups/HLauncher-releases (bugün).
+// 'hardsetups': generic sağlayıcı https://api.hardsetups.com/v1/launcher/update/<kanal>
+// (latest.yml sunucuda üretilir, dosya adresi göreli → 302 ile imzalı CDN; kademeli yayın
+// için X-HL-Device gönderilir). L3 canlıya çıkınca köprü sürümde bu sabit değiştirilir;
+// X-HL-Device başlığı YALNIZCA HardSetups kaynağına gider (GitHub'a gitmez).
+const UPDATE_SOURCE = 'github';
+const HARDSETUPS_UPDATE_BASE = 'https://api.hardsetups.com/v1/launcher/update';
+
+/** Kaynak + kanal → electron-updater besleme ayarı (saf, testli). */
+function feedFor(source, channel = 'stable') {
+    if (source !== 'hardsetups') return null; // app-update.yml (GitHub) geçerli
+    const ch = channel === 'beta' ? 'beta' : 'stable';
+    return { provider: 'generic', url: `${HARDSETUPS_UPDATE_BASE}/${ch}` };
+}
+
 let autoUpdater = null;
 let mainWindow = null;
 let timer = null;
@@ -72,6 +87,13 @@ function initUpdater(app, store, win) {
         autoUpdater.logger = log;
         autoUpdater.autoDownload = true;
         autoUpdater.autoInstallOnAppQuit = true;
+        const feed = feedFor(UPDATE_SOURCE, store.get('settings')?.updateChannel);
+        if (feed) {
+            autoUpdater.setFeedURL(feed);
+            const installId = store.get('installId');
+            if (installId) autoUpdater.requestHeaders = { 'X-HL-Device': installId };
+            log.info(`[UPDATER] Kaynak: ${feed.url}`);
+        }
 
         let pendingVersion = null;
         autoUpdater.on('checking-for-update', () => {
@@ -132,4 +154,4 @@ function installNow() {
 
 function getStatus() { return lastStatus; }
 
-module.exports = { initUpdater, setEnabled, checkNow, installNow, getStatus, plainReleaseNotes };
+module.exports = { initUpdater, setEnabled, checkNow, installNow, getStatus, plainReleaseNotes, feedFor, UPDATE_SOURCE };

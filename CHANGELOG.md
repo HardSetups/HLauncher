@@ -8,12 +8,35 @@
 - Oturum anahtarı Windows'un şifreli deposunda tutulur; siteden cihaz kaldırılırsa launcher bir sonraki istekte bunu fark eder ve söyler
 - HardSetups bakımdayken üstte bir bant görünür, kurulu oyunlar oynanabilir kalır
 
+### HardSetups mağazası
+- Sol raydaki **HardSetups** sayfası: öne çıkanlar, kampanyalar, duyurular ve haberler
+- **Ürün sayfası:** görseller, planlar, indirimli fiyat, gereksinimler (Minecraft sürümü, önerilen RAM)
+- **Bakiyeyle satın alma:** launcher kart bilgisi istemez. Satın almadan önce tutar, bakiye ve onaylanacak belgeler gösterilir; bakiye yetmezse eksik tutar ve bakiye yükleme bağlantısı çıkar. Aynı düğmeye iki kez basmak iki kez satın almaz
+- **Bildirimler:** üstteki zil; okunmamış sayısı, "tümünü okundu yap", eski bildirimler için "daha fazla"
+- Ana sayfada küçük bir **"HardSetups'ta yeni"** kartı; launcher haberleri HardSetups panelinden gelir
+
+### Kütüphane
+- Satın aldığın ürünler tek listede: **Kur**, **Güncelle**, **Onar** ve **Kaldır**
+- Kurulum yalnızca eksik ya da değişmiş dosyaları indirir, yarıda kalan indirmeye kaldığı yerden devam eder; her dosya doğrulanır
+- **Lisans anahtarıyla kurulum:** hesap bağlamadan da anahtar girerek kurabilirsin
+- Kurulan ürün kendi profilinde açılır; sürümü ve loader'ı ürünle kilitlidir. Kaldırırken dünyaların `yedekler` klasörüne alınır
+- İnternet yokken lisanslı ürünler bir süre (varsayılan 72 saat) oynanabilir
+- Ürünler çevrimdışı (kullanıcı adıyla) hesapla da açılır
+
+### Yardım ve bilgi
+- **Sorun bildir** (Ayarlar'da ve oyun çökünce): hangi dosyaların gideceğini önceden görürsün; token, anahtar ve bilgisayar yolları gönderilmeden temizlenir; onay kutusu işaretlenmeden hiçbir şey gönderilmez
+- Güncellemeden sonra ilk açılışta **"Bu sürümde neler var"** penceresi
+- Hakkında bölümünde derlemenin imza durumu ve "Mojang veya Microsoft ile bağlantılı değildir" ibaresi
+- Discord durumunda oynadığın HardSetups ürününün adı görünür
+- Ayarlar'da **"Kapatınca tepsiye küçült"** (varsayılan kapalı)
+
 ### Güvenlik
 - Electron 44'e geçildi (39 artık güvenlik güncellemesi almıyordu)
 - Chromium sandbox yeniden açık; yalnızca açılışta çöken makinelerde kendiliğinden kapanır
 - Paket sertleştirildi: ASAR bütünlük denetimi, yalnızca ASAR'dan yükleme, NODE_OPTIONS ve hata ayıklayıcı bayrakları kapalı, çerez şifreleme
 - Tarayıcıda yalnızca izinli adresler açılır; kamera/mikrofon/bildirim gibi tarayıcı izinleri kapalı
 - Microsoft oturumu, şifreli depolama yoksa diske yazılmaz
+- Ürün görselleri yalnızca izinli adreslerden, boyut ve tür denetiminden geçerek yüklenir; indirmeler yalnızca izinli sunuculardan yapılır
 
 ## 1.0.0-alpha.6 — 2026-09-24
 

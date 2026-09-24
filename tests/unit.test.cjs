@@ -386,6 +386,15 @@ test('updater.plainReleaseNotes: GitHub HTML notunu düz metne çevirir', () => 
     assert.strictEqual(plainReleaseNotes(html), 'Yeni\n• Skin kütüphanesi\n• İndirme & panel');
 });
 
+test('updater.feedFor: GitHub kaynağında besleme değişmez; HardSetups kaynağında kanal adresi', () => {
+    const { feedFor, UPDATE_SOURCE } = require('../electron/lib/updater.cjs');
+    assert.strictEqual(UPDATE_SOURCE, 'github', 'L3 canlıya çıkmadan kaynak değişmemeli (köprü sürüm)');
+    assert.strictEqual(feedFor('github', 'beta'), null);
+    assert.deepStrictEqual(feedFor('hardsetups'), { provider: 'generic', url: 'https://api.hardsetups.com/v1/launcher/update/stable' });
+    assert.deepStrictEqual(feedFor('hardsetups', 'beta').url, 'https://api.hardsetups.com/v1/launcher/update/beta');
+    assert.deepStrictEqual(feedFor('hardsetups', '../x').url, 'https://api.hardsetups.com/v1/launcher/update/stable');
+});
+
 test('updater.plainReleaseNotes: dizi biçimi, boş değer ve uzunluk sınırı', () => {
     assert.strictEqual(plainReleaseNotes([{ note: 'a' }, { note: 'b' }]), 'a\n\nb');
     assert.strictEqual(plainReleaseNotes(null), '');
