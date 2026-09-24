@@ -59,7 +59,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // HardSetups hesabı (portal) — token'lar ana süreçte kalır, burada yalnızca özet
     portalState:        () => ipcRenderer.invoke('portal:state'),
     portalRefresh:      () => ipcRenderer.invoke('portal:refresh'),
-    portalLoginStart:   () => ipcRenderer.invoke('portal:login-start'),
+    portalLoginStart:   (opts) => ipcRenderer.invoke('portal:login-start', opts), // { register: true } → "Kayıt ol"
     portalLoginCancel:  () => ipcRenderer.invoke('portal:login-cancel'),
     portalOpenVerification: () => ipcRenderer.invoke('portal:open-verification'),
     portalCopyVerification: () => ipcRenderer.invoke('portal:copy-verification'),

@@ -482,7 +482,7 @@ function startApp() {
         await portal.refreshMe({ force: true });
         return { state: portal.publicState() };
     }));
-    ipcMain.handle('portal:login-start', portalCall('Giriş', () => portal.startLogin()));
+    ipcMain.handle('portal:login-start', portalCall('Giriş', (opts) => portal.startLogin({ register: opts?.register === true })));
     ipcMain.handle('portal:login-cancel', portalCall('Giriş iptali', () => { portal.cancelLogin(); return {}; }));
     ipcMain.handle('portal:open-verification', portalCall('Onay sayfası', () => ({ opened: portal.openVerification() })));
     ipcMain.handle('portal:copy-verification', portalCall('Adres kopyalama', () => {

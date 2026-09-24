@@ -818,6 +818,13 @@ test('portal: ürün kataloğu (§5) ve "Kayıt ol" bağlantısı (config\'te yo
         assert.ok(products.every((p) => p.slug && p.name && Array.isArray(p.badges)));
         assert.strictEqual(portal.openLink('register'), true);
         assert.strictEqual(portal.openLink('kayit-olmayan-tur'), false);
+        // "Kayıt ol" aynı cihaz kodu akışını başlatır, onay sayfası yeni=1 ile açılır (v1.7.2)
+        await portal.startLogin({ register: true });
+        assert.match(portal.verificationUrl(), /[?&]kod=[A-Z-]+.*[?&]?yeni=1/);
+        portal.cancelLogin();
+        await portal.startLogin();
+        assert.doesNotMatch(portal.verificationUrl(), /yeni=1/);
+        portal.cancelLogin();
     });
 });
 

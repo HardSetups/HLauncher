@@ -199,8 +199,19 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         return state.me;
     }
 
+    /** Onay adresi; "Kayıt ol"da `yeni=1` eklenir (v1.7.2: oturumu olmayan kayıt sayfasına gider, sonra koda döner). */
+    function verificationFor(flow, register) {
+        if (!register) return flow.verificationUriComplete;
+        try {
+            const u = new URL(flow.verificationUriComplete);
+            u.searchParams.set('yeni', '1');
+            return u.toString();
+        } catch { return flow.verificationUriComplete; }
+    }
+
     // ── Cihaz kodu girişi (§1) ──
-    async function startLogin() {
+    // register: "Kayıt ol" düğmesi — aynı cihaz kodu akışı, onay sayfası kayıt adımıyla açılır
+    async function startLogin({ register = false } = {}) {
         assertSupported();
         if (loginFlow) cancelLogin();
         let flow;
@@ -214,9 +225,10 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
             });
         } catch (err) { throw markUnavailable(err); }
         state.unavailable = false;
+        flow.openUrl = verificationFor(flow, register === true);
         loginFlow = flow;
         emitState();
-        openLinkUrl(flow.verificationUriComplete);
+        openLinkUrl(flow.openUrl);
         flow.done.then((result) => {
             if (loginFlow === flow) loginFlow = null;
             if (result.state === 'success') {
@@ -237,11 +249,11 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
     }
 
     function openVerification() {
-        return loginFlow ? openLinkUrl(loginFlow.verificationUriComplete) : false;
+        return loginFlow ? openLinkUrl(loginFlow.openUrl || loginFlow.verificationUriComplete) : false;
     }
 
     function verificationUrl() {
-        return loginFlow?.verificationUriComplete || null;
+        return loginFlow ? loginFlow.openUrl || loginFlow.verificationUriComplete : null;
     }
 
     async function logout() {
@@ -265,10 +277,18 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         return url ? openLinkUrl(url) : false;
     }
 
-    /** Kayıt sayfası config'te yoksa sitenin /kayit sayfası (hardsetups.com/kayit). */
+    /**
+     * Kayıt sayfası config'te (v1.7.2 links.register) yoksa sitenin /kayit sayfası; next=/baglan ile
+     * hesap launcher kaynaklı sayılır ve kayıttan sonra bağlama sayfasına düşer.
+     */
     function registerFallback() {
         const site = state.config?.links?.site || (baseUrl === DEFAULT_BASE ? 'https://hardsetups.com/' : null);
-        try { return site ? new URL('kayit', site.endsWith('/') ? site : `${site}/`).toString() : null; } catch { return null; }
+        try {
+            if (!site) return null;
+            const u = new URL('kayit', site.endsWith('/') ? site : `${site}/`);
+            u.searchParams.set('next', '/baglan');
+            return u.toString();
+        } catch { return null; }
     }
 
     /** Ürün kanalı: Ayarlar'da "beta sürümleri de kur" açıksa BETA (sunucu en yeniyi seçer). */
