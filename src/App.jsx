@@ -24,6 +24,17 @@ import { I18nProvider, useI18n } from './i18n.jsx';
 import { TaskProvider, useTasks } from './tasks.jsx';
 
 const MAX_SERVERS = 20;
+
+/** Ana sayfadaki küçük HardSetups kartı için tek öğe: duyuru > kampanya > hero. Yoksa null (kart hiç görünmez). */
+function hsHighlightOf(home) {
+  const a = home.announcements?.[0];
+  if (a) return { title: a.text, text: null };
+  const c = home.campaigns?.[0];
+  if (c) return { title: c.title, text: c.description, coupon: c.couponCode };
+  const h = home.hero?.[0];
+  if (h) return { title: h.title, text: h.subtitle, slug: h.action?.type === 'product' ? h.action.slug : null };
+  return null;
+}
 const PROGRESS_KEYS = { assets: 'progress.assets', classes: 'progress.classes', libraries: 'progress.libraries', natives: 'progress.natives' };
 
 function App() {
@@ -62,6 +73,9 @@ function App() {
   const [news, setNews] = useState([]);
   // HardSetups hesabı özeti (token içermez): { signedIn, user, wallet, maintenance, outdated, ... }
   const [portal, setPortal] = useState(null);
+  // Vitrin özeti ana sayfa için (kullanıcı kararı: küçük "HardSetups'ta yeni" kartı +
+  // L4 canlıyken haberler panelden). API yoksa null → haberler news.json'dan.
+  const [portalHome, setPortalHome] = useState(null);
   const [reportFor, setReportFor] = useState(null); // { instance, subject } — "Sorun bildir"
   const [crash, setCrash] = useState(null);         // { code, instanceId }
   const [whatsNew, setWhatsNew] = useState(null);   // { version, notes }
@@ -214,6 +228,17 @@ function App() {
     api.getNews().then((n) => { if (!cancelled) setNews(n); }).catch(() => {});
     return () => { cancelled = true; };
   }, [api]);
+
+  // ── HardSetups vitrin özeti (ana sayfa kartı + panel haberleri) ───────────
+  const portalReady = !!portal?.configLoaded && !portal?.outdated;
+  useEffect(() => {
+    if (!portalReady) { setPortalHome(null); return undefined; }
+    let cancelled = false;
+    api.portalHome('open')
+      .then((res) => { if (!cancelled) setPortalHome(res.ok ? res.home : null); })
+      .catch(() => { if (!cancelled) setPortalHome(null); });
+    return () => { cancelled = true; };
+  }, [api, portalReady, portal?.signedIn]);
 
   // ── Canlı sunucu durumu (mcstatus.io, 30sn) ───────────────────────────────
   // Yalnızca id/adres kümesi değişince yeniden kurulur.
@@ -454,7 +479,10 @@ function App() {
                   account={account}
                   servers={servers}
                   statuses={serverStatuses}
-                  news={news}
+                  news={portalHome
+                    ? portalHome.news.map((n) => ({ title: n.title, text: n.excerpt, date: n.publishedAt ? n.publishedAt.slice(0, 10) : null, url: n.url }))
+                    : news}
+                  hsHighlight={portalHome ? hsHighlightOf(portalHome) : null}
                   launch={launch}
                   onPlay={(inst) => launchInstance(inst)}
                   onOpenInstance={openInstance}

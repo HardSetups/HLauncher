@@ -188,7 +188,7 @@ export default function StoreFeed({ portal, onOpenProduct, onOpenLibrary }) {
 
       {feed.news.length > 0 && (
         <Section title={t('hs.feed.news')}>
-          <div className="news-list">
+          <div className="feed-news">
             {feed.news.map((n) => {
               const img = imgSrc(n.imageUrl, hosts);
               return (

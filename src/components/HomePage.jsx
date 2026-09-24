@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Search, Plus, ChevronRight, MoreHorizontal, FolderOpen, Settings2, ExternalLink, Loader2 } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { InstanceIcon, Menu, EmptyState } from './ui.jsx';
-import { IconPlay, IconProfiles, IconDiscord } from './icons.jsx';
+import { IconPlay, IconProfiles, IconDiscord, IconLibrary } from './icons.jsx';
 import { instanceSubtitle, relativeTime, compactNumber } from '../utils/format.js';
 
 function PlayButton({ instance, launch, onPlay, size = 'md' }) {
@@ -26,7 +26,7 @@ function PlayButton({ instance, launch, onPlay, size = 'md' }) {
 }
 
 export default function HomePage({
-  instances, latestVersionId, account, servers, statuses, news, launch,
+  instances, latestVersionId, account, servers, statuses, news, launch, hsHighlight = null,
   onPlay, onOpenInstance, onCreateInstance, navigate,
 }) {
   const { t, lang } = useI18n();
@@ -129,6 +129,22 @@ export default function HomePage({
             <ChevronRight size={16} className="muted" />
           </button>
         </section>
+
+        {/* HardSetups'ta yeni: panelden gelen duyuru / kampanya / öne çıkan; yoksa kart hiç görünmez */}
+        {hsHighlight && (
+          <section className="aside-block">
+            <h3 className="aside-title">{t('home.hsNew')}</h3>
+            <button className="community-row hs-highlight" onClick={() => navigate(hsHighlight.slug ? { page: 'product', slug: hsHighlight.slug } : { page: 'hardsetups' })}>
+              <IconLibrary size={18} />
+              <span className="account-text">
+                <b>{hsHighlight.title}</b>
+                {hsHighlight.text && <span>{hsHighlight.text}</span>}
+                {hsHighlight.coupon && <code className="hs-highlight-coupon">{hsHighlight.coupon}</code>}
+              </span>
+              <ChevronRight size={16} className="muted" />
+            </button>
+          </section>
+        )}
 
         <section className="aside-block">
           <div className="aside-head">

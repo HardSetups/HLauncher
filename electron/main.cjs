@@ -93,6 +93,33 @@ function startApp() {
 
     let mainWindow;
 
+    // Tepsi (kullanıcı kararı: Ayarlar'da, varsayılan kapalı). Tepsi yalnızca ayar
+    // açıkken ve pencere ilk kez gizlenince oluşur; "Çıkış" gerçekten kapatır.
+    let tray = null;
+    let quitting = false;
+    app.on('before-quit', () => { quitting = true; });
+    const trayEnabled = () => getStore().get('settings')?.minimizeToTray === true;
+    const showWindow = () => {
+        if (!mainWindow) return;
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+    };
+    function ensureTray() {
+        if (tray) return;
+        const { Tray, Menu } = require('electron');
+        const icon = app.isPackaged ? path.join(process.resourcesPath, 'public', 'logo.ico') : path.join(__dirname, '..', 'public', 'logo.ico');
+        const en = getStore().get('settings')?.language === 'en';
+        tray = new Tray(icon);
+        tray.setToolTip('HLauncher');
+        tray.setContextMenu(Menu.buildFromTemplate([
+            { label: en ? 'Open HLauncher' : 'HLauncher\'ı aç', click: showWindow },
+            { type: 'separator' },
+            { label: en ? 'Quit' : 'Çıkış', click: () => { quitting = true; app.quit(); } },
+        ]));
+        tray.on('click', showWindow);
+    }
+
     function createWindow() {
         const saved = getStore().get('windowBounds');
         mainWindow = new BrowserWindow({
@@ -136,8 +163,14 @@ function startApp() {
         mainWindow.on('maximize', () => mainWindow.webContents.send('window-maximized', true));
         mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-maximized', false));
 
-        // Pencere boyut/konumunu kapanışta hatırla
-        mainWindow.on('close', () => {
+        // Pencere boyut/konumunu kapanışta hatırla. "Tepsiye küçült" açıksa kapatmak gizler.
+        mainWindow.on('close', (e) => {
+            if (!quitting && trayEnabled()) {
+                e.preventDefault();
+                ensureTray();
+                mainWindow.hide();
+                return;
+            }
             try {
                 const maximized = mainWindow.isMaximized();
                 const bounds = maximized ? mainWindow.getNormalBounds() : mainWindow.getBounds();
@@ -227,7 +260,7 @@ function startApp() {
     });
 
     // ── Pencere / uygulama ──────────────────────────────────────────────────
-    ipcMain.on('close-app', () => app.quit());
+    ipcMain.on('close-app', () => mainWindow.close()); // tepsi ayarı 'close' olayında değerlendirilir
     ipcMain.on('minimize-app', () => mainWindow.minimize());
     ipcMain.on('toggle-maximize', () => {
         if (mainWindow.isMaximized()) mainWindow.unmaximize();

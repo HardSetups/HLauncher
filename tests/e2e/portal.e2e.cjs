@@ -67,6 +67,13 @@ async function main() {
         await win.screenshot({ path: path.join(OUT, '03-bagli.png') });
         step(`bağlandı: ${username}, bakiye ${balance}`);
 
+        // Ana sayfa: küçük "HardSetups'ta yeni" kartı + haberler panelden (kullanıcı kararı)
+        await win.click('.rail-btn[aria-label="Ana sayfa"]');
+        await win.waitForSelector('.hs-highlight', { timeout: 10000 });
+        await win.waitForSelector('.news-item:has-text("Kum Fırtınası 1.4 yayında")', { timeout: 10000 });
+        await win.screenshot({ path: path.join(OUT, '03-anasayfa.png') });
+        step('ana sayfa: HardSetups kartı ve panel haberleri');
+
         // Vitrin → ürün sayfası → bakiye ile satın al → "Şimdi kur" → kütüphanede kurulur
         await win.click('.rail-library');
         await win.waitForSelector('.hero-card', { timeout: 15000 });

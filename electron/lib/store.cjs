@@ -16,6 +16,7 @@ const DEFAULTS = {
         customJvmArgs: '',
         rpcEnabled: true,   // Discord Rich Presence (client ID discord.cjs'te)
         checkUpdates: true,
+        minimizeToTray: false,  // kullanıcı kararı: ayar olarak, varsayılan kapalı
         onboarded: false,
     },
     account: null,              // { type:'offline', name } | { type:'microsoft', name, uuid, refresh }
