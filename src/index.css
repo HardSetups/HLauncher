@@ -101,6 +101,15 @@
   --accent-weak: color-mix(in srgb, var(--accent) 14%, transparent);
   --accent-line: color-mix(in srgb, var(--accent-text) 36%, transparent);
   --accent-glow: color-mix(in srgb, var(--accent) 11%, transparent);   /* zemin ışığı */
+  /* Uygulama zemini (KIMLIK › Derinlik), alttan üste: 950→900 dikey geçiş,
+     sol üstte vurgunun geniş ve bulanık ışığı, kenar karartması, ince doku.
+     Tam ekran katmanlar (ilk kurulum vb.) da aynı zemini kullanır. */
+  --app-bg:
+    var(--grain),
+    radial-gradient(135% 115% at 55% 40%, transparent 58%, rgba(0, 0, 0, 0.42) 100%),
+    radial-gradient(62vw 70vh at 0% 0%, var(--accent-glow), transparent 72%),
+    radial-gradient(40vw 40vh at 0% 0%, var(--accent-glow), transparent 70%),
+    linear-gradient(180deg, var(--bg-deep) 0%, var(--bg) 100%);
 }
 /* Açıklığı sabitlenmiş vurgu metni: koyu vurgu (Kiremit) açılır, açık vurgu
    (Buz) olduğu gibi kalır; ton korunur. */
@@ -373,21 +382,14 @@ input[type='range']::-webkit-slider-thumb {
 
 /* ── Uygulama iskeleti ────────────────────────────────────────────── */
 .boot { height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
-/* Zemin düz değil (KIMLIK › Derinlik): alttan üste katmanlar —
-   950→900 dikey geçiş, sol üstte vurgunun geniş ve bulanık ışığı,
-   kenarlarda karartma, en üstte ince doku. */
+/* Zemin düz değil: katmanlar --app-bg'de (yukarıda) */
 .app-shell {
   height: 100%;
   display: flex;
   color: var(--text);
   overflow: hidden;
   background-color: var(--bg-deep);
-  background-image:
-    var(--grain),
-    radial-gradient(135% 115% at 55% 40%, transparent 58%, rgba(0, 0, 0, 0.42) 100%),
-    radial-gradient(62vw 70vh at 0% 0%, var(--accent-glow), transparent 72%),
-    radial-gradient(40vw 40vh at 0% 0%, var(--accent-glow), transparent 70%),
-    linear-gradient(180deg, var(--bg-deep) 0%, var(--bg) 100%);
+  background-image: var(--app-bg);
 }
 .app-column { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 /* İçerik yüzeyi yarı saydam: zeminin ışığı ve dokusu içeriden de sezilir */
@@ -1203,7 +1205,7 @@ button.news-item:hover { background: var(--raised-2); border-color: var(--line-2
   -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
 }
-.modal-backdrop.is-solid { background: var(--bg); }
+.modal-backdrop.is-solid { background-color: var(--bg-deep); background-image: var(--app-bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
 .modal {
   width: 100%;
   max-height: 100%;
