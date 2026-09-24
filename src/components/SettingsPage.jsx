@@ -192,7 +192,10 @@ export default function SettingsPage({ settings, updateSetting, systemInfo, acce
       <section className="settings-section">
         <h2 className="settings-heading">{t('set.about')}</h2>
         <div className="settings-list">
-          <Row title={`HLauncher${systemInfo.appVersion ? ` v${systemInfo.appVersion}` : ''}`} desc={t('set.about.legal')} />
+          <Row
+            title={`HLauncher${systemInfo.appVersion ? ` v${systemInfo.appVersion}` : ''}`}
+            desc={`${t(!systemInfo.packaged ? 'set.about.devMode' : systemInfo.signed ? 'set.about.signed' : 'set.about.unsigned')} · ${t('set.about.legal')}`}
+          />
         </div>
       </section>
     </div>

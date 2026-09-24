@@ -658,7 +658,8 @@ async function withPortal(fn) {
             store: { get: (k) => kv.get(k), set: (k, v) => kv.set(k, v) },
             dataRoot: tmpDir(),
             log: { info() {}, warn() {}, error() {} },
-            openExternal: () => true,
+            // main.cjs openExternalSafe ile aynı kural: https + izinli host (ya da geliştirmede güvenilir yerel adres)
+            openExternal: (url, hosts, opts) => !!opts?.trusted || links.isAllowedLink(url, [...links.DEFAULT_LINK_HOSTS, ...(hosts || [])]),
             send: (channel, payload) => events.push({ channel, ...payload }),
         });
         await portal.loadConfig();
@@ -676,6 +677,7 @@ async function withPortal(fn) {
     });
 }
 const instancesLib = require('../electron/lib/instances.cjs');
+const links = require('../electron/lib/links.cjs');
 const { getInstanceDir } = require('../electron/lib/paths.cjs');
 
 test('portal: sunucu loader sürümünü sabitlemezse modların koşuluna göre seçer ve manifeste yazar', async () => {
@@ -801,6 +803,24 @@ test('portal.sendReport: onaysız gönderilmez; gönderimde dosyalar ana süreç
         assert.strictEqual(mock.state.lastReport.fileCount, 1);
         assert.ok(!mock.state.lastReport.raw.includes('eyJhbGciOiJIUzI1NiJ9.eyJzdWIi'), 'token sunucuya gitmemeli');
         assert.ok(!mock.state.lastReport.raw.includes('Users\\Mert'), 'kullanıcı adı sunucuya gitmemeli');
+    });
+});
+
+test('portal: renderer\'dan gelen geçersiz argümanlar ağa çıkmadan reddedilir', async () => {
+    await withPortal(async ({ portal, login }) => {
+        await login();
+        const before = { ...mock.state.stats };
+        await assert.rejects(portal.installProduct('../../etc', 'INSTALL'), { code: 'VALIDATION' });
+        await assert.rejects(portal.installProduct('kum-firtinasi', 'DELETE_ALL'), { code: 'VALIDATION' });
+        await assert.rejects(portal.product('<script>'), { code: 'VALIDATION' });
+        await assert.rejects(portal.quote('kum-firtinasi', 'aylik; drop'), { code: 'VALIDATION' });
+        await assert.rejects(portal.purchase(''), { code: 'VALIDATION' });
+        await assert.rejects(portal.installByLicense(''), { code: 'VALIDATION' });
+        await assert.rejects(portal.sendReport({ subject: '', message: 'x', consent: true }), { code: 'VALIDATION' });
+        assert.strictEqual(portal.openLink('file:///C:/Windows'), false);
+        assert.strictEqual(portal.openUrl('javascript:alert(1)'), false);
+        assert.strictEqual(portal.dismissAnnouncement({ id: 1 }), false);
+        assert.deepStrictEqual(mock.state.stats, before, 'geçersiz istek sunucuya gitmemeli');
     });
 });
 

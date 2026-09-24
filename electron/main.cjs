@@ -273,10 +273,28 @@ function startApp() {
     ipcMain.on('stop-game', () => stopGame());
 
     // ── Sistem / ayarlar ────────────────────────────────────────────────────
-    ipcMain.handle('system:info', () => ({
+    // Paketli exe'nin Authenticode imzası (bir kez okunur). İmzasız derleme arayüzde
+    // "dev" olarak işaretlenir (sözleşme C4); geliştirmede null.
+    let signedPromise = null;
+    const checkSigned = () => {
+        if (!app.isPackaged || process.platform !== 'win32') return Promise.resolve(null);
+        if (!signedPromise) {
+            signedPromise = new Promise((resolve) => {
+                const exe = process.execPath.replace(/'/g, "''");
+                require('child_process').execFile('powershell.exe',
+                    ['-NoProfile', '-NonInteractive', '-Command', `(Get-AuthenticodeSignature -LiteralPath '${exe}').Status`],
+                    { timeout: 8000, windowsHide: true },
+                    (err, stdout) => resolve(err ? null : String(stdout).trim() === 'Valid'));
+            });
+        }
+        return signedPromise;
+    };
+    ipcMain.handle('system:info', async () => ({
         totalMemGb: Math.round(os.totalmem() / (1024 ** 3)),
         appVersion: app.getVersion(),
         logsDir: getLogsDir(),
+        packaged: app.isPackaged,
+        signed: await checkSigned(),
     }));
 
     ipcMain.handle('system:open-logs', () => shell.openPath(getLogsDir()));
