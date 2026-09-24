@@ -392,6 +392,45 @@ test('updater.plainReleaseNotes: dizi biçimi, boş değer ve uzunluk sınırı'
     assert.ok(plainReleaseNotes('x'.repeat(5000), 100).length <= 101);
 });
 
+// ─── redact.cjs ─────────────────────────────────────────────────────────────
+const { redact, scrubLogFiles } = require('../electron/lib/redact.cjs');
+const FAKE_JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U';
+
+test('redact: MCLC başlatma satırındaki --accessToken maskelenir, diğer argümanlar kalır', () => {
+    const line = `[MCLC]: Launching with arguments -Xmx4G --username Muffy --uuid abc --accessToken ${FAKE_JWT} --userType msa`;
+    const out = redact(line);
+    assert.ok(!out.includes(FAKE_JWT));
+    assert.ok(out.includes('--accessToken [gizli]'));
+    assert.ok(out.includes('--username Muffy') && out.includes('--userType msa'));
+});
+
+test('redact: Bearer, çıplak JWT, JSON ve sorgu dizesi alanları maskelenir', () => {
+    assert.strictEqual(redact('Authorization: Bearer abc.def-ghi'), 'Authorization: Bearer [gizli]');
+    assert.ok(!redact(`token ${FAKE_JWT} geldi`).includes(FAKE_JWT));
+    const json = redact('{"refreshToken":"r-123","deviceCode":"d-456","user":"mert"}');
+    assert.ok(!json.includes('r-123') && !json.includes('d-456') && json.includes('"user":"mert"'));
+    assert.ok(!redact('?licenseKey=HSMN-OPQR&x=1').includes('HSMN-OPQR'));
+    assert.ok(!redact('{"lisans.anahtar.kumfirtinasi": "HSMN-OPQR-STUV"}').includes('HSMN-OPQR-STUV'));
+});
+
+test('redact: gizli değer içermeyen metin olduğu gibi kalır', () => {
+    const line = '[LAUNCH] Profil "Skyblock" — MC 1.21.4 (fabric), 4 GB; POST /v1/launcher/token/refresh';
+    assert.strictEqual(redact(line), line);
+    assert.strictEqual(redact(''), '');
+    assert.strictEqual(redact(null), null);
+});
+
+test('redact.scrubLogFiles: eski log dosyalarındaki token temizlenir, başka dosyaya dokunulmaz', () => {
+    const dir = fs.mkdtempSync(path.join(tmpAppData, 'logs-'));
+    fs.writeFileSync(path.join(dir, 'hlauncher.log'), `a\n--accessToken ${FAKE_JWT} --x\nb`);
+    fs.writeFileSync(path.join(dir, 'hlauncher.old.log'), 'temiz satır');
+    fs.writeFileSync(path.join(dir, 'notlar.txt'), `--accessToken ${FAKE_JWT}`);
+    assert.deepStrictEqual(scrubLogFiles(dir), { cleaned: 1, failed: 0 });
+    assert.ok(!fs.readFileSync(path.join(dir, 'hlauncher.log'), 'utf8').includes(FAKE_JWT));
+    assert.strictEqual(fs.readFileSync(path.join(dir, 'hlauncher.old.log'), 'utf8'), 'temiz satır');
+    assert.ok(fs.readFileSync(path.join(dir, 'notlar.txt'), 'utf8').includes(FAKE_JWT));
+});
+
 // ─── i18n: backend ilerleme anahtarları sözlükte var mı? ────────────────────
 test('i18n: backend be.* anahtarları TR ve EN sözlüklerinde mevcut', () => {
     const i18nSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'i18n.jsx'), 'utf8');
