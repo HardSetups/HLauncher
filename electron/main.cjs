@@ -449,7 +449,8 @@ function startApp() {
             return { ok: true, ...(await fn(...args)) };
         } catch (err) {
             log.error(`[PORTAL] ${label}: ${err.code || ''} ${err.message}`);
-            return { ok: false, error: err?.toJSON?.() || { code: 'UNKNOWN', message: friendlyError(err) } };
+            // Ana süreçte üretilen kodlu hatalar (PURCHASE_DISABLED, PORTAL_UNAVAILABLE…) kodunu korur
+            return { ok: false, error: err?.toJSON?.() || { code: err.code || 'UNKNOWN', message: friendlyError(err), details: err.details || {} } };
         }
     };
     ipcMain.handle('portal:state', portalCall('Durum', () => ({ state: portal.publicState() })));

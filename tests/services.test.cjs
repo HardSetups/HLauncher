@@ -728,6 +728,47 @@ test('portal: anahtarla kurulum, sunucu kurulum bilgisi vermezse §11.1 tablosuy
     });
 });
 
+test('portal: launcher uçları sunucuda yokken (404) hesap "henüz açılmadı" olur, anahtarla kurulum yine çalışır', async () => {
+    await withPortal(async ({ portal }) => {
+        mock.state.scenario = 'notDeployed';
+        await portal.loadConfig();
+        assert.strictEqual(portal.publicState().accountAvailable, false);
+        await assert.rejects(portal.startLogin(), { code: 'PORTAL_UNAVAILABLE' });
+        await assert.rejects(portal.home({ reason: 'refresh' }), { code: 'PORTAL_UNAVAILABLE' });
+        const r = await portal.installByLicense('HSMN-OPQR-STUV-WXYZ'); // canlıdaki gibi eski yanıt (§11.1)
+        assert.ok(fs.existsSync(path.join(getInstanceDir(r.instanceId), 'mods', 'hardsetups-kumfirtinasi-1.4.0.jar')));
+        portal.uninstallProduct('kum-firtinasi', { backupWorlds: false });
+        mock.state.scenario = 'normal'; // sunucu açılınca bir sonraki config denetimi durumu düzeltir
+        await portal.loadConfig();
+        assert.strictEqual(portal.publicState().accountAvailable, true);
+    });
+});
+
+test('portal: config gelmemişken üretim tabanında cdn.hardsetups.com varsayılır, yerel tabanda varsayılmaz', () => {
+    const saved = process.env.HL_API_BASE;
+    const { createPortal } = require('../electron/services/portal.cjs');
+    const make = () => {
+        const kv = new Map();
+        return createPortal({
+            app: { isPackaged: false, getVersion: () => '1.0.0-alpha.7' },
+            store: { get: (k) => kv.get(k), set: (k, v) => kv.set(k, v) },
+            dataRoot: tmpDir(), log: { info() {}, warn() {}, error() {} }, openExternal: () => false, send() {},
+        });
+    };
+    try {
+        delete process.env.HL_API_BASE;
+        const prod = make();
+        assert.ok(prod.downloadHosts().includes('cdn.hardsetups.com'));
+        assert.deepStrictEqual(prod.publicState().imageHosts, ['cdn.hardsetups.com']);
+        process.env.HL_API_BASE = 'http://127.0.0.1:9';
+        const local = make();
+        assert.ok(!local.downloadHosts().includes('cdn.hardsetups.com'));
+        assert.deepStrictEqual(local.publicState().imageHosts, []);
+    } finally {
+        if (saved === undefined) delete process.env.HL_API_BASE; else process.env.HL_API_BASE = saved;
+    }
+});
+
 test('portal: lisansa özel dosya hazırlanıyorsa 409 CONFLICT buildNotReady; kurulum sonucu FAILED bildirilir', async () => {
     await withPortal(async ({ portal, login }) => {
         await login();

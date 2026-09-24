@@ -5,7 +5,7 @@
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { createApiClient, resolveBaseUrl } = require('./api.cjs');
+const { createApiClient, resolveBaseUrl, DEFAULT_BASE } = require('./api.cjs');
 const { createSession } = require('./hsession.cjs');
 const { createEncryptedFileStorage } = require('./session-file.cjs');
 const { compareVersions } = require('../lib/semver.cjs');
@@ -40,6 +40,10 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
     const isDev = !app.isPackaged;
     const baseUrl = resolveBaseUrl(process.env.HL_API_BASE, { allowLocalHttp: isDev });
     const appVersion = app.getVersion();
+    // Config alınamazken (uçlar canlıda henüz yok ya da ağ hatası) üretim tabanında sözleşme
+    // §2'deki host kullanılır: §11 (lisans anahtarıyla kurulum) canlıda config'siz de çalışır
+    // ve imzalı dosyalar cdn.hardsetups.com'dan iner. Başka tabanlarda (lokal) boş liste.
+    const fallbackHosts = baseUrl === DEFAULT_BASE ? ['cdn.hardsetups.com'] : [];
 
     // X-HL-Device: ilk açılışta üretilen rastgele kurulum kimliği (donanım kimliği değil)
     let installId = store.get('installId');
@@ -54,6 +58,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         outdated: null,    // { minVersion }
         me: null,
         lastError: null,
+        unavailable: false, // sunucu launcher uçlarına 404 veriyor (hesap bağlantısı henüz açılmadı)
     };
     let loginFlow = null; // { verificationUriComplete, cancel }
     let library = null;   // createLibrary — api kurulduktan sonra atanır
@@ -99,12 +104,28 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
             wallet: state.me?.wallet || null,
             unreadNotifications: state.me?.unreadNotifications ?? 0,
             features: cfg?.features || null,
-            imageHosts: Array.isArray(cfg?.imageHosts) ? cfg.imageHosts : [],
+            imageHosts: serverHosts('imageHosts'),
             maintenance: state.maintenance,
             outdated: state.outdated,
             loggingIn: !!loginFlow,
             configLoaded: !!cfg,
+            accountAvailable: !state.unavailable,
         };
+    }
+
+    /** Sunucunun host listesi; config hiç gelmediyse üretim yedeği (yukarıda). */
+    function serverHosts(key) {
+        if (!state.config) return fallbackHosts;
+        return Array.isArray(state.config[key]) ? state.config[key] : [];
+    }
+
+    // Launcher uçları sunucuda yoksa (404) hesap/mağaza "henüz açılmadı" durumuna geçer;
+    // lisans anahtarıyla kurulum (§11) bundan etkilenmez.
+    const UNAVAILABLE_TEXT = 'HardSetups hesap bağlantısı henüz açılmadı';
+    function markUnavailable(err) {
+        if (err?.status !== 404 || err.code !== 'NOT_FOUND') return err;
+        if (!state.unavailable) { state.unavailable = true; emitState(); }
+        return codedError('PORTAL_UNAVAILABLE', UNAVAILABLE_TEXT);
     }
 
     // ── Başlangıç ayarları (§2) ──
@@ -113,12 +134,14 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         try {
             const { data } = await api.get('/v1/launcher/config', { auth: 'none' });
             state.config = data;
+            state.unavailable = false;
             state.maintenance = data?.maintenance?.active ? { message: data.maintenance.message || null, scheduledEnd: null } : null;
             const min = data?.minVersion;
             state.outdated = min && compareVersions(appVersion, min) < 0 ? { minVersion: min } : null;
             if (state.outdated) log.warn(`[PORTAL] Launcher sürümü (${appVersion}) en düşük sürümün (${min}) altında`);
         } catch (err) {
             state.lastError = err?.toJSON?.() || { message: String(err?.message || err) };
+            if (err?.status === 404 && err.code === 'NOT_FOUND') state.unavailable = true;
             log.info(`[PORTAL] Config alınamadı: ${err.code || err.message}`);
             configTimer = setTimeout(loadConfig, CONFIG_RETRY_MS);
         }
@@ -171,13 +194,17 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
     async function startLogin() {
         assertSupported();
         if (loginFlow) cancelLogin();
-        const flow = await session.startDeviceLogin({
-            deviceName: os.hostname().slice(0, 64),
-            os: process.platform === 'win32' ? 'windows' : process.platform,
-            osVersion: os.release(),
-            arch: process.arch,
-            appVersion,
-        });
+        let flow;
+        try {
+            flow = await session.startDeviceLogin({
+                deviceName: os.hostname().slice(0, 64),
+                os: process.platform === 'win32' ? 'windows' : process.platform,
+                osVersion: os.release(),
+                arch: process.arch,
+                appVersion,
+            });
+        } catch (err) { throw markUnavailable(err); }
+        state.unavailable = false;
         loginFlow = flow;
         emitState();
         openLinkUrl(flow.verificationUriComplete);
@@ -230,8 +257,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
 
     /** İndirme izin listesi: launcher'ın sabit listesi + sunucunun downloadHosts'u. */
     function downloadHosts() {
-        const fromServer = Array.isArray(state.config?.downloadHosts) ? state.config.downloadHosts : [];
-        return [...new Set([...BASE_DOWNLOAD_HOSTS, ...fromServer])];
+        return [...new Set([...BASE_DOWNLOAD_HOSTS, ...serverHosts('downloadHosts')])];
     }
 
     // ── Kütüphane ve yönetilen örnekler (C2) ─────────────────────────────────
@@ -259,7 +285,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
     /** Sunucu resmi yalnızca imageHosts altındaysa saklanır/gösterilir (§2). */
     function imageHostAllowed(hostname, protocol) {
         const httpOk = protocol === 'https:' || (isDev && protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(hostname));
-        return httpOk && hostMatches(hostname, state.config?.imageHosts || []);
+        return httpOk && hostMatches(hostname, serverHosts('imageHosts'));
     }
     function imageAllowed(url) {
         let u;
@@ -546,7 +572,10 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         const age = homeCache ? Date.now() - homeCache.at : Infinity;
         const minAge = reason === 'refresh' ? 0 : reason === 'focus' ? HOME_FOCUS_INTERVAL_MS : HOME_MIN_INTERVAL_MS;
         if (homeCache && homeCache.signedIn === signedIn && age < minAge) return { home: sanitizeHome(homeCache.data), cached: true };
-        const res = await api.get('/v1/launcher/home', { auth: 'optional', etag: homeCache?.signedIn === signedIn ? homeCache.etag : undefined });
+        let res;
+        try {
+            res = await api.get('/v1/launcher/home', { auth: 'optional', etag: homeCache?.signedIn === signedIn ? homeCache.etag : undefined });
+        } catch (err) { throw markUnavailable(err); }
         if (res.notModified && homeCache) homeCache.at = Date.now();
         else homeCache = { at: Date.now(), etag: res.etag, signedIn, data: res.data };
         return { home: sanitizeHome(homeCache.data), cached: !!res.notModified };

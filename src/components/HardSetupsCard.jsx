@@ -2,7 +2,7 @@
 // Giriş tarayıcıda yapılır: launcher parola görmez. Token'lar ana süreçte kalır;
 // buraya yalnızca özet (kullanıcı adı, bakiye) gelir.
 import { useState, useEffect } from 'react';
-import { Link2, ExternalLink, Copy, Check, Loader2, LogOut, Wallet, MonitorSmartphone, ShieldCheck } from 'lucide-react';
+import { Link2, ExternalLink, Copy, Check, Loader2, LogOut, Wallet, MonitorSmartphone, ShieldCheck, RefreshCw } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import Modal from './Modal.jsx';
 import { formatMinor } from '../utils/money.js';
@@ -129,6 +129,31 @@ export default function HardSetupsCard({ portal, onError }) {
     const res = await api.portalOpenLink(kind);
     if (!res.ok) onError(portalErrorText(t, res.error));
   };
+
+  // Sunucu launcher uçlarını henüz açmadıysa bağlanma denenmez; yeniden denetlenebilir
+  if (!portal.signedIn && portal.accountAvailable === false) {
+    const recheck = async () => {
+      setBusy(true);
+      try {
+        const res = await api.portalRefresh();
+        if (!res.ok) onError(portalErrorText(t, res.error));
+      } finally { setBusy(false); }
+    };
+    return (
+      <section className="card hs-card">
+        <div className="hs-card-main">
+          <span className="hs-mark" aria-hidden="true">HS</span>
+          <div className="hs-card-text">
+            <h3>{t('hs.title')}</h3>
+            <p>{t('hs.unavailable')}</p>
+          </div>
+        </div>
+        <button className="btn-secondary" onClick={recheck} disabled={busy}>
+          {busy ? <Loader2 size={15} className="spin" /> : <RefreshCw size={15} />} {t('hs.retry.load')}
+        </button>
+      </section>
+    );
+  }
 
   if (!portal.signedIn) {
     return (

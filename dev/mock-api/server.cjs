@@ -28,6 +28,7 @@ const SCENARIOS = new Set([
     'noLoaderPin',      // v1.4: install'da loader.version null → launcher seçer
     'buildPending',     // v1.4: PENDING_BUILD / 409 CONFLICT buildNotReady
     'byLicenseLegacy',  // by-license yanıtında install alanı yok (§11.1 tablosu)
+    'notDeployed',      // canlı v0.8.10 gibi: /v1/launcher/* 404, yalnızca by-license çalışır
 ]);
 
 const TEST_SEED = crypto.createHash('sha256').update('hardsetups-launcher-offline-vectors-v1').digest();
@@ -337,6 +338,9 @@ async function handle(req, res) {
     if (minVersion && p.startsWith('/v1/launcher/') && p !== '/v1/launcher/config' && (!version || cmpSemver(version, minVersion) < 0)) {
         return fail(res, req, 426, 'LAUNCHER_OUTDATED', 'Launcher sürümün çok eski, güncellemen gerekiyor', { minVersion, version: version || null });
     }
+    if (state.scenario === 'notDeployed' && p.startsWith('/v1/launcher/')) {
+        return fail(res, req, 404, 'NOT_FOUND', 'Kayıt bulunamadı.');
+    }
     if (state.scenario === 'maintenance' && p !== '/v1/launcher/config') {
         return fail(res, req, 503, 'MAINTENANCE_MODE', 'Bakım çalışması var', { message: 'Kısa bir bakım yapıyoruz', scheduledEnd: new Date(Date.now() + 3600e3).toISOString() });
     }
@@ -419,7 +423,7 @@ async function handle(req, res) {
         if (body.product && body.product !== slug) return fail(res, req, 422, 'VALIDATION_FAILED', 'Bu anahtar başka bir ürün için', { reason: 'PRODUCT_MISMATCH' });
         const f = buildFilesCached(slug);
         const file = { versionId: 'v-140', name: `${PRODUCTS[slug].folder}.zip`, version: PRODUCTS[slug].version, channel: 'STABLE', sha256: sha256(f.archive), sizeBytes: String(f.archive.length), url: `${base}/cdn/${slug}/archive.zip?exp=${Date.now() + 300e3}`, expiresInSeconds: 300 };
-        if (state.scenario === 'byLicenseLegacy') {
+        if (state.scenario === 'byLicenseLegacy' || state.scenario === 'notDeployed') {
             return send(res, 200, { license: { product: slug, owner: 'mert', expiresAt: null, features: [] }, files: [file] });
         }
         // v1.4 §11.0: launcher'a açık üründe kurulum bilgisi (loader sabitlenmemiş olabilir)
