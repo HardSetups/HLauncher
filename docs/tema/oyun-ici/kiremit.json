@@ -1,0 +1,87 @@
+{
+  "$comment": "HardSetups oyun içi tema tanımı. Çekirdek modda assets/hardsetups/themes/kiremit.json olarak durur. Değerler docs/tema/tema.json (version 1) ile aynıdır. Renkler 0xAARRGGBB (ARGB) dizesidir; #RRGGBB de opak kabul edilir, CSS'teki #RRGGBBAA kabul edilmez. Kaynak paketleri yalnızca değiştirdikleri rolleri yazarak bu dosyayı ezebilir. Tema kimliği dosya yolundan gelir (hardsetups:kiremit); 'id' alanı bilgi amaçlıdır ve yolla aynı olmalıdır.",
+  "id": "hardsetups:kiremit",
+  "name": "HardSetups Kiremit",
+  "version": 1,
+  "roles": {
+    "background": "0xFF101216",
+    "backgroundDeep": "0xFF0B0C0F",
+    "surface": "0xFF15171C",
+    "raised": "0xFF1B1E24",
+    "raised2": "0xFF22252C",
+    "line": "0xFF2B2F37",
+    "lineStrong": "0xFF3A3F49",
+    "accentFill": "0xFFA52B12",
+    "accentFillPressed": "0xFF7F200D",
+    "accentText": "0xFFEC6A51",
+    "accentTextHover": "0xFFF4957F",
+    "onAccentFill": "0xFFFFFFFF",
+    "highlight": "0xFFF0A04B",
+    "textPrimary": "0xFFF2F3F5",
+    "textSecondary": "0xFFB3B7C0",
+    "textTertiary": "0xFF7C818C",
+    "success": "0xFF3FCF7B",
+    "warning": "0xFFE7A93B",
+    "danger": "0xFFE5484D",
+    "info": "0xFF4C8DFF",
+    "edgeLight": "0x0DFFFFFF",
+    "shadow": "0x66000000",
+    "hudPanel": "0xE6101216",
+    "scrim": "0xCC0B0C0F",
+    "accentWeak": "0x21A52B12"
+  },
+  "$source": {
+    "background": "grafit.900",
+    "backgroundDeep": "grafit.950",
+    "surface": "grafit.850",
+    "raised": "grafit.800",
+    "raised2": "grafit.750",
+    "line": "grafit.700",
+    "lineStrong": "grafit.600",
+    "accentFill": "kiremit.500",
+    "accentFillPressed": "kiremit.600",
+    "accentText": "kiremit.400",
+    "accentTextHover": "kiremit.300",
+    "onAccentFill": "roles.onAccentFill (#FFFFFF)",
+    "highlight": "kor",
+    "textPrimary": "text.primary",
+    "textSecondary": "text.secondary",
+    "textTertiary": "text.tertiary",
+    "success": "status.success",
+    "warning": "status.warning",
+    "danger": "status.danger",
+    "info": "status.info",
+    "edgeLight": "türetilmiş: beyaz %5 (KIMLIK.md › kart üst ışık çizgisi)",
+    "shadow": "türetilmiş: siyah %40, 1 px sert gölge",
+    "hudPanel": "türetilmiş: grafit.900 %90 (dünya üstünde okunurluk)",
+    "scrim": "türetilmiş: grafit.950 %80 (ekran içi modal perdesi)",
+    "accentWeak": "türetilmiş: kiremit.500 %13 (launcher --accent-weak karşılığı)"
+  },
+  "variants": {
+    "highContrast": {
+      "$comment": "Yüksek kontrast: yalnızca paletteki değerler, bir kademe açık metin ve belirgin çizgi; HUD paneli opak.",
+      "textSecondary": "0xFFF2F3F5",
+      "textTertiary": "0xFFB3B7C0",
+      "accentText": "0xFFF4957F",
+      "line": "0xFF3A3F49",
+      "lineStrong": "0xFF7C818C",
+      "hudPanel": "0xFF101216"
+    }
+  },
+  "shape": {
+    "chamferTexel": 1,
+    "edgePx": 1,
+    "gridPx": 4,
+    "controlHeightPx": 20
+  },
+  "motion": {
+    "fastMs": 120,
+    "baseMs": 180,
+    "slowMs": 260,
+    "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)"
+  },
+  "typography": {
+    "font": "minecraft:default",
+    "titleFont": "hardsetups:baslik (isteğe bağlı; yoksa minecraft:default kalın)"
+  }
+}
