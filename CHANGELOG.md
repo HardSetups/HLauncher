@@ -2,27 +2,36 @@
 
 ## 1.0.0-alpha.7 — yayımlanmadı
 
+### Yeni görünüm
+- Baştan tasarlanan tema: koyu grafit katmanlar, düz olmayan ama sakin bir arka plan, kartlarda ince ışık ve gölge. Varsayılan vurgu rengi artık HardSetups **Kiremit** (eski varsayılan turuncuyu kullananlar bir kez Kiremit'e geçer; başka renk seçtiysen dokunulmaz)
+- **Ana sayfa** yenilendi: üstte selamlama, bakiye ve son oynadığın profil için **Oyna**; hızlı erişim düğmeleri; HardSetups ürünleri, duyurular ve haberler; **Kaldığın yerden devam** ve profillerin altta
+
 ### HardSetups hesabı
-- Hesap sayfasında **HardSetups hesabını bağla**: giriş tarayıcıda yapılır, launcher parola görmez. Ekranda büyük bir bağlantı kodu çıkar; tarayıcı açılmazsa adres kopyalanabilir
-- Bağlıyken kullanıcı adı ve bakiye görünür; "Hesabım", "Bağlı cihazlar" ve "Bağlantıyı kes"
-- Oturum anahtarı Windows'un şifreli deposunda tutulur; siteden cihaz kaldırılırsa launcher bir sonraki istekte bunu fark eder ve söyler
-- HardSetups bakımdayken üstte bir bant görünür, kurulu oyunlar oynanabilir kalır
+- Launcher artık **HardSetups hesabıyla** kullanılır. İlk açılışta **Giriş yap** ya da **Kayıt ol** ekranı gelir; giriş tarayıcıda yapılır, launcher parolanı görmez, ekranda bir bağlantı kodu çıkar
+- **Kayıt ol** sitenin kayıt sayfasını açar; kaydı bitirince launcher'a bağlanırsın
+- Bir kez giriş yaptıktan sonra launcher internet olmadan da açılır. Çıkış yaparsan ya da cihazı siteden kaldırırsan giriş ekranına dönülür; çıkış onay ister
+- Oturum anahtarı Windows'un şifreli deposunda tutulur
+- HardSetups bakımdayken bilgi bandı görünür, kurulu oyunlar oynanabilir kalır
 
 ### HardSetups mağazası
-- Sol raydaki **HardSetups** sayfası: öne çıkanlar, kampanyalar, duyurular ve haberler
+- **HardSetups** sayfasında marka bandı: bakiye, "Yükle", bildirimler, site ve destek bağlantıları
+- **Tüm ürünler** kataloğu, öne çıkanlar, kampanyalar, duyurular ve haberler; vitrin boşken "Nasıl çalışır" rehberi
 - **Ürün sayfası:** görseller, planlar, indirimli fiyat, gereksinimler (Minecraft sürümü, önerilen RAM)
 - **Bakiyeyle satın alma:** launcher kart bilgisi istemez. Satın almadan önce tutar, bakiye ve onaylanacak belgeler gösterilir; bakiye yetmezse eksik tutar ve bakiye yükleme bağlantısı çıkar. Aynı düğmeye iki kez basmak iki kez satın almaz
 - **Bildirimler:** üstteki zil; okunmamış sayısı, "tümünü okundu yap", eski bildirimler için "daha fazla"
 - **Kuponların:** hesabına tanımlı kuponlar vitrinde görünür, tek tıkla kopyalanır; kampanya kuponları da öyle
-- Ana sayfada küçük bir **"HardSetups'ta yeni"** kartı; launcher haberleri HardSetups panelinden gelir
 
 ### Kütüphane
-- Satın aldığın ürünler tek listede: **Kur**, **Güncelle**, **Onar** ve **Kaldır**
+- Satın aldığın ürünler görselli kartlarda: **Kur**, **Oyna**, **Güncelle**, **Onar** ve **Kaldır**; üstte ürün ve kurulu sayısı, altta mağazadaki diğer ürünler
 - Kurulum yalnızca eksik ya da değişmiş dosyaları indirir, yarıda kalan indirmeye kaldığı yerden devam eder; her dosya doğrulanır
-- **Lisans anahtarıyla kurulum:** hesap bağlamadan da anahtar girerek kurabilirsin
+- **Lisans anahtarıyla kurulum:** başka yerden aldığın anahtarla da kurabilirsin
+- Ayarlar'da **"Beta sürümlerini de kur"**: açarsan kararlı ve beta sürümlerden hangisi yeniyse o kurulur; beta sürümler kartta işaretlenir
 - Kurulan ürün kendi profilinde açılır; sürümü ve loader'ı ürünle kilitlidir. Kaldırırken dünyaların `yedekler` klasörüne alınır
 - İnternet yokken lisanslı ürünler bir süre (varsayılan 72 saat) oynanabilir
-- Ürünler çevrimdışı (kullanıcı adıyla) hesapla da açılır
+- Ürünler çevrimdışı (kullanıcı adıyla) Minecraft hesabıyla da açılır
+
+### Güncellemeler
+- Launcher güncellemeleri artık doğrudan **HardSetups**'tan gelir
 
 ### Yardım ve bilgi
 - **Sorun bildir** (Ayarlar'da ve oyun çökünce): hangi dosyaların gideceğini önceden görürsün; token, anahtar ve bilgisayar yolları gönderilmeden temizlenir; onay kutusu işaretlenmeden hiçbir şey gönderilmez
