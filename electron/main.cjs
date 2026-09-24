@@ -220,7 +220,6 @@ function startApp() {
         session.defaultSession.setPermissionCheckHandler((_wc, permission) => ALLOWED_PERMISSIONS.has(permission));
 
         createWindow();
-        updater.initUpdater(app, getStore(), mainWindow);
 
         portal = createPortal({
             app,
@@ -234,6 +233,8 @@ function startApp() {
             isGameRunning,
         });
         log.info(`[PORTAL] API: ${portal.baseUrl}`);
+        // Portal ilk açılışta kurulum kimliğini üretir; güncelleyici onu akış başlığında kullanır (§12)
+        updater.initUpdater(app, getStore(), mainWindow);
 
         const images = imagecache.createImageCache({
             cacheDir: path.join(getRootPath(), 'cache', 'img'),
@@ -247,6 +248,15 @@ function startApp() {
             return new Response(res.body, { headers: { 'Content-Type': res.type, 'Cache-Control': 'max-age=3600', 'X-Content-Type-Options': 'nosniff' } });
         });
         portal.loadConfig().then(() => portal.refreshMe({ force: true }));
+        // Sayaçlar toplu gider: yarım saatte bir ve kapanışta (en çok 3 sn beklenir)
+        setInterval(() => portal.flushTelemetry(), 30 * 60 * 1000).unref();
+        let flushedOnQuit = false;
+        app.on('before-quit', (e) => {
+            if (flushedOnQuit || !portal.telemetryPending()) return; // sayaç yoksa kapanış hiç bekletilmez
+            flushedOnQuit = true;
+            e.preventDefault();
+            Promise.race([portal.flushTelemetry(), new Promise((r) => setTimeout(r, 3000))]).finally(() => app.quit());
+        });
         // Pencere odaklanınca hesap özeti (bakiye, bildirim sayısı) tazelenir (en sık dakikada bir)
         mainWindow.on('focus', () => portal?.refreshMe());
 
@@ -298,9 +308,18 @@ function startApp() {
             instances.markPlayed(opts.instanceId);
             getStore().set('activeInstanceId', opts.instanceId);
         }
-        launchGame(event, opts).catch((err) => {
+        // Kullanım sayaçları (§15; onay + sunucu açıksa): açılış, açılamama ve çökme olay kanalından sayılır
+        const product = inst?.origin === 'hardsetups' ? inst.product : null;
+        const COUNTED = { 'launch-finished': 'launch', 'launch-error': 'launch_failed', 'game-crashed': 'crash' };
+        const counting = {
+            reply: (channel, ...args) => {
+                if (COUNTED[channel]) portal?.recordEvent(COUNTED[channel], product);
+                return event.reply(channel, ...args);
+            },
+        };
+        launchGame(counting, opts).catch((err) => {
             log.error(`[MAIN] launch-game hatası: ${err.stack || err.message}`);
-            event.reply('launch-error', friendlyError(err));
+            counting.reply('launch-error', friendlyError(err));
         });
     });
     ipcMain.on('stop-game', () => stopGame());

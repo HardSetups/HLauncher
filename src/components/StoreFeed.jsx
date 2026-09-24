@@ -1,16 +1,17 @@
 // HardSetups vitrini (sözleşme §4): hero, duyurular, kampanyalar, öne çıkanlar,
-// güncellemeler, "lisansın bitiyor", haberler. Kurallar:
+// kuponların (girişliyken), güncellemeler, "lisansın bitiyor", haberler. Kurallar:
 // - Boş gelen bölüm HİÇ gösterilmez; yer tutucu / örnek içerik yok
 // - İçerik panelden gelir, launcher'a gömülü metin yok
 // - Veri en sık 5 dk'da bir ve pencere odaklanınca tazelenir (ana süreç denetler)
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Copy, Check, ExternalLink, RefreshCw, Clock, Tag, Megaphone, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import { X, Copy, Check, ExternalLink, RefreshCw, Clock, Tag, Ticket, Megaphone, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import ProductCard from './ProductCard.jsx';
 import Markdown from './Markdown.jsx';
 import { imgSrc, portalErrorText } from '../utils/portal.js';
 import { relativeTime } from '../utils/format.js';
+import { formatMinor } from '../utils/money.js';
 
 function Section({ title, icon, children }) {
   return (
@@ -113,7 +114,7 @@ export default function StoreFeed({ portal, onOpenProduct, onOpenLibrary }) {
   const hosts = portal?.imageHosts;
   // updates/expiring yalnızca ürün kodu taşır; vitrinde adı biliniyorsa o gösterilir
   const nameOf = (slug) => feed.featured.find((p) => p.slug === slug)?.name || slug;
-  const nothing = !feed.hero.length && !feed.announcements.length && !feed.featured.length && !feed.campaigns.length && !feed.news.length && !feed.updates.length && !feed.expiring.length;
+  const nothing = !feed.hero.length && !feed.announcements.length && !feed.featured.length && !feed.campaigns.length && !feed.coupons?.length && !feed.news.length && !feed.updates.length && !feed.expiring.length;
   return (
     <div className="feed">
       {feed.announcements.map((a) => (
@@ -172,6 +173,23 @@ export default function StoreFeed({ portal, onOpenProduct, onOpenLibrary }) {
                     {c.products.map((s) => <button key={s} className="link-btn" onClick={() => onOpenProduct(s)}>{nameOf(s)}</button>)}
                   </span>
                 )}
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {feed.coupons?.length > 0 && (
+        <Section title={t('hs.feed.coupons')} icon={<Ticket size={16} />}>
+          <div className="camp-grid">
+            {feed.coupons.map((c) => (
+              <div key={c.code} className="camp">
+                <b className="camp-title">{c.type === 'PERCENT' ? t('hs.coupon.percent', { value: c.value }) : t('hs.coupon.fixed', { amount: formatMinor(c.value, 'TRY', lang) })}</b>
+                {c.description && <span className="camp-desc">{c.description}</span>}
+                <span className="camp-foot">
+                  <CouponChip code={c.code} />
+                  {c.endsAt && <span className="camp-ends"><Clock size={12} /> {t('hs.feed.endsIn', { when: relativeTime(Date.parse(c.endsAt), lang) })}</span>}
+                </span>
               </div>
             ))}
           </div>

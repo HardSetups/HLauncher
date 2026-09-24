@@ -13,6 +13,7 @@
 - **Ürün sayfası:** görseller, planlar, indirimli fiyat, gereksinimler (Minecraft sürümü, önerilen RAM)
 - **Bakiyeyle satın alma:** launcher kart bilgisi istemez. Satın almadan önce tutar, bakiye ve onaylanacak belgeler gösterilir; bakiye yetmezse eksik tutar ve bakiye yükleme bağlantısı çıkar. Aynı düğmeye iki kez basmak iki kez satın almaz
 - **Bildirimler:** üstteki zil; okunmamış sayısı, "tümünü okundu yap", eski bildirimler için "daha fazla"
+- **Kuponların:** hesabına tanımlı kuponlar vitrinde görünür, tek tıkla kopyalanır; kampanya kuponları da öyle
 - Ana sayfada küçük bir **"HardSetups'ta yeni"** kartı; launcher haberleri HardSetups panelinden gelir
 
 ### Kütüphane
@@ -29,6 +30,7 @@
 - Hakkında bölümünde derlemenin imza durumu ve "Mojang veya Microsoft ile bağlantılı değildir" ibaresi
 - Discord durumunda oynadığın HardSetups ürününün adı görünür
 - Ayarlar'da **"Kapatınca tepsiye küçült"** (varsayılan kapalı)
+- Ayarlar'da **"Anonim kullanım sayaçları"** (varsayılan kapalı): açarsan oyunun kaç kez açıldığı, çöktüğü ve kurulduğu yalnızca toplam sayı olarak gider; hesap, cihaz ya da dosya bilgisi gönderilmez
 
 ### Güvenlik
 - Electron 44'e geçildi (39 artık güvenlik güncellemesi almıyordu)

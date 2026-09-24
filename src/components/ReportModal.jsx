@@ -8,6 +8,23 @@ import Modal from './Modal.jsx';
 import { formatSize } from '../utils/format.js';
 import { portalErrorText } from '../utils/portal.js';
 
+// §10 hataları → oyuncu metni (bilinmeyenler sunucunun mesajı + destek kodu)
+function reportErrorText(t, error) {
+  const d = error?.details || {};
+  switch (error?.code) {
+    case 'REPORT_DISABLED': return t('hs.report.disabled');
+    case 'TICKET_DUPLICATE': return t('hs.report.duplicate', { ticket: d.ticketNo ?? '' });
+    case 'TICKET_OPEN_LIMIT': return t('hs.report.openLimit');
+    case 'ATTACHMENT_REJECTED': return d.reason === 'tooManyFiles' ? t('hs.report.tooManyFiles') : t('hs.report.fileRejected');
+    case 'PAYLOAD_TOO_LARGE': return t('hs.report.tooLarge');
+    case 'RATE_LIMITED': return t('hs.report.rateLimited');
+    default: return portalErrorText(t, error);
+  }
+}
+
+const SUBJECT_MIN = 5;
+const MESSAGE_MIN = 10;
+
 export default function ReportModal({ open, onClose, portal, instance = null, defaultSubject = '', onConnect, onNotice }) {
   const { t } = useI18n();
   const api = window.electronAPI;
@@ -37,7 +54,7 @@ export default function ReportModal({ open, onClose, portal, instance = null, de
     setBusy(true); setError(null);
     try {
       const res = await api.portalReportSend({ instanceId: instance?.id || null, subject, message, fileIds: [...selected], consent });
-      if (!res.ok) { setError(portalErrorText(t, res.error)); return; }
+      if (!res.ok) { setError(reportErrorText(t, res.error)); return; }
       onClose();
       onNotice(t('hs.report.sent', { ticket: res.ticketNo || '' }));
       if (res.url) api.portalOpenUrl(res.url);
@@ -45,6 +62,7 @@ export default function ReportModal({ open, onClose, portal, instance = null, de
   };
 
   const signedIn = !!portal?.signedIn && !portal?.outdated;
+  const tooShort = subject.trim().length < SUBJECT_MIN || message.trim().length < MESSAGE_MIN;
   return (
     <Modal
       open={open}
@@ -55,7 +73,7 @@ export default function ReportModal({ open, onClose, portal, instance = null, de
       footer={signedIn ? (
         <>
           <button className="btn-ghost" onClick={onClose} disabled={busy}>{t('common.cancel')}</button>
-          <button className="btn-primary" onClick={send} disabled={busy || !consent || !subject.trim() || !message.trim()}>
+          <button className="btn-primary" onClick={send} disabled={busy || !consent || tooShort}>
             {busy ? <Loader2 size={15} className="spin" /> : <Send size={15} />} {t('hs.report.send')}
           </button>
         </>
@@ -72,11 +90,12 @@ export default function ReportModal({ open, onClose, portal, instance = null, de
         <div className="report">
           <label className="field">
             <span>{t('hs.report.subject')}</span>
-            <input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={120} autoFocus />
+            <input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={200} autoFocus />
           </label>
           <label className="field">
             <span>{t('hs.report.message')}</span>
-            <textarea value={message} onChange={(e) => setMessage(e.target.value)} maxLength={5000} rows={4} placeholder={t('hs.report.messagePh')} />
+            <textarea value={message} onChange={(e) => setMessage(e.target.value)} maxLength={20000} rows={4} placeholder={t('hs.report.messagePh')} />
+            {tooShort && (subject || message) && <span className="field-hint">{t('hs.report.minLength', { subject: SUBJECT_MIN, message: MESSAGE_MIN })}</span>}
           </label>
           <div className="field">
             <span>{t('hs.report.files')}</span>

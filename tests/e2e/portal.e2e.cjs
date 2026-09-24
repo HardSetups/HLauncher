@@ -80,9 +80,13 @@ async function main() {
         assert.strictEqual(await win.$$eval('.hero-dot', (d) => d.length), 2, 'bilinmeyen action türü gizlenmeli');
         await win.waitForSelector('.camp .coupon');
         await win.waitForSelector('.bell-count');
+        // v1.7: hesaba özel kuponlar (bilinmeyen türdeki elenir)
+        await win.waitForSelector('.feed-title:has-text("Kuponların")');
+        assert.ok((await win.textContent('.feed')).includes('HLW-7K2MQ9PX'));
+        assert.ok(!(await win.textContent('.feed')).includes('BOZUK'));
         await win.waitForTimeout(300);
         await win.screenshot({ path: path.join(OUT, '03a-vitrin.png') });
-        step('vitrin: hero, kampanya kuponu, öne çıkanlar, bildirim sayısı');
+        step('vitrin: hero, kampanya kuponu, hesap kuponları, öne çıkanlar, bildirim sayısı');
 
         await win.click('.pcard:has-text("DoldurDoldur")');
         await win.waitForSelector('.pview-head h1:has-text("DoldurDoldur")');

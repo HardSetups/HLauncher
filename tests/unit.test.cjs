@@ -395,6 +395,18 @@ test('updater.feedFor: GitHub kaynağında besleme değişmez; HardSetups kayna�
     assert.deepStrictEqual(feedFor('hardsetups', '../x').url, 'https://api.hardsetups.com/v1/launcher/update/stable');
 });
 
+test('updater.feedHeaders / isNoReleaseError: akış başlıkları ve "yayımlanmış sürüm yok" (404)', () => {
+    const { feedHeaders, isNoReleaseError } = require('../electron/lib/updater.cjs');
+    const id = '0f8fad5b-d9cb-469f-a165-70867728950e';
+    assert.deepStrictEqual(feedHeaders(id, '1.0.0-alpha.7'), { 'X-HL-Version': '1.0.0-alpha.7', 'X-HL-Device': id });
+    assert.deepStrictEqual(feedHeaders(undefined, '1.0.0'), { 'X-HL-Version': '1.0.0' }); // kimlik yoksa yalnız %100 sürümler
+    assert.deepStrictEqual(feedHeaders('C:\\Users\\x', '1.0.0'), { 'X-HL-Version': '1.0.0' });
+    assert.strictEqual(isNoReleaseError({ statusCode: 404 }), true);
+    assert.strictEqual(isNoReleaseError(new Error('Cannot find channel "latest.yml" update info: HttpError: 404')), true);
+    assert.strictEqual(isNoReleaseError(new Error('net::ERR_INTERNET_DISCONNECTED')), false);
+    assert.strictEqual(isNoReleaseError({ statusCode: 500, message: 'HttpError: 500' }), false);
+});
+
 test('updater.plainReleaseNotes: dizi biçimi, boş değer ve uzunluk sınırı', () => {
     assert.strictEqual(plainReleaseNotes([{ note: 'a' }, { note: 'b' }]), 'a\n\nb');
     assert.strictEqual(plainReleaseNotes(null), '');

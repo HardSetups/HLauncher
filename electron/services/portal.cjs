@@ -18,6 +18,7 @@ const bylicense = require('./bylicense.cjs');
 const offline = require('./offline.cjs');
 const { createLibrary } = require('./library.cjs');
 const { downloadVerified } = require('./downloader.cjs');
+const { createTelemetry } = require('./telemetry.cjs');
 
 const codedError = (code, message, extra = {}) => Object.assign(new Error(message), { code, ...extra });
 
@@ -93,6 +94,14 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         },
     });
     session.setTransport((p, body, auth) => api.post(p, body, { auth }));
+
+    // Kullanım sayaçları (§15): sunucu açık VE oyuncu Ayarlar'da onaylı (varsayılan kapalı); istek anonim
+    const telemetry = createTelemetry({
+        post: (body) => api.post('/v1/launcher/telemetry', body, { anonymous: true }),
+        isEnabled: () => state.config?.features?.telemetry === true && store.get('settings')?.telemetryConsent === true,
+        launcherVersion: appVersion,
+        log,
+    });
 
     function publicState() {
         const snap = session.snapshot();
@@ -559,6 +568,12 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
                 id: str(c.id, 64), title: str(c.title, 120), description: str(c.description, 500), couponCode: str(c.couponCode, 40),
                 endsAt: str(c.endsAt, 40), products: arr(c.products).map((s) => str(s, 64)).filter(Boolean),
             })).filter((c) => c.title),
+            // v1.7 (L5): hesaba özel kuponlar; PERCENT → value yüzde, FIXED → value kuruş
+            coupons: arr(data?.coupons).map((c) => ({
+                code: str(c.code, 40), type: ['PERCENT', 'FIXED'].includes(c?.type) ? c.type : null,
+                value: /^\d{1,12}$/.test(String(c?.value ?? '')) ? String(c.value) : null,
+                endsAt: str(c.endsAt, 40), description: str(c.description, 200),
+            })).filter((c) => c.code && c.type && c.value !== null).slice(0, 5),
             news: arr(data?.news).map((n) => ({ id: str(n.id, 64), title: str(n.title, 160), excerpt: str(n.excerpt, 400), imageUrl: str(n.imageUrl, 2048), url: str(n.url, 2048), publishedAt: str(n.publishedAt, 40) })).filter((n) => n.title),
             updates: arr(data?.updates).map((u) => ({ product: str(u.product, 64), version: str(u.version, 40), publishedAt: str(u.publishedAt, 40), changelog: str(u.changelog, 4000) })).filter((u) => u.product),
             expiring: arr(data?.expiring).map((e) => ({ licenseId: str(e.licenseId, 64), product: str(e.product, 64), expiresAt: str(e.expiresAt, 40), renewUrl: str(e.renewUrl, 2048) })).filter((e) => e.product),
@@ -672,9 +687,10 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         if (state.config?.features?.report === false) throw codedError('REPORT_DISABLED', 'Sorun bildirme şu an kapalı');
         if (!session.isSignedIn()) throw codedError('NOT_SIGNED_IN', 'Sorun bildirmek için HardSetups hesabını bağla');
         if (consent !== true) throw codedError('CONSENT_REQUIRED', 'Göndermek için onay kutusunu işaretle');
-        const subj = String(subject || '').trim().slice(0, 120);
-        const msg = String(message || '').trim().slice(0, 5000);
-        if (!subj || !msg) throw codedError('VALIDATION', 'Konu ve açıklama gerekli');
+        // §10: konu 5–200, açıklama 10–20 000 karakter
+        const subj = String(subject || '').trim().slice(0, 200);
+        const msg = String(message || '').trim().slice(0, 20000);
+        if (subj.length < 5 || msg.length < 10) throw codedError('VALIDATION', 'Konu en az 5, açıklama en az 10 karakter olmalı');
         const src = reportSources(instanceId);
         // Dosyalar gönderim anında yeniden toplanıp temizlenir; renderer yalnızca seçim gönderir
         const wanted = new Set((Array.isArray(fileIds) ? fileIds : []).map(String));
@@ -698,6 +714,19 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         return library.launchCheck(instance.product);
     }
 
+    // Kurulum sayaçları (§15): ön koşul/doğrulama hataları ve iptal sayılmaz
+    const NOT_COUNTED = new Set(['VALIDATION', 'NOT_SIGNED_IN', 'EGAMERUNNING', 'LAUNCHER_OUTDATED', 'CANCELED', 'LICENSE_NOT_FOUND']);
+    const counted = (fn, productOf) => async (...args) => {
+        try {
+            const result = await fn(...args);
+            telemetry.record('install', productOf(args, result));
+            return result;
+        } catch (err) {
+            if (!NOT_COUNTED.has(err?.code)) telemetry.record('install_failed', productOf(args, null));
+            throw err;
+        }
+    };
+
     return {
         api,
         session,
@@ -717,9 +746,12 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         isDev,
         baseUrl,
         libraryView,
-        installProduct,
-        installByLicense,
+        installProduct: counted(installProduct, ([slug]) => slug),
+        installByLicense: counted(installByLicense, (_args, result) => result?.product || null),
         uninstallProduct,
+        recordEvent: (type, product = null) => telemetry.record(type, product),
+        flushTelemetry: () => telemetry.flush(),
+        telemetryPending: () => telemetry.pending() > 0,
         launchCheck,
         home,
         dismissAnnouncement,

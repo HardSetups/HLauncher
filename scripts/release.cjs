@@ -2,7 +2,7 @@
 // `npm run release -- --publish` (paketler + GitHub'a yayımlar).
 //
 // 1. Ön koşullar: temiz çalışma alanı, HEAD üzerinde v<sürüm> tag'i.
-// 2. `npm run dist` → release/ içinde kurulum .exe, .blockmap ve latest.yml.
+// 2. `npm run dist` → release/ içinde kurulum .exe ve latest.yml (blockmap yok, §12).
 // 3. latest.yml'deki sürüm ve sha512 exe ile doğrulanır; SHA256SUMS.txt yazılır;
 //    hepsi release/out/<sürüm>/ klasörüne toplanır.
 // 4. --publish: aynı dosyalar PUBLISH_REPOS'taki her repoya Pre-release olarak
@@ -44,11 +44,13 @@ function build() {
 function collect() {
     const rel = path.join(ROOT, 'release');
     const exeName = `HLauncher-Kurulum-${version}.exe`;
-    const files = [exeName, `${exeName}.blockmap`, 'latest.yml'].map((f) => path.join(rel, f));
+    const files = [exeName, 'latest.yml'].map((f) => path.join(rel, f));
     for (const f of files) if (!fs.existsSync(f)) fail(`Paket dosyası yok: ${path.relative(ROOT, f)}`);
+    // .blockmap yalnızca farklı (differential) paket açıkken üretilir; HardSetups akışı sunmadığı
+    // için kapalı (sözleşme §12, nsis.differentialPackage: false). Eski bir derlemede varsa eklenmez.
 
     // latest.yml gerçekten bu exe'yi mi anlatıyor?
-    const yml = fs.readFileSync(files[2], 'utf8');
+    const yml = fs.readFileSync(files[1], 'utf8');
     const ymlVersion = /^version:\s*(\S+)/m.exec(yml)?.[1];
     const ymlSha512 = /^sha512:\s*(\S+)/m.exec(yml)?.[1];
     if (ymlVersion !== version) fail(`latest.yml sürümü ${ymlVersion}, beklenen ${version}`);

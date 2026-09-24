@@ -194,7 +194,7 @@ const { createSession, createMemoryStorage } = require('../electron/services/hse
 const fastSleep = () => new Promise((r) => setTimeout(r, 5));
 
 async function withMock(fn) {
-    Object.assign(mock.state, { scenario: 'normal', wallet: 25000n, owned: new Set(['kum-firtinasi']), purchases: new Map(), readNotifications: new Set() });
+    Object.assign(mock.state, { scenario: 'normal', wallet: 25000n, owned: new Set(['kum-firtinasi']), purchases: new Map(), readNotifications: new Set(), reportSubjects: new Map(), telemetry: [] });
     mock.cfg.accessTtl = 900;
     mock.cfg.minVersion = null;
     const server = await mock.start(0);
@@ -669,7 +669,7 @@ async function withPortal(fn) {
             for (let i = 0; i < 100 && !events.some((e) => e.channel === 'portal:login'); i++) await new Promise((r) => setTimeout(r, 50));
             assert.strictEqual(events.find((e) => e.channel === 'portal:login')?.state, 'success');
         };
-        try { await fn({ portal, base, login, events }); } finally {
+        try { await fn({ portal, base, login, events, kv }); } finally {
             mock.cfg.interval = 5;
             delete process.env.HL_API_BASE;
             delete process.env.HL_EXTERNAL_BASE;
@@ -792,6 +792,78 @@ test('portal.home: bilinmeyen action türü gizlenir, ETag ile 304, kapatılan d
     });
 });
 
+test('portal.home (v1.7): hesaba özel kuponlar yalnızca girişliyken; bilinmeyen türdeki kupon elenir', async () => {
+    await withPortal(async ({ portal, login }) => {
+        assert.deepStrictEqual((await portal.home()).home.coupons, []);
+        await login();
+        const { coupons } = (await portal.home({ reason: 'refresh' })).home;
+        assert.deepStrictEqual(coupons.map((c) => [c.code, c.type, c.value]), [['HLW-7K2MQ9PX', 'PERCENT', '15'], ['SABIT-50', 'FIXED', '5000']]);
+        assert.strictEqual(coupons[1].description, null);
+    });
+});
+
+test('telemetry: onaysız ya da sunucu kapalıyken hiçbir şey tutulmaz; toplu, 100\'lük ve 1000\'lik parçalar', async () => {
+    const { createTelemetry } = require('../electron/services/telemetry.cjs');
+    let enabled = false;
+    const sent = [];
+    let failNext = false;
+    const tel = createTelemetry({
+        post: async (body) => { if (failNext) { failNext = false; throw Object.assign(new Error('ağ'), { code: 'NETWORK' }); } sent.push(body); },
+        isEnabled: () => enabled, launcherVersion: '1.0.0-alpha.7', platform: 'win32',
+    });
+    assert.strictEqual(tel.record('launch'), false);
+    assert.strictEqual(tel.pending(), 0);
+    enabled = true;
+    assert.strictEqual(tel.record('keystroke'), false, 'sözleşme dışı tür');
+    for (let i = 0; i < 2500; i++) tel.record('launch', 'kum-firtinasi');
+    tel.record('crash', null);
+    tel.record('install', 'C:\\Users\\x'); // ürün kodu değilse null
+    for (let i = 0; i < 150; i++) tel.record('launch_failed', `urun-${i}`);
+    failNext = true;
+    assert.strictEqual(await tel.flush(), 0);
+    assert.ok(tel.pending() > 0, 'gönderilemeyen sayılar kaybolmaz');
+    await tel.flush();
+    const events = sent.flatMap((b) => b.events);
+    assert.ok(sent.every((b) => b.events.length <= 100));
+    assert.deepStrictEqual(events.filter((e) => e.type === 'launch').map((e) => e.count), [1000, 1000, 500]);
+    assert.deepStrictEqual(events.find((e) => e.type === 'install'), { type: 'install', product: null, launcherVersion: '1.0.0-alpha.7', os: 'windows', count: 1 });
+    assert.strictEqual(events.filter((e) => e.type === 'launch_failed').length, 150);
+    assert.strictEqual(tel.pending(), 0);
+    tel.record('crash');
+    enabled = false; // onay geri alınınca birikenler atılır
+    assert.strictEqual(await tel.flush(), 0);
+    assert.strictEqual(tel.pending(), 0);
+});
+
+test('portal: sayaçlar yalnızca sunucu açık VE oyuncu onaylıyken; istek anonim (token ve kurulum kimliği yok)', async () => {
+    await withPortal(async ({ portal, login, kv }) => {
+        await login();
+        mock.state.scenario = 'telemetryOn';
+        await portal.loadConfig();
+        portal.recordEvent('launch', 'kum-firtinasi');
+        await portal.flushTelemetry();
+        assert.deepStrictEqual(mock.state.telemetry, [], 'onay yokken gönderilmez');
+        kv.set('settings', { ...(kv.get('settings') || {}), telemetryConsent: true });
+        portal.recordEvent('launch', 'kum-firtinasi');
+        portal.recordEvent('crash', null);
+        await portal.installByLicense('HSMN-OPQR-STUV-WXYZ');
+        await assert.rejects(portal.installByLicense('YANLIS'), { code: 'LICENSE_NOT_FOUND' }); // kullanıcı hatası sayılmaz
+        await portal.flushTelemetry();
+        assert.strictEqual(mock.state.telemetry.length, 1);
+        const [batch] = mock.state.telemetry;
+        assert.strictEqual(batch.authorized, false);
+        assert.strictEqual(batch.device, false);
+        assert.deepStrictEqual(batch.keys, ['count', 'launcherVersion', 'os', 'product', 'type']);
+        assert.deepStrictEqual(batch.events.map((e) => [e.type, e.product, e.count]).sort(), [['crash', null, 1], ['install', 'kum-firtinasi', 1], ['launch', 'kum-firtinasi', 1]]);
+        portal.uninstallProduct('kum-firtinasi', { backupWorlds: false });
+        mock.state.scenario = 'normal';
+        await portal.loadConfig();
+        kv.set('settings', { ...(kv.get('settings') || {}), telemetryConsent: true });
+        portal.recordEvent('launch', null);
+        assert.strictEqual(portal.telemetryPending(), false, 'sunucu kapalıyken tutulmaz');
+    });
+});
+
 test('portal: bakiye ile satın alma — teklif, onay, aynı teklif iki kez gönderilse de tek sipariş', async () => {
     await withPortal(async ({ portal, login }) => {
         await login();
@@ -843,11 +915,24 @@ test('portal.sendReport: onaysız gönderilmez; gönderimde dosyalar ana süreç
         const pre = portal.reportPreview(null);
         assert.ok(pre.files.some((f) => f.id === 'launcher'));
         await assert.rejects(portal.sendReport({ subject: 'Çöktü', message: 'Açılmıyor', fileIds: ['launcher'], consent: false }), { code: 'CONSENT_REQUIRED' });
+        await assert.rejects(portal.sendReport({ subject: 'Çöktü', message: 'kısa', fileIds: [], consent: true }), { code: 'VALIDATION' }); // §10: açıklama ≥ 10
         const r = await portal.sendReport({ subject: 'Çöktü', message: 'C:\\Users\\Mert\\x açılmıyor', fileIds: ['launcher'], consent: true });
-        assert.match(r.ticketNo, /^T-\d+$/);
+        assert.strictEqual(typeof r.ticketNo, 'number');
+        assert.strictEqual(r.url, `https://support.hardsetups.com/talepler/${r.ticketNo}`);
         assert.strictEqual(mock.state.lastReport.fileCount, 1);
         assert.ok(!mock.state.lastReport.raw.includes('eyJhbGciOiJIUzI1NiJ9.eyJzdWIi'), 'token sunucuya gitmemeli');
         assert.ok(!mock.state.lastReport.raw.includes('Users\\Mert'), 'kullanıcı adı sunucuya gitmemeli');
+        // Aynı konu tekrar → 409 TICKET_DUPLICATE, açılmış talebin numarasıyla
+        await assert.rejects(portal.sendReport({ subject: 'Çöktü', message: 'yine açılmıyor, tekrar deniyorum', fileIds: [], consent: true }),
+            (e) => e.code === 'TICKET_DUPLICATE' && e.status === 409 && e.details.ticketNo === r.ticketNo);
+        // Panelde kapalıysa istek sunucuya gitmez
+        mock.state.scenario = 'reportDisabled';
+        await portal.loadConfig();
+        const before = mock.state.stats.reports;
+        await assert.rejects(portal.sendReport({ subject: 'Başka konu', message: 'bir şey daha oldu burada', fileIds: [], consent: true }), { code: 'REPORT_DISABLED' });
+        assert.strictEqual(mock.state.stats.reports, before);
+        mock.state.scenario = 'normal';
+        await portal.loadConfig();
     });
 });
 

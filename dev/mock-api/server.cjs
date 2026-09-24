@@ -29,6 +29,8 @@ const SCENARIOS = new Set([
     'buildPending',     // v1.4: PENDING_BUILD / 409 CONFLICT buildNotReady
     'byLicenseLegacy',  // by-license yanıtında install alanı yok (§11.1 tablosu)
     'notDeployed',      // canlı v0.8.10 gibi: /v1/launcher/* 404, yalnızca by-license çalışır
+    'reportDisabled',   // v1.7: features.report=false; rapor 403 REPORT_DISABLED
+    'telemetryOn',      // v1.7: features.telemetry=true
 ]);
 
 const TEST_SEED = crypto.createHash('sha256').update('hardsetups-launcher-offline-vectors-v1').digest();
@@ -350,7 +352,7 @@ async function handle(req, res) {
         return send(res, 200, {
             minVersion: minVersion || null, latestVersion: null, // latestVersion L3'e kadar null
             maintenance: { active: state.scenario === 'maintenance', message: state.scenario === 'maintenance' ? 'Kısa bir bakım yapıyoruz' : null },
-            features: { purchase: state.scenario !== 'purchaseDisabled', telemetry: false, report: true },
+            features: { purchase: state.scenario !== 'purchaseDisabled', telemetry: state.scenario === 'telemetryOn', report: state.scenario !== 'reportDisabled' },
             offlineGraceHours: 72,
             downloadHosts: ['cdn.hardsetups.com', 'cdn.modrinth.com', 'meta.fabricmc.net'],
             imageHosts: ['cdn.hardsetups.com', '127.0.0.1', 'localhost'], // geliştirmedeki gerçek API gibi yerel resimler
@@ -453,6 +455,12 @@ async function handle(req, res) {
             announcements: [{ id: 'a1', text: 'Launcher portalı test ediliyor', variant: 'INFO', link: { label: 'İncele', url: 'https://hardsetups.com/launcher' }, dismissible: true }],
             featured: Object.keys(PRODUCTS).map((s) => productCard(s, personal, base)),
             campaigns: [{ id: 'c1', title: 'Launcher\'a özel %10', description: 'Launcher\'dan alışverişte geçerli', couponCode: 'LAUNCHER10', endsAt: new Date(Date.now() + 3 * 86400e3).toISOString(), products: ['kum-firtinasi'] }],
+            // v1.7 (L5): hesaba özel kuponlar yalnızca girişliyken; bozuk tür/değer launcher'da elenir
+            coupons: personal ? [
+                { code: 'HLW-7K2MQ9PX', type: 'PERCENT', value: 15, endsAt: new Date(Date.now() + 30 * 86400e3).toISOString(), description: 'HLauncher hoş geldin kuponu' },
+                { code: 'SABIT-50', type: 'FIXED', value: 5000, endsAt: null, description: null },
+                { code: 'BOZUK', type: 'BOGO', value: 1 },
+            ] : [],
             news: [{ id: 'n1', title: 'Kum Fırtınası 1.4 yayında', excerpt: 'Yeni harita, yeni yaratıklar.', imageUrl: `${base}/img/kum-firtinasi.png`, url: 'https://hardsetups.com/haber/kum-firtinasi-1-4', publishedAt: new Date().toISOString() }],
             updates: personal ? [{ product: 'kum-firtinasi', version: '1.4.0', publishedAt: new Date().toISOString(), changelog: '- Yeni harita' }] : [],
             expiring: [],
@@ -475,6 +483,21 @@ async function handle(req, res) {
             plans: [{ slug: 'aylik', name: 'Aylık', durationDays: 30, priceMinor: PRODUCTS[slug].priceMinor, compareAtMinor: PRODUCTS[slug].compareAtMinor, maxActivations: 2 }],
             storeUrl: `https://magaza.hardsetups.com/urun/${slug}`,
         });
+    }
+
+    // v1.7 (L5) §15: sayaçlar; token isteğe bağlı, her zaman 204. Mock yalnızca geçerli olayları saklar.
+    if (p === '/v1/launcher/telemetry' && req.method === 'POST') {
+        const TYPES = new Set(['launch', 'launch_failed', 'crash', 'install', 'install_failed']);
+        const events = Array.isArray(json?.events) ? json.events.slice(0, 100) : [];
+        state.telemetry = state.telemetry || [];
+        state.telemetry.push({
+            authorized: !!req.headers.authorization,
+            device: !!req.headers['x-hl-device'],
+            events: events.filter((e) => TYPES.has(e?.type) && ['windows', 'macos', 'linux'].includes(e?.os)),
+            keys: [...new Set(events.flatMap((e) => Object.keys(e || {})))].sort(),
+        });
+        res.writeHead(204);
+        return res.end();
     }
 
     // ── Kimlik gerektiren uçlar ──
@@ -587,12 +610,25 @@ async function handle(req, res) {
     if (p === '/v1/launcher/report' && req.method === 'POST') {
         const raw = rawBody.toString('utf8');
         if (!/^multipart\/form-data; boundary=/.test(req.headers['content-type'] || '')) return fail(res, req, 422, 'VALIDATION_FAILED', 'multipart bekleniyordu');
+        // v1.7 (L5) §10
+        if (state.scenario === 'reportDisabled') return fail(res, req, 403, 'REPORT_DISABLED', 'Sorun bildirme kapalı');
         if (!/name="consent"\r\n\r\ntrue\r\n/.test(raw)) return fail(res, req, 422, 'VALIDATION_FAILED', 'Onay gerekli', { field: 'consent' });
-        const fileCount = (raw.match(/name="logs"; filename=/g) || []).length;
-        if (fileCount > 5 || raw.length > 10.5 * 1024 * 1024) return fail(res, req, 422, 'VALIDATION_FAILED', 'Dosya sınırı aşıldı');
+        const field = (name) => (raw.match(new RegExp(`name="${name}"\\r\\n\\r\\n([\\s\\S]*?)\\r\\n--`)) || [])[1] || '';
+        const subject = field('subject');
+        const message = field('message');
+        if (subject.length < 5 || subject.length > 200 || message.length < 10 || message.length > 20000) return fail(res, req, 422, 'VALIDATION_FAILED', 'Konu ya da açıklama uzunluğu geçersiz');
+        const names = [...raw.matchAll(/name="logs"; filename="([^"]*)"/g)].map((m) => m[1]);
+        if (names.length > 5) return fail(res, req, 422, 'ATTACHMENT_REJECTED', 'En çok 5 dosya', { reason: 'tooManyFiles' });
+        const badExt = names.filter((n) => !/\.(log|txt|json|gz)$/i.test(n));
+        if (badExt.length) return fail(res, req, 422, 'ATTACHMENT_REJECTED', 'İzinsiz dosya türü', { files: badExt });
+        if (rawBody.length > 10 * 1024 * 1024) return fail(res, req, 413, 'PAYLOAD_TOO_LARGE', 'Dosyalar 10 MB\'ı geçiyor');
+        state.reportSubjects = state.reportSubjects || new Map();
+        if (state.reportSubjects.has(subject)) return fail(res, req, 409, 'TICKET_DUPLICATE', 'Bu konuyla az önce talep açıldı', { ticketNo: state.reportSubjects.get(subject) });
         state.stats.reports++;
-        state.lastReport = { raw, fileCount };
-        return send(res, 200, { ticketNo: `T-${1000 + state.stats.reports}`, url: 'https://support.hardsetups.com/talep/mock' });
+        const ticketNo = 1000 + state.stats.reports;
+        state.reportSubjects.set(subject, ticketNo);
+        state.lastReport = { raw, fileCount: names.length };
+        return send(res, 201, { ticketNo, url: `https://support.hardsetups.com/talepler/${ticketNo}` });
     }
     return fail(res, req, 404, 'NOT_FOUND', 'Bulunamadı');
 }

@@ -63,7 +63,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "HLauncher",
-      "artifactName": "HLauncher-Kurulum-${version}.${ext}"
+      "artifactName": "HLauncher-Kurulum-${version}.${ext}",
+      "differentialPackage": false
     },
     "publish": [
       {

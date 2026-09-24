@@ -15,9 +15,10 @@ const FIRST_CHECK_DELAY_MS = 8 * 1000;        // açılışı yavaşlatma
 
 // Güncelleme kaynağı (sözleşme §12). 'github': HardSetups/HLauncher-releases (bugün).
 // 'hardsetups': generic sağlayıcı https://api.hardsetups.com/v1/launcher/update/<kanal>
-// (latest.yml sunucuda üretilir, dosya adresi göreli → 302 ile imzalı CDN; kademeli yayın
-// için X-HL-Device gönderilir). L3 canlıya çıkınca köprü sürümde bu sabit değiştirilir;
-// X-HL-Device başlığı YALNIZCA HardSetups kaynağına gider (GitHub'a gitmez).
+// (latest.yml sunucuda üretilir, dosya adresi göreli → 302 ile imzalı CDN; blockmap yok →
+// nsis.differentialPackage: false). Kademeli yayın kovası X-HL-Device'tan hesaplanır.
+// L3 canlıya çıkınca köprü sürümde bu sabit değiştirilir; kurulum kimliği YALNIZCA
+// HardSetups kaynağına gider (GitHub'a gitmez).
 const UPDATE_SOURCE = 'github';
 const HARDSETUPS_UPDATE_BASE = 'https://api.hardsetups.com/v1/launcher/update';
 
@@ -28,10 +29,23 @@ function feedFor(source, channel = 'stable') {
     return { provider: 'generic', url: `${HARDSETUPS_UPDATE_BASE}/${ch}` };
 }
 
+/** HardSetups akışına giden başlıklar (saf, testli): kurulum kimliği + sürüm. */
+function feedHeaders(installId, appVersion) {
+    const h = { 'X-HL-Version': String(appVersion) };
+    if (typeof installId === 'string' && /^[0-9a-f-]{36}$/.test(installId)) h['X-HL-Device'] = installId;
+    return h;
+}
+
+/** Yayımlanmış uygun sürüm yoksa akış latest.yml için 404 döner: bu "güncelleme yok" demektir (§12). */
+function isNoReleaseError(err) {
+    return err?.statusCode === 404 || /\b404\b/.test(String(err?.message || ''));
+}
+
 let autoUpdater = null;
 let mainWindow = null;
 let timer = null;
 let lastStatus = { state: 'idle' };
+let activeFeed = null; // HardSetups akışı kullanılıyorsa (feedFor sonucu)
 
 function send(status) {
     lastStatus = { ...status, at: Date.now() };
@@ -88,10 +102,10 @@ function initUpdater(app, store, win) {
         autoUpdater.autoDownload = true;
         autoUpdater.autoInstallOnAppQuit = true;
         const feed = feedFor(UPDATE_SOURCE, store.get('settings')?.updateChannel);
+        activeFeed = feed;
         if (feed) {
             autoUpdater.setFeedURL(feed);
-            const installId = store.get('installId');
-            if (installId) autoUpdater.requestHeaders = { 'X-HL-Device': installId };
+            autoUpdater.requestHeaders = feedHeaders(store.get('installId'), app.getVersion());
             log.info(`[UPDATER] Kaynak: ${feed.url}`);
         }
 
@@ -117,6 +131,11 @@ function initUpdater(app, store, win) {
         });
         autoUpdater.on('update-not-available', () => send({ state: 'uptodate' }));
         autoUpdater.on('error', (err) => {
+            if (feed && isNoReleaseError(err) && lastStatus.state !== 'downloading') {
+                log.info('[UPDATER] Akışta yayımlanmış sürüm yok');
+                send({ state: 'uptodate' });
+                return;
+            }
             log.info(`[UPDATER] Hata: ${err.message}`);
             // Hazır bir güncelleme varsa sonraki denetimin ağ hatası onu gölgelemesin
             if (lastStatus.state !== 'ready') send({ state: 'error', message: err.message });
@@ -140,7 +159,10 @@ function setEnabled(enabled) {
 function checkNow() {
     if (!autoUpdater) return lastStatus;
     if (['downloading', 'ready'].includes(lastStatus.state)) return lastStatus;
-    autoUpdater.checkForUpdates().catch((err) => send({ state: 'error', message: err.message }));
+    autoUpdater.checkForUpdates().catch((err) => {
+        if (activeFeed && isNoReleaseError(err)) send({ state: 'uptodate' });
+        else send({ state: 'error', message: err.message });
+    });
     return { state: 'checking' };
 }
 
@@ -154,4 +176,4 @@ function installNow() {
 
 function getStatus() { return lastStatus; }
 
-module.exports = { initUpdater, setEnabled, checkNow, installNow, getStatus, plainReleaseNotes, feedFor, UPDATE_SOURCE };
+module.exports = { initUpdater, setEnabled, checkNow, installNow, getStatus, plainReleaseNotes, feedFor, feedHeaders, isNoReleaseError, UPDATE_SOURCE };

@@ -162,6 +162,9 @@ export default function SettingsPage({ settings, updateSetting, systemInfo, acce
           <Row title={t('set.tray')} desc={t('set.tray.desc')}>
             <Switch checked={settings.minimizeToTray === true} onChange={(v) => updateSetting('minimizeToTray', v)} label={t('set.tray')} />
           </Row>
+          <Row title={t('set.telemetry')} desc={t('set.telemetry.desc')}>
+            <Switch checked={settings.telemetryConsent === true} onChange={(v) => updateSetting('telemetryConsent', v)} label={t('set.telemetry')} />
+          </Row>
           <Row title={t('set.updates')} desc={t('set.updates.desc')}>
             <Switch checked={!!settings.checkUpdates} onChange={(v) => updateSetting('checkUpdates', v)} label={t('set.updates')} />
           </Row>

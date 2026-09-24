@@ -17,6 +17,7 @@ const DEFAULTS = {
         rpcEnabled: true,   // Discord Rich Presence (client ID discord.cjs'te)
         checkUpdates: true,
         minimizeToTray: false,  // kullanıcı kararı: ayar olarak, varsayılan kapalı
+        telemetryConsent: false, // anonim kullanım sayaçları (sözleşme §15): yalnızca açık onayla
         onboarded: false,
     },
     account: null,              // { type:'offline', name } | { type:'microsoft', name, uuid, refresh }
