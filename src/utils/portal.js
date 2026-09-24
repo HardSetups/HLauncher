@@ -23,3 +23,17 @@ export function allowedImage(url, hosts) {
   });
   return ok ? url : null;
 }
+
+/** Sunucu resmi → ana süreç önbelleği adresi (hlimg://c/<base64url>). Denetim ana süreçte de yapılır. */
+export function toImageSrc(url) {
+  if (typeof url !== 'string' || !url) return null;
+  const bytes = new TextEncoder().encode(url);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return `hlimg://c/${btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+}
+
+/** İzinli host'taysa önbellek adresi, değilse null (yedek ikon gösterilir). */
+export function imgSrc(url, hosts) {
+  return allowedImage(url, hosts) ? toImageSrc(url) : null;
+}

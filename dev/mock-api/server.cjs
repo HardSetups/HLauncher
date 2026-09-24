@@ -280,10 +280,14 @@ async function handle(req, res) {
     // Dış servislerin yerel taklidi (launcher HL_EXTERNAL_BASE ile buraya yönlenir; testler internete çıkmaz)
     if (p === '/modrinth/v2/project/fabric-api/version') {
         const dep = buildFilesCached('kum-firtinasi').dep;
-        return send(res, 200, [{
-            version_number: '0.116.17+1.21.1',
-            files: [{ primary: true, filename: 'fabric-api-0.116.17+1.21.1.jar', url: `${base}/cdn/kum-firtinasi/dep.jar`, size: dep.length, hashes: { sha512: sha512(dep) } }],
-        }]);
+        return send(res, 200, [
+            // Birebir eşleşme şartını sınamak için: aynı sürüm numarası ama başka MC sürümü
+            { version_number: '0.116.17+1.21.1', loaders: ['fabric'], game_versions: ['1.21'], files: [{ primary: true, filename: 'yanlis.jar', url: `${base}/cdn/kum-firtinasi/dep.jar`, size: 1, hashes: { sha512: '0'.repeat(128) } }] },
+            {
+                version_number: '0.116.17+1.21.1', loaders: ['fabric'], game_versions: ['1.21.1'],
+                files: [{ primary: true, filename: 'fabric-api-0.116.17+1.21.1.jar', url: `${base}/cdn/kum-firtinasi/dep.jar`, size: dep.length, hashes: { sha512: sha512(dep) } }],
+            },
+        ]);
     }
     if (p.startsWith('/fabric-meta/v2/versions/loader/')) {
         return send(res, 200, [
@@ -424,7 +428,7 @@ async function handle(req, res) {
             files: [{ ...file, kind: 'archive', extract: m.files[0].extract }],
             install: {
                 instance: m.instance, minecraft: m.minecraft, loader: { type: 'fabric', version: null, profileUrl: null },
-                java: m.java, memory: m.memory,
+                java: m.java, memory: m.memory, dependencies: m.dependencies,
                 licenseConfig: { ...m.licenseConfig, entries: { [`lisans.anahtar.${PRODUCTS[slug].gameId}`]: String(body.licenseKey) } },
                 managedPaths: m.managedPaths, quickPlay: m.quickPlay,
             },
@@ -591,11 +595,9 @@ function installManifest(installId, slug, base, fresh = false) {
                 sha256: sha256(f.archive), sizeBytes: String(f.archive.length), expiresInSeconds: 300,
                 extract: [{ from: `${p.folder}/mods/`, to: 'mods/' }, { from: '.hs-license', to: '.hardsetups/lisans-damgasi.json' }],
             },
-            {
-                id: 'f2', kind: 'file', source: 'modrinth', path: 'mods/fabric-api-0.116.17+1.21.1.jar',
-                url: `${base}/cdn/${slug}/dep.jar`, sha512: sha512(f.dep), sizeBytes: String(f.dep.length),
-            },
         ],
+        // v1.5 §7.8.1: Modrinth bağımlılıkları files'a değil buraya; launcher birebir sürümle çözer
+        dependencies: [{ source: 'modrinth', project: 'fabric-api', version: '0.116.17+1.21.1' }],
         licenseConfig: { path: 'config/hardsetups/ayarlar.json', schemaVersion: 2, format: 'flat-map', entries: { [`lisans.anahtar.${p.gameId}`]: 'HSMN-OPQR-STUV-WXYZ' } },
         managedPaths: ['mods/'],
         quickPlay: { singleplayer: null },

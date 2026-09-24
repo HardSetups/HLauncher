@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react-swc'
 
 // Paketli sürüme sıkı CSP enjekte eder (dev'de HMR inline script'leri için uygulanmaz).
 // img https: → sunucu ikonları (mcstatus data:), skin servisleri, mod ikonları.
+// img hlimg: → HardSetups resimleri, ana süreç önbelleğinden (izinli host + resim doğrulaması).
 const cspPlugin = () => ({
   name: 'hlauncher-csp',
   transformIndexHtml: {
@@ -13,7 +14,7 @@ const cspPlugin = () => ({
         "default-src 'self'",
         "script-src 'self'",
         "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' https: data:",
+        "img-src 'self' https: data: hlimg:",
         "font-src 'self'",
         "connect-src 'self' https://api.mcstatus.io",
         "object-src 'none'",

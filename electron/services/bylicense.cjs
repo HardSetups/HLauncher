@@ -96,17 +96,42 @@ function inspectModsDir(modsDir) {
 
 const DEFAULT_ENDPOINTS = { modrinthApi: 'https://api.modrinth.com', fabricMeta: 'https://meta.fabricmc.net' };
 
+/** §11.1: sabit Fabric API sürümü — v1.5 bağımlılık çözücüsüyle aynı birebir eşleşme kuralı. */
 async function fetchFabricApi(mcVersion, endpoints = DEFAULT_ENDPOINTS) {
-    const q = `loaders=${encodeURIComponent('["fabric"]')}&game_versions=${encodeURIComponent(JSON.stringify([mcVersion]))}`;
-    const versions = await httpGetJson(`${endpoints.modrinthApi}/v2/project/fabric-api/version?${q}`);
-    const v = (versions || []).find((x) => x.version_number === FABRIC_API_VERSION);
-    const file = v?.files?.find((f) => f.primary) || v?.files?.[0];
-    if (!file?.hashes?.sha512) throw codedError('EDEPENDENCY', `Fabric API ${FABRIC_API_VERSION} Modrinth'te bulunamadı`);
-    return { url: file.url, sha512: file.hashes.sha512, size: file.size, filename: file.filename };
+    const [dep] = await resolveDependencies([{ source: 'modrinth', project: 'fabric-api', version: FABRIC_API_VERSION }], { mcVersion, loader: 'fabric' }, endpoints);
+    return dep;
 }
 
 async function fetchFabricLoaders(mcVersion, endpoints = DEFAULT_ENDPOINTS) {
     return httpGetJson(`${endpoints.fabricMeta}/v2/versions/loader/${encodeURIComponent(mcVersion)}`);
+}
+
+/**
+ * Sözleşme v1.5 §7.8.1: manifestteki `dependencies` (ör. {source:'modrinth', project:'fabric-api',
+ * version:'0.116.17+1.21.1'}) Modrinth'ten BİREBİR sürümle çözülür: version_number aynı,
+ * loaders içinde loader, game_versions içinde MC sürümü. Eşleşme yoksa kurulum durur —
+ * başka sürüm tahmin edilmez. Dönen kayıtlar kurulum bildirimine 'file' olarak eklenir.
+ */
+async function resolveDependencies(dependencies, { mcVersion, loader }, endpoints = DEFAULT_ENDPOINTS) {
+    const out = [];
+    for (const dep of Array.isArray(dependencies) ? dependencies : []) {
+        if (dep?.source !== 'modrinth') throw codedError('EDEPENDENCY', `Desteklenmeyen bağımlılık kaynağı: ${String(dep?.source).slice(0, 20)}`);
+        const project = String(dep.project || '');
+        const version = String(dep.version || '');
+        if (!/^[\w.-]{1,64}$/.test(project) || !/^[\w.+-]{1,64}$/.test(version)) throw codedError('EDEPENDENCY', 'Geçersiz bağımlılık tanımı');
+        const versions = await httpGetJson(`${endpoints.modrinthApi}/v2/project/${encodeURIComponent(project)}/version`);
+        const match = (Array.isArray(versions) ? versions : []).find((v) => v.version_number === version &&
+            (v.loaders || []).includes(loader) && (v.game_versions || []).includes(mcVersion));
+        const file = match?.files?.find((f) => f.primary) || match?.files?.[0];
+        if (!file?.hashes?.sha512 || !file.filename) {
+            throw codedError('EDEPENDENCY', `Gerekli bağımlılık bulunamadı: ${project} ${version} (${loader}, Minecraft ${mcVersion})`);
+        }
+        out.push({
+            id: `dep-${project}`.slice(0, 64), kind: 'file', source: 'modrinth',
+            path: `mods/${file.filename}`, url: file.url, sha512: file.hashes.sha512, sizeBytes: String(file.size),
+        });
+    }
+    return out;
 }
 
 /**
@@ -138,7 +163,8 @@ function manifestFromResponse(data, file) {
         loader: inst.loader,
         java: inst.java,
         memory: inst.memory,
-        files: [f1, ...(Array.isArray(inst.files) ? inst.files : [])],
+        files: [f1],
+        dependencies: Array.isArray(inst.dependencies) ? inst.dependencies : [],
         licenseConfig: inst.licenseConfig,
         managedPaths: inst.managedPaths,
         quickPlay: inst.quickPlay,
@@ -161,9 +187,7 @@ function buildManifest({ product, table, file, licenseKey, loaderVersion, fabric
         id: 'f1', kind: 'archive', source: 'hardsetups', url: file.url, sha256: file.sha256, sizeBytes: String(file.sizeBytes),
         extract: [{ from: '.hs-license', to: '.hardsetups/lisans-damgasi.json' }],
     }];
-    if (fabricApi) {
-        files.push({ id: 'f2', kind: 'file', source: 'modrinth', path: `mods/${fabricApi.filename}`, url: fabricApi.url, sha512: fabricApi.sha512, sizeBytes: String(fabricApi.size) });
-    }
+    if (fabricApi) files.push(fabricApi); // resolveDependencies kaydı (kind: file, sha512)
     return {
         installId: `bylicense-${Date.now()}`,
         instance: { id: product, folderName: product, displayName: table.name },
@@ -184,6 +208,6 @@ const ARCHIVE_RULES = { f1: [{ pattern: MOD_JAR, toDir: 'mods/' }] };
 
 module.exports = {
     PRODUCTS, CONFIG_PATH, FABRIC_API_VERSION, ARCHIVE_RULES, DEFAULT_ENDPOINTS,
-    satisfies, pickLoaderVersion, inspectArchive, inspectModsDir, fetchFabricApi, fetchFabricLoaders, resolveFabricLoader,
+    satisfies, pickLoaderVersion, inspectArchive, inspectModsDir, fetchFabricApi, fetchFabricLoaders, resolveFabricLoader, resolveDependencies,
     pickFile, buildManifest, manifestFromResponse,
 };

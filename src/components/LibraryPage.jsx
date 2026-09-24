@@ -10,7 +10,7 @@ import { InstanceIcon, Menu, EmptyState } from './ui.jsx';
 import { IconPlay, IconStop, IconLibrary } from './icons.jsx';
 import Modal from './Modal.jsx';
 import HardSetupsCard from './HardSetupsCard.jsx';
-import { portalErrorText, allowedImage } from '../utils/portal.js';
+import { portalErrorText, imgSrc } from '../utils/portal.js';
 
 // Kurulum hatası → kullanıcıya gösterilecek metin + (varsa) yapılacak eylem (sözleşme §7.10, §11)
 function describeInstallError(t, error) {
@@ -90,7 +90,7 @@ export default function LibraryPage({ portal, instances, launch, onPlay, onStop,
   };
 
   const install = (item, action) => runPortalTask(
-    { slug: item.product.slug, title: item.product.name, subtitle: t(`hs.action.${action}`), iconUrl: allowedImage(item.product.iconUrl, portal?.imageHosts) },
+    { slug: item.product.slug, title: item.product.name, subtitle: t(`hs.action.${action}`), iconUrl: imgSrc(item.product.iconUrl, portal?.imageHosts) },
     (taskId) => api.portalInstall(item.product.slug, action, taskId),
   );
 
@@ -165,7 +165,7 @@ export default function LibraryPage({ portal, instances, launch, onPlay, onStop,
             const otherGame = !!(launch.launchingId || launch.runningId) && !running && !launching;
             const status = statusLine(t, item);
             const canInstall = item.installable && ['ACTIVE', 'KEY'].includes(item.status);
-            const icon = { id: slug, iconUrl: allowedImage(item.product.iconUrl, portal.imageHosts) };
+            const icon = { id: slug, iconUrl: imgSrc(item.product.iconUrl, portal.imageHosts) };
             return (
               <motion.article key={slug} layout className={`hs-item${inst ? ' is-installed' : ''}`}>
                 <div className="hs-item-head">

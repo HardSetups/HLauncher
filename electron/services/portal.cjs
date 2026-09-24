@@ -249,11 +249,14 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
 
     const managedId = (folderName) => `hs-${folderName}`;
     /** Sunucu resmi yalnızca imageHosts altındaysa saklanır/gösterilir (§2). */
+    function imageHostAllowed(hostname, protocol) {
+        const httpOk = protocol === 'https:' || (isDev && protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(hostname));
+        return httpOk && hostMatches(hostname, state.config?.imageHosts || []);
+    }
     function imageAllowed(url) {
         let u;
         try { u = new URL(url); } catch { return false; }
-        const httpOk = u.protocol === 'https:' || (isDev && u.protocol === 'http:');
-        return httpOk && hostMatches(u.hostname, state.config?.imageHosts || []);
+        return imageHostAllowed(u.hostname, u.protocol);
     }
     const findManaged = (slug) => instances.list().find((i) => i.origin === 'hardsetups' && i.product === slug) || null;
 
@@ -338,6 +341,10 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         const body = { product: slug, action, channel: 'STABLE', installedVersionId };
         let manifest = (await api.post('/v1/launcher/install', body)).data;
         if (!isValidFolderName(manifest?.instance?.folderName)) throw codedError('EBADMANIFEST', 'Sunucudan geçersiz kurulum bildirimi geldi');
+        // v1.5 §7.8.1: Modrinth bağımlılıkları ayrı alanda gelir; birebir sürümle çözülüp dosyalara eklenir
+        manifest.files = [...manifest.files, ...await bylicense.resolveDependencies(manifest.dependencies, {
+            mcVersion: manifest.minecraft?.version, loader: manifest.loader?.type,
+        }, externalEndpoints)];
         const instanceDir = getInstanceDir(managedId(manifest.instance.folderName));
         const started = Date.now();
         const reportResult = (result, errorCode = null) => api.post(`/v1/launcher/install/${manifest.installId}/result`, { result, errorCode, durationMs: Date.now() - started })
@@ -432,14 +439,16 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
             );
             info = bylicense.inspectArchive(dest);
         }
-        const mcVersion = manifest ? manifest.minecraft?.version : table.mc;
-        const hasFabricApi = info.mods.some((m) => m.id === 'fabric-api') || (manifest?.files || []).some((f) => /fabric-api/i.test(f.path || ''));
-        const fabricApi = hasFabricApi ? null : await bylicense.fetchFabricApi(mcVersion, externalEndpoints);
-
         let extraRules = {};
+        let fabricApi = null;
         if (manifest) {
-            if (fabricApi) manifest.files.push({ id: 'dep-fabric-api', kind: 'file', source: 'modrinth', path: `mods/${fabricApi.filename}`, url: fabricApi.url, sha512: fabricApi.sha512, sizeBytes: String(fabricApi.size) });
+            // v1.5: sunucu bildiriminde bağımlılıklar `dependencies` alanında (tahmin yok)
+            manifest.files.push(...await bylicense.resolveDependencies(manifest.dependencies, {
+                mcVersion: manifest.minecraft?.version, loader: manifest.loader?.type,
+            }, externalEndpoints));
         } else {
+            // §11.1 tablosu: arşivde Fabric API yoksa sabit sürüm Modrinth'ten
+            fabricApi = info.mods.some((m) => m.id === 'fabric-api') ? null : await bylicense.fetchFabricApi(table.mc, externalEndpoints);
             const constraints = info.mods.map((m) => m.loaderConstraint).filter(Boolean);
             const loaderVersion = bylicense.pickLoaderVersion(await bylicense.fetchFabricLoaders(table.mc, externalEndpoints), constraints);
             if (!loaderVersion) throw codedError('EDEPENDENCY', 'Modların istediği Fabric sürümü bulunamadı');
@@ -505,6 +514,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         logout,
         openLink,
         openUrl,
+        imageHostAllowed,
         publicState,
         downloadHosts,
         linkHosts,

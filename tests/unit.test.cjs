@@ -614,6 +614,24 @@ test('licenseConfig: güvensiz yol, yanlış biçim ve metin olmayan değer redd
     }
 });
 
+// ─── services/imagecache.cjs ────────────────────────────────────────────────
+const imagecache = require('../electron/services/imagecache.cjs');
+
+test('imagecache: içerik imzasıyla resim türü; resim olmayan reddedilir', () => {
+    assert.strictEqual(imagecache.sniffImageType(Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex')), 'image/png');
+    assert.strictEqual(imagecache.sniffImageType(Buffer.from('ffd8ffe000104a4649460001', 'hex')), 'image/jpeg');
+    assert.strictEqual(imagecache.sniffImageType(Buffer.from('RIFF\0\0\0\0WEBPVP8 ', 'binary')), 'image/webp');
+    assert.strictEqual(imagecache.sniffImageType(Buffer.from('<svg onload=alert(1)>....')), null);
+    assert.strictEqual(imagecache.sniffImageType(Buffer.from('<html><body>')), null);
+});
+
+test('imagecache: hlimg adresi gidiş-dönüş; bozuk adres reddedilir', () => {
+    const url = 'https://cdn.hardsetups.com/ürün/kum fırtınası.png?v=2';
+    assert.strictEqual(imagecache.decodeImageUrl(imagecache.encodeImageUrl(url)), url);
+    assert.strictEqual(imagecache.decodeImageUrl('hlimg://c/../../etc'), null);
+    assert.strictEqual(imagecache.decodeImageUrl('https://evil/x'), null);
+});
+
 // ─── i18n: arayüzdeki her t('…') anahtarı iki sözlükte de var mı? ───────────
 test('i18n: src/ içindeki tüm sabit t(\'…\') anahtarları TR ve EN sözlüklerinde mevcut', () => {
     const i18nSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'i18n.jsx'), 'utf8');

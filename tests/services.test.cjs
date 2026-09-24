@@ -387,8 +387,13 @@ const installer = require('../electron/services/installer.cjs');
 async function installerContext(base) {
     const c = makeClient(base);
     await c.login();
-    const getManifest = async (action = 'INSTALL', product = 'kum-firtinasi') =>
-        (await c.api.post('/v1/launcher/install', { product, action, channel: 'STABLE', installedVersionId: null })).data;
+    const { resolveDependencies } = require('../electron/services/bylicense.cjs');
+    // Portal'ın yaptığı gibi: v1.5 dependencies → Modrinth (mock) dosyaları
+    const getManifest = async (action = 'INSTALL', product = 'kum-firtinasi') => {
+        const m = (await c.api.post('/v1/launcher/install', { product, action, channel: 'STABLE', installedVersionId: null })).data;
+        m.files.push(...await resolveDependencies(m.dependencies, { mcVersion: m.minecraft.version, loader: m.loader.type }, { modrinthApi: `${base}/modrinth` }));
+        return m;
+    };
     const refreshUrlsFor = (installId) => async () => {
         const r = await c.api.post(`/v1/launcher/install/${installId}/urls`, {});
         return Object.fromEntries(r.data.files.map((f) => [f.id, f.url]));
@@ -443,7 +448,7 @@ test('installer: güncellemede eski yönetilen dosya silinir, kullanıcı jar\'�
         fs.writeFileSync(path.join(dir, 'config', 'hardsetups', 'ayarlar.json'), JSON.stringify({ 'hud.olcek': '2', 'lisans.anahtar.kumfirtinasi': 'HSMN-OPQR-STUV-WXYZ' }));
 
         const next = await getManifest('UPDATE');
-        next.files = next.files.filter((f) => f.id !== 'f2'); // yeni sürüm fabric-api'yi bırakıyor
+        next.files = next.files.filter((f) => f.id !== 'dep-fabric-api'); // yeni sürüm fabric-api'yi bırakıyor
         const r = await sync(next, dir);
         assert.deepStrictEqual(r.removed, ['mods/fabric-api-0.116.17+1.21.1.jar']);
         assert.deepStrictEqual(r.movedAside, ['mods/kullanicinin-modu.jar']);
@@ -500,7 +505,7 @@ test('installer: güvensiz yol içeren bildirim hiçbir şey indirmeden reddedil
             (m) => { m.files[0].extract[0].to = 'C:/Windows/'; },
             (m) => { m.licenseConfig.path = '..\\..\\x.json'; },
             (m) => { m.instance.folderName = '../x'; },
-            (m) => { delete m.files[1].sha512; },
+            (m) => { delete m.files[1].sha512; }, // çözülmüş bağımlılık da hash'siz kabul edilmez
         ]) {
             const m = await getManifest();
             mutate(m);
@@ -568,13 +573,26 @@ test('bylicense.buildManifest: sözleşme §7 biçiminde, doğrulayıcıdan geç
         product: 'tiktok-doldurdoldur', table: bylicense.PRODUCTS['tiktok-doldurdoldur'],
         file: { url: 'https://cdn.hardsetups.com/x.zip', sha256: 'a'.repeat(64), sizeBytes: '100', version: '0.2.0', versionId: 'v1' },
         licenseKey: 'HSMN-OPQR-STUV-WXYZ', loaderVersion: '0.16.14',
-        fabricApi: { url: 'https://cdn.modrinth.com/f.jar', sha512: 'b'.repeat(128), size: 10, filename: 'fabric-api-0.116.17+1.21.1.jar' },
+        fabricApi: { id: 'dep-fabric-api', kind: 'file', source: 'modrinth', path: 'mods/fabric-api-0.116.17+1.21.1.jar', url: 'https://cdn.modrinth.com/f.jar', sha512: 'b'.repeat(128), sizeBytes: '10' },
     });
     const v = installer.validateInstallManifest(m);
     assert.strictEqual(v.instance.folderName, 'tiktok-doldurdoldur');
     assert.deepStrictEqual(v.licenseConfig.entries, { 'lisans.anahtar.dolduroldur': 'HSMN-OPQR-STUV-WXYZ' });
     assert.strictEqual(v.files[1].path, 'mods/fabric-api-0.116.17+1.21.1.jar');
     assert.strictEqual(v.loader.version, '0.16.14');
+});
+
+test('bylicense.resolveDependencies: birebir sürüm + loader + MC sürümü; eşleşme yoksa tahmin etmeden durur', async () => {
+    await withMock(async (base) => {
+        const ep = { modrinthApi: `${base}/modrinth` };
+        const [dep] = await bylicense.resolveDependencies([{ source: 'modrinth', project: 'fabric-api', version: '0.116.17+1.21.1' }], { mcVersion: '1.21.1', loader: 'fabric' }, ep);
+        assert.strictEqual(dep.path, 'mods/fabric-api-0.116.17+1.21.1.jar'); // 1.21 için olan yanlış dosya seçilmedi
+        assert.match(dep.sha512, /^[a-f0-9]{128}$/);
+        await assert.rejects(bylicense.resolveDependencies([{ source: 'modrinth', project: 'fabric-api', version: '0.116.18+1.21.1' }], { mcVersion: '1.21.1', loader: 'fabric' }, ep), { code: 'EDEPENDENCY' });
+        await assert.rejects(bylicense.resolveDependencies([{ source: 'modrinth', project: 'fabric-api', version: '0.116.17+1.21.1' }], { mcVersion: '1.21.1', loader: 'quilt' }, ep), { code: 'EDEPENDENCY' });
+        await assert.rejects(bylicense.resolveDependencies([{ source: 'curseforge', project: 'x', version: '1' }], { mcVersion: '1.21.1', loader: 'fabric' }, ep), { code: 'EDEPENDENCY' });
+        assert.deepStrictEqual(await bylicense.resolveDependencies([], { mcVersion: '1.21.1', loader: 'fabric' }, ep), []);
+    });
 });
 
 // ─── services/library.cjs (§6.3 açma kuralları, mock API'ye karşı) ───────────
@@ -717,6 +735,36 @@ test('portal: lisansa özel dosya hazırlanıyorsa 409 CONFLICT buildNotReady; k
         assert.deepStrictEqual([item.status, item.installable, item.reason], ['PENDING_BUILD', false, 'buildPending']);
         await assert.rejects(portal.installProduct('kum-firtinasi', 'INSTALL'), (err) => err.code === 'CONFLICT' && err.details.reason === 'buildNotReady');
     });
+});
+
+// ─── services/imagecache.cjs ────────────────────────────────────────────────
+const { createImageCache } = require('../electron/services/imagecache.cjs');
+const PNG = Buffer.concat([Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'), Buffer.alloc(40)]);
+
+test('imagecache: izinli host → önbelleğe alınır, ağ düşse de bayat kopya verilir; izinsiz host ve resim olmayan içerik 404', async () => {
+    let hits = 0;
+    const srv = await startServer((req, res) => {
+        hits++;
+        if (req.url === '/html') { res.writeHead(200, { 'Content-Type': 'image/png' }); return res.end('<html>kötü</html>'); }
+        if (req.url === '/redirect') { res.writeHead(302, { Location: 'https://evil.example/x.png' }); return res.end(); }
+        res.writeHead(200, { 'Content-Type': 'image/png' });
+        res.end(PNG);
+    });
+    try {
+        const cacheDir = tmpDir();
+        const cache = createImageCache({ cacheDir, isAllowed: (host, proto) => host === '127.0.0.1' && proto === 'http:' });
+        const first = await cache.get(`${srv.base}/a.png`);
+        assert.deepStrictEqual([first.status, first.type], [200, 'image/png']);
+        await cache.get(`${srv.base}/a.png`);
+        assert.strictEqual(hits, 1, 'ikinci istek önbellekten gelmeli');
+        assert.strictEqual((await cache.get('https://evil.example/a.png')).status, 404);
+        assert.strictEqual((await cache.get(`${srv.base}/html`)).status, 404);
+        assert.strictEqual((await cache.get(`${srv.base}/redirect`)).status, 404);
+        // Önbellek bayatladı + sunucu kapalı → eldeki kopya
+        for (const f of fs.readdirSync(cacheDir)) fs.utimesSync(path.join(cacheDir, f), new Date(0), new Date(0));
+        await srv.close();
+        assert.strictEqual((await cache.get(`${srv.base}/a.png`)).status, 200);
+    } finally { try { await srv.close(); } catch { /* kapalı */ } }
 });
 
 // ─── Çalıştırıcı ────────────────────────────────────────────────────────────

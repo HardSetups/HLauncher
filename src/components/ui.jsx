@@ -1,6 +1,7 @@
 // Küçük, tekrar kullanılan arayüz parçaları: profil ikonu, anahtar, açılır menü.
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toImageSrc } from '../utils/portal.js';
 
 // Profil ikonu: Modrinth ikonu varsa o; yoksa profil kimliğinden türetilen
 // simetrik 5×5 piksel desen (Minecraft'a yakışan bir "identicon"). Aynı profil
@@ -47,7 +48,8 @@ function pixelPattern(seed) {
 
 export function InstanceIcon({ instance, size = 40, fill = false, className = '' }) {
   const [failed, setFailed] = useState(null);
-  const url = instance?.iconUrl;
+  // HardSetups ürün ikonları sunucudan gelir: ana süreç önbelleği üzerinden (izinli host denetimli)
+  const url = instance?.origin === 'hardsetups' ? toImageSrc(instance.iconUrl) : instance?.iconUrl;
   const style = fill ? undefined : { width: size, height: size };
   const cls = `inst-icon${fill ? ' is-fill' : ''} ${className}`;
   if (url && failed !== url) {

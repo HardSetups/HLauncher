@@ -12,7 +12,7 @@ if (process.env.ELECTRON_RUN_AS_NODE) {
     process.exit(0);
 }
 
-const { app, BrowserWindow, ipcMain, dialog, shell, session, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, session, clipboard, protocol } = require('electron');
 const os = require('os');
 const path = require('path');
 
@@ -71,6 +71,11 @@ function startApp() {
     // HardSetups portalı (hesap, config, cihaz kodu girişi) — app ready sonrası kurulur
     const { createPortal } = require('./services/portal.cjs');
     let portal = null;
+
+    // Sunucu resimleri hlimg:// üzerinden ana süreç önbelleğinden gelir (sözleşme §2).
+    // Şema app ready'den ÖNCE kaydedilmeli.
+    const imagecache = require('./services/imagecache.cjs');
+    protocol.registerSchemesAsPrivileged([{ scheme: imagecache.SCHEME, privileges: { standard: true, secure: true } }]);
 
     // Tarayıcıda yalnızca https + izinli host açılır (sözleşme §2): launcher'ın
     // sabit listesi + sunucunun linkHosts'u. trusted: geliştirmede yerel mock onay sayfası.
@@ -196,6 +201,18 @@ function startApp() {
             isGameRunning,
         });
         log.info(`[PORTAL] API: ${portal.baseUrl}`);
+
+        const images = imagecache.createImageCache({
+            cacheDir: path.join(getRootPath(), 'cache', 'img'),
+            isAllowed: (host, proto) => portal.imageHostAllowed(host, proto),
+            log,
+        });
+        protocol.handle(imagecache.SCHEME, async (request) => {
+            const url = imagecache.decodeImageUrl(request.url);
+            const res = url ? await images.get(url) : { status: 400 };
+            if (res.status !== 200) return new Response(null, { status: res.status });
+            return new Response(res.body, { headers: { 'Content-Type': res.type, 'Cache-Control': 'max-age=3600', 'X-Content-Type-Options': 'nosniff' } });
+        });
         portal.loadConfig().then(() => portal.refreshMe({ force: true }));
         // Pencere odaklanınca hesap özeti (bakiye, bildirim sayısı) tazelenir (en sık dakikada bir)
         mainWindow.on('focus', () => portal?.refreshMe());
