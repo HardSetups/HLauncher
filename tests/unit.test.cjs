@@ -641,6 +641,41 @@ test('imagecache: hlimg adresi gidiş-dönüş; bozuk adres reddedilir', () => {
     assert.strictEqual(imagecache.decodeImageUrl('https://evil/x'), null);
 });
 
+// ─── services/report.cjs (§10 temizleme) ────────────────────────────────────
+const report = require('../electron/services/report.cjs');
+
+test('report.sanitizeReportText: token, lisans anahtarı ve kullanıcı adı yoldan çıkar', () => {
+    const raw = [
+        `[MCLC]: Launching with arguments --username Muffy --accessToken ${FAKE_JWT} --gameDir C:\\Users\\Mehmet Yılmaz\\AppData\\Roaming\\.hlauncher`,
+        '{"lisans.anahtar.kumfirtinasi":"HSMN-OPQR-STUV-WXYZ","licenseKey":"ABCD-EFGH"}',
+        'Yol: c:/users/ahmet/Desktop/x.txt ve /home/ali/.minecraft',
+    ].join('\n');
+    const out = report.sanitizeReportText(raw);
+    for (const secret of [FAKE_JWT, 'HSMN-OPQR-STUV-WXYZ', 'ABCD-EFGH', 'Mehmet Yılmaz', 'ahmet', '/home/ali']) {
+        assert.ok(!out.includes(secret), `sızdı: ${secret}`);
+    }
+    assert.ok(out.includes('C:\\Users\\<kullanıcı>\\AppData') && out.includes('--username Muffy'));
+});
+
+test('report.collectReportFiles: launcher günlüğü + oyunun latest.log + en yeni çökme raporu, hepsi temizlenmiş', () => {
+    const logsDir = fs.mkdtempSync(path.join(tmpAppData, 'rlogs-'));
+    const inst = fs.mkdtempSync(path.join(tmpAppData, 'rinst-'));
+    fs.writeFileSync(path.join(logsDir, 'hlauncher.log'), `--accessToken ${FAKE_JWT}`);
+    fs.mkdirSync(path.join(inst, 'logs'));
+    fs.writeFileSync(path.join(inst, 'logs', 'latest.log'), 'oyun günlüğü C:\\Users\\Ayse\\x');
+    fs.mkdirSync(path.join(inst, 'crash-reports'));
+    fs.writeFileSync(path.join(inst, 'crash-reports', 'crash-2026-01-01.txt'), 'eski');
+    fs.writeFileSync(path.join(inst, 'crash-reports', 'crash-2026-09-24.txt'), 'yeni çökme');
+    fs.utimesSync(path.join(inst, 'crash-reports', 'crash-2026-01-01.txt'), new Date(0), new Date(0));
+    const files = report.collectReportFiles({ logsDir, instanceDir: inst });
+    assert.deepStrictEqual(files.map((f) => f.id), ['launcher', 'game', 'crash']);
+    assert.strictEqual(files[2].name, 'crash-2026-09-24.txt');
+    assert.ok(files.every((f) => !f.text.includes(FAKE_JWT) && !f.text.includes('Ayse')));
+    const mp = report.buildMultipart({ subject: 'Çöktü', message: 'x', consent: 'true' }, files);
+    assert.match(mp.contentType, /^multipart\/form-data; boundary=/);
+    assert.strictEqual((mp.body.toString().match(/name="logs"; filename=/g) || []).length, 3);
+});
+
 // ─── i18n: arayüzdeki her t('…') anahtarı iki sözlükte de var mı? ───────────
 test('i18n: src/ içindeki tüm sabit t(\'…\') anahtarları TR ve EN sözlüklerinde mevcut', () => {
     const i18nSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'i18n.jsx'), 'utf8');

@@ -608,6 +608,39 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         return {};
     }
 
+    // ── Sorun bildir (§10) ──
+    const report = require('./report.cjs');
+    const { getLogsDir } = require('../lib/paths.cjs');
+
+    function reportSources(instanceId) {
+        const inst = instanceId ? instances.get(String(instanceId)) : null;
+        return { logsDir: getLogsDir(), instanceDir: inst ? getInstanceDir(inst.id) : null, product: inst?.origin === 'hardsetups' ? inst.product : null };
+    }
+
+    /** Gönderilecek dosyaların temizlenmiş önizlemesi (renderer'a yalnızca bu gider). */
+    function reportPreview(instanceId) {
+        const src = reportSources(instanceId);
+        return { files: report.previewOf(report.collectReportFiles(src)), product: src.product };
+    }
+
+    async function sendReport({ instanceId = null, subject, message, fileIds = [], consent = false }) {
+        assertSupported();
+        if (state.config?.features?.report === false) throw codedError('REPORT_DISABLED', 'Sorun bildirme şu an kapalı');
+        if (!session.isSignedIn()) throw codedError('NOT_SIGNED_IN', 'Sorun bildirmek için HardSetups hesabını bağla');
+        if (consent !== true) throw codedError('CONSENT_REQUIRED', 'Göndermek için onay kutusunu işaretle');
+        const subj = String(subject || '').trim().slice(0, 120);
+        const msg = String(message || '').trim().slice(0, 5000);
+        if (!subj || !msg) throw codedError('VALIDATION', 'Konu ve açıklama gerekli');
+        const src = reportSources(instanceId);
+        // Dosyalar gönderim anında yeniden toplanıp temizlenir; renderer yalnızca seçim gönderir
+        const wanted = new Set((Array.isArray(fileIds) ? fileIds : []).map(String));
+        const files = report.collectReportFiles(src).filter((f) => wanted.has(f.id));
+        const raw = report.buildMultipart({ subject: report.sanitizeReportText(subj), message: report.sanitizeReportText(msg), product: src.product, consent: 'true' }, files);
+        const { data } = await api.post('/v1/launcher/report', undefined, { raw });
+        log.info(`[PORTAL] Destek talebi açıldı: ${data?.ticketNo} (${files.length} dosya)`);
+        return { ticketNo: data?.ticketNo || null, url: data?.url || null };
+    }
+
     /**
      * HardSetups ürünü açılabilir mi? minVersion altında hiçbiri (§2, v1.3.2);
      * hesapla kurulanlar lisans durumuna / çevrimdışı zarfa bakar (§6.3);
@@ -651,6 +684,8 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         purchase,
         notifications,
         markNotificationsRead,
+        reportPreview,
+        sendReport,
     };
 }
 

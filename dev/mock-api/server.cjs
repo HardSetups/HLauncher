@@ -249,7 +249,7 @@ async function handle(req, res) {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const p = url.pathname;
     const base = `http://${req.headers.host}`;
-    const { json } = await readBody(req);
+    const { json, raw: rawBody } = await readBody(req);
     const body = json || {};
 
     // Mock kontrol uçları
@@ -572,8 +572,14 @@ async function handle(req, res) {
         res.writeHead(204); return res.end();
     }
     if (p === '/v1/launcher/report' && req.method === 'POST') {
+        const raw = rawBody.toString('utf8');
+        if (!/^multipart\/form-data; boundary=/.test(req.headers['content-type'] || '')) return fail(res, req, 422, 'VALIDATION_FAILED', 'multipart bekleniyordu');
+        if (!/name="consent"\r\n\r\ntrue\r\n/.test(raw)) return fail(res, req, 422, 'VALIDATION_FAILED', 'Onay gerekli', { field: 'consent' });
+        const fileCount = (raw.match(/name="logs"; filename=/g) || []).length;
+        if (fileCount > 5 || raw.length > 10.5 * 1024 * 1024) return fail(res, req, 422, 'VALIDATION_FAILED', 'Dosya sınırı aşıldı');
         state.stats.reports++;
-        return send(res, 200, { ticketNo: `T-${1000 + state.stats.reports}`, url: 'https://destek.hardsetups.com/talep/mock' });
+        state.lastReport = { raw, fileCount };
+        return send(res, 200, { ticketNo: `T-${1000 + state.stats.reports}`, url: 'https://support.hardsetups.com/talep/mock' });
     }
     return fail(res, req, 404, 'NOT_FOUND', 'Bulunamadı');
 }

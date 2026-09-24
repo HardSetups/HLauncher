@@ -17,7 +17,10 @@ const OUT = process.env.E2E_OUT || fs.mkdtempSync(path.join(os.tmpdir(), 'hlaunc
 async function main() {
     const appData = fs.mkdtempSync(path.join(os.tmpdir(), 'hlauncher-e2e-'));
     fs.mkdirSync(path.join(appData, '.hlauncher'), { recursive: true });
-    fs.writeFileSync(path.join(appData, '.hlauncher', 'config.json'), JSON.stringify({ settings: { onboarded: true, checkUpdates: false } }));
+    // lastSeenVersion eski: güncelleme sonrası ilk açılış gibi → "Bu sürümde neler var" çıkmalı
+    fs.writeFileSync(path.join(appData, '.hlauncher', 'config.json'), JSON.stringify({ settings: { onboarded: true, checkUpdates: false }, lastSeenVersion: '1.0.0-alpha.5' }));
+    fs.mkdirSync(path.join(appData, '.hlauncher', 'logs'), { recursive: true });
+    fs.writeFileSync(path.join(appData, '.hlauncher', 'logs', 'hlauncher.log'), `eski satır --accessToken ${'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U'}\n`);
 
     const server = await mock.start(0);
     const base = `http://127.0.0.1:${server.address().port}`;
@@ -33,6 +36,13 @@ async function main() {
         const win = await app.firstWindow();
         await win.waitForSelector('.rail', { timeout: 20000 });
         step('uygulama açıldı');
+
+        await win.waitForSelector('.whatsnew .md', { timeout: 5000 });
+        await win.waitForTimeout(300);
+        await win.screenshot({ path: path.join(OUT, '00-neler-yeni.png') });
+        await win.click('.modal .btn-primary');
+        await win.waitForSelector('.whatsnew', { state: 'detached' });
+        step('"Bu sürümde neler var" güncelleme sonrası bir kez gösterildi');
 
         await win.click('.rail-account');
         await win.waitForSelector('.hs-card');
@@ -116,6 +126,25 @@ async function main() {
         await win.click('.rail-account');
         await win.waitForSelector('.hs-card.is-connected');
         step('dünyalar yedeklenip ürün kaldırıldı');
+
+        // Sorun bildir: önizleme temiz, onaysız gönderilmez, sunucuya temiz içerik gider
+        await win.click('.rail-btn[aria-label="Ayarlar"]');
+        await win.click('button:has-text("Sorun bildir")');
+        await win.waitForSelector('.report-files');
+        await win.fill('.report input', 'Test talebi');
+        await win.fill('.report textarea', 'Launcher açılıyor ama deneme amaçlı bildiriyorum');
+        await win.click('.report-file .link-btn');
+        const previewText = await win.textContent('.report-preview');
+        assert.ok(previewText.includes('[gizli]') && !previewText.includes('eyJhbGciOiJIUzI1NiJ9.eyJzdWIi'), 'önizlemede token görünmemeli');
+        assert.ok(await win.$eval('.modal .btn-primary', (b) => b.disabled), 'onaysız gönder düğmesi pasif olmalı');
+        await win.screenshot({ path: path.join(OUT, '03d-sorun-bildir.png') });
+        await win.click('.report > .check-row input');
+        await win.click('.modal .btn-primary');
+        await win.waitForSelector('.modal-icon.tone-success', { timeout: 10000 });
+        assert.ok(mock.state.lastReport && !mock.state.lastReport.raw.includes('eyJhbGciOiJIUzI1NiJ9.eyJzdWIi'));
+        await win.click('.modal .btn-primary');
+        await win.click('.rail-account');
+        step('sorun bildirildi: önizleme ve sunucuya giden içerik temiz, onay zorunlu');
 
         // Oturum diskte şifreli, renderer'da token yok
         const sessionFile = JSON.parse(fs.readFileSync(path.join(appData, '.hlauncher', 'hardsetups-session.json'), 'utf8'));

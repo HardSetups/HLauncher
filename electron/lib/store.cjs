@@ -23,6 +23,7 @@ const DEFAULTS = {
     activeInstanceId: 'default',
     windowBounds: null,         // { width, height, x, y, maximized }
     compat: { noSandbox: false }, // lib/compat.cjs — yalnızca main süreç yazar
+    lastSeenVersion: null,      // "Bu sürümde neler var" bir kez gösterilsin diye
 };
 
 function deepMerge(base, extra) {

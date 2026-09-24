@@ -788,6 +788,22 @@ test('portal: bildirimler listelenir, tümü okundu yapılınca okunmamış say�
     });
 });
 
+test('portal.sendReport: onaysız gönderilmez; gönderimde dosyalar ana süreçte yeniden toplanıp temizlenir', async () => {
+    await withPortal(async ({ portal, login }) => {
+        await login();
+        const { getLogsDir } = require('../electron/lib/paths.cjs');
+        fs.appendFileSync(path.join(getLogsDir(), 'hlauncher.log'), '\n--accessToken eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U\n');
+        const pre = portal.reportPreview(null);
+        assert.ok(pre.files.some((f) => f.id === 'launcher'));
+        await assert.rejects(portal.sendReport({ subject: 'Çöktü', message: 'Açılmıyor', fileIds: ['launcher'], consent: false }), { code: 'CONSENT_REQUIRED' });
+        const r = await portal.sendReport({ subject: 'Çöktü', message: 'C:\\Users\\Mert\\x açılmıyor', fileIds: ['launcher'], consent: true });
+        assert.match(r.ticketNo, /^T-\d+$/);
+        assert.strictEqual(mock.state.lastReport.fileCount, 1);
+        assert.ok(!mock.state.lastReport.raw.includes('eyJhbGciOiJIUzI1NiJ9.eyJzdWIi'), 'token sunucuya gitmemeli');
+        assert.ok(!mock.state.lastReport.raw.includes('Users\\Mert'), 'kullanıcı adı sunucuya gitmemeli');
+    });
+});
+
 // ─── services/imagecache.cjs ────────────────────────────────────────────────
 const { createImageCache } = require('../electron/services/imagecache.cjs');
 const PNG = Buffer.concat([Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'), Buffer.alloc(40)]);

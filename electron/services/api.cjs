@@ -65,7 +65,7 @@ const defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function createApiClient({ baseUrl, appVersion, getInstallId, getLanguage = () => 'tr', session = null, onEvent = () => {}, fetchImpl = globalThis.fetch, sleep = defaultSleep }) {
     const base = baseUrl.replace(/\/+$/, '');
 
-    function headersFor({ token, body, idempotencyKey, etag }) {
+    function headersFor({ token, body, raw, idempotencyKey, etag }) {
         const h = {
             'User-Agent': userAgent(appVersion),
             'X-HL-Version': appVersion,
@@ -73,7 +73,8 @@ function createApiClient({ baseUrl, appVersion, getInstallId, getLanguage = () =
             'Accept-Language': getLanguage() === 'en' ? 'en' : 'tr',
             Accept: 'application/json',
         };
-        if (body !== undefined) h['Content-Type'] = 'application/json';
+        if (raw) h['Content-Type'] = raw.contentType;
+        else if (body !== undefined) h['Content-Type'] = 'application/json';
         if (token) h.Authorization = `Bearer ${token}`;
         if (idempotencyKey) h['Idempotency-Key'] = idempotencyKey;
         if (etag) h['If-None-Match'] = etag;
@@ -101,11 +102,12 @@ function createApiClient({ baseUrl, appVersion, getInstallId, getLanguage = () =
     /**
      * @param {'GET'|'POST'} method
      * @param {string} path '/v1/launcher/...'
-     * @param {{body?: object, auth?: 'required'|'optional'|'none', idempotencyKey?: string|true, etag?: string, signal?: AbortSignal}} [opts]
+     * @param {{body?: object, raw?: {body: Buffer, contentType: string}, auth?: 'required'|'optional'|'none', idempotencyKey?: string|true, etag?: string, signal?: AbortSignal}} [opts]
+     *   raw: JSON dışı gövde (ör. multipart "Sorun bildir")
      * @returns {Promise<{status: number, data: any, etag: string|null, date: string|null, notModified: boolean}>}
      */
     async function request(method, path, opts = {}) {
-        const { body, auth = 'required', etag, signal } = opts;
+        const { body, raw, auth = 'required', etag, signal } = opts;
         const idempotencyKey = opts.idempotencyKey === true ? crypto.randomUUID() : opts.idempotencyKey;
         const retriable = method === 'GET' || !!idempotencyKey;
         let refreshed = false;
@@ -124,8 +126,8 @@ function createApiClient({ baseUrl, appVersion, getInstallId, getLanguage = () =
                 const timeout = AbortSignal.timeout(RESPONSE_TIMEOUT_MS);
                 res = await fetchImpl(`${base}${path}`, {
                     method,
-                    headers: headersFor({ token, body, idempotencyKey, etag }),
-                    body: body === undefined ? undefined : JSON.stringify(body),
+                    headers: headersFor({ token, body, raw, idempotencyKey, etag }),
+                    body: raw ? raw.body : body === undefined ? undefined : JSON.stringify(body),
                     signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
                     redirect: 'error', // API yönlendirmesi beklenmez; token başka host'a taşınmasın
                 });

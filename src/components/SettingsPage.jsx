@@ -1,5 +1,5 @@
 // Ayarlar: bölümler halinde satırlar — solda ad + açıklama, sağda kontrol.
-import { Check, FolderOpen, RefreshCw, RotateCw, Camera, Trash2 } from 'lucide-react';
+import { Check, FolderOpen, RefreshCw, RotateCw, Camera, Trash2, LifeBuoy } from 'lucide-react';
 import { contrastText } from '../utils/color';
 import { useI18n } from '../i18n.jsx';
 import { Switch } from './ui.jsx';
@@ -36,7 +36,7 @@ function Row({ title, desc, children, align }) {
   );
 }
 
-export default function SettingsPage({ settings, updateSetting, systemInfo, accent, updaterStatus, onNotice, onError }) {
+export default function SettingsPage({ settings, updateSetting, systemInfo, accent, updaterStatus, onNotice, onError, onReport }) {
   const { t, lang, setLang } = useI18n();
   const fail = (err) => onError?.(String(err?.message || err));
 
@@ -181,6 +181,18 @@ export default function SettingsPage({ settings, updateSetting, systemInfo, acce
           <Row title={t('set.clearCache')} desc={t('set.clearCache.desc')}>
             <button className="btn-secondary" onClick={handleClearCache}><Trash2 size={15} /> {t('set.clearCache.btn')}</button>
           </Row>
+          {onReport && (
+            <Row title={t('hs.report.title')} desc={t('hs.report.desc')}>
+              <button className="btn-secondary" onClick={onReport}><LifeBuoy size={15} /> {t('hs.report.open')}</button>
+            </Row>
+          )}
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h2 className="settings-heading">{t('set.about')}</h2>
+        <div className="settings-list">
+          <Row title={`HLauncher${systemInfo.appVersion ? ` v${systemInfo.appVersion}` : ''}`} desc={t('set.about.legal')} />
         </div>
       </section>
     </div>

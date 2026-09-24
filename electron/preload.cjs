@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearCache:     () => ipcRenderer.invoke('system:clear-cache'),
     openInstanceDir:(id) => ipcRenderer.invoke('instances:open-dir', id),
     getStoreData:   () => ipcRenderer.invoke('store:all'),
+    markVersionSeen: () => ipcRenderer.invoke('app:seen-version'),
     getNews:        () => ipcRenderer.invoke('news:get'),
 
     // Launcher güncellemeleri
@@ -72,6 +73,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     portalPurchase:     (quoteId) => ipcRenderer.invoke('portal:purchase', quoteId),
     portalNotifications: (cursor) => ipcRenderer.invoke('portal:notifications', cursor),
     portalNotificationsRead: (opts) => ipcRenderer.invoke('portal:notifications-read', opts),
+    portalReportPreview: (instanceId) => ipcRenderer.invoke('portal:report-preview', instanceId),
+    portalReportSend:   (payload) => ipcRenderer.invoke('portal:report-send', payload),
     portalLibrary:      (opts) => ipcRenderer.invoke('portal:library', opts),
     portalInstall:      (slug, action, taskId) => ipcRenderer.invoke('portal:install', slug, action, taskId),
     portalInstallKey:   (licenseKey, taskId) => ipcRenderer.invoke('portal:install-key', licenseKey, taskId),

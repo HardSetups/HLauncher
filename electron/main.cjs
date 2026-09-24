@@ -332,8 +332,11 @@ function startApp() {
             servers: store.get('servers'),
             activeInstanceId: store.get('activeInstanceId'),
             account: accounts.getCurrent(),
+            lastSeenVersion: store.get('lastSeenVersion') || null,
         };
     });
+    // "Bu sürümde neler var" gösterildi: bu sürüm bir daha sorulmaz
+    ipcMain.handle('app:seen-version', () => { getStore().set('lastSeenVersion', app.getVersion()); return true; });
     ipcMain.handle('settings:patch', (_e, patch) => {
         const clean = sanitizeSettingsPatch(patch);
         // Otomatik güncelleme anahtarı yeniden başlatmadan etkili olsun
@@ -422,6 +425,15 @@ function startApp() {
     ipcMain.handle('portal:quote', portalCall('Teklif', (productSlug, plan, coupon) => portal.quote(String(productSlug || ''), String(plan || ''), coupon ? String(coupon) : null)));
     ipcMain.handle('portal:purchase', portalCall('Satın alma', (quoteId) => portal.purchase(String(quoteId || ''))));
     ipcMain.handle('portal:notifications', portalCall('Bildirimler', (cursor) => portal.notifications(cursor ? String(cursor) : null)));
+    // Sorun bildir (§10): önizleme temizlenmiş içerik; gönderimde dosyalar yeniden toplanır
+    ipcMain.handle('portal:report-preview', portalCall('Rapor önizleme', (instanceId) => portal.reportPreview(instanceId ? String(instanceId) : null)));
+    ipcMain.handle('portal:report-send', portalCall('Rapor gönderme', (payload) => portal.sendReport({
+        instanceId: payload?.instanceId ? String(payload.instanceId) : null,
+        subject: String(payload?.subject || ''),
+        message: String(payload?.message || ''),
+        fileIds: Array.isArray(payload?.fileIds) ? payload.fileIds.map(String).slice(0, 5) : [],
+        consent: payload?.consent === true,
+    })));
     ipcMain.handle('portal:notifications-read', portalCall('Bildirim okundu', (opts) => portal.markNotificationsRead({
         ids: Array.isArray(opts?.ids) ? opts.ids.map(String) : null, all: opts?.all === true,
     })));

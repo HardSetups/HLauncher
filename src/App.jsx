@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, CheckCircle2, Trash2, Wrench, ArrowUpCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Trash2, Wrench, ArrowUpCircle, LifeBuoy, FolderOpen, Sparkles } from 'lucide-react';
+import ReportModal from './components/ReportModal';
+import Markdown from './components/Markdown';
+import { notesFor } from './utils/changelog.js';
 import Rail from './components/Rail';
 import TopBar from './components/TopBar';
 import HomePage from './components/HomePage';
@@ -59,6 +62,10 @@ function App() {
   const [news, setNews] = useState([]);
   // HardSetups hesabı özeti (token içermez): { signedIn, user, wallet, maintenance, outdated, ... }
   const [portal, setPortal] = useState(null);
+  const [reportFor, setReportFor] = useState(null); // { instance, subject } — "Sorun bildir"
+  const [crash, setCrash] = useState(null);         // { code, instanceId }
+  const [whatsNew, setWhatsNew] = useState(null);   // { version, notes }
+  const lastRunRef = useRef(null);                  // çökme bildirimi hangi profile ait
   const [updaterStatus, setUpdaterStatus] = useState({ state: 'idle' });
   const [updateOpen, setUpdateOpen] = useState(false);
   const promptedVersion = useRef(null);
@@ -96,6 +103,13 @@ function App() {
       setSystemInfo(sys);
       setInstances(insts);
       setLang(store.settings.language || 'tr');
+
+      // Güncellemeden sonraki ilk açılış: "Bu sürümde neler var" (ilk kurulumda gösterilmez)
+      if (sys.appVersion && store.lastSeenVersion !== sys.appVersion) {
+        const notes = store.lastSeenVersion ? notesFor(sys.appVersion) : null;
+        if (notes) setWhatsNew({ version: sys.appVersion, notes });
+        api.markVersionSeen().catch(() => {});
+      }
 
       // Eski sürümden (localStorage) tek seferlik migrasyon
       const legacyName = localStorage.getItem('thc_username');
@@ -143,6 +157,7 @@ function App() {
         setProgressLabel(PROGRESS_KEYS[data.type] || 'progress.preparing');
       }),
       api.onLaunchFinished(() => {
+        lastRunRef.current = launchRef.current.launchingId;
         setLaunch((prev) => ({ ...prev, launchingId: null, runningId: prev.launchingId }));
         setProgress(100);
         refreshInstances(); // son oynama zamanı güncellensin
@@ -156,7 +171,7 @@ function App() {
         clearLaunch();
         api.showLauncher();
       }),
-      api.onGameCrashed((data) => setErrorMessage(tRef.current('game.crashed', { code: data?.code ?? '?' }))),
+      api.onGameCrashed((data) => setCrash({ code: data?.code ?? '?', instanceId: lastRunRef.current })),
       api.onJavaStatus((data) => {
         setInstallStatus(data);
         if (data.type === 'done') setTimeout(() => setInstallStatus(null), 1200);
@@ -539,6 +554,7 @@ function App() {
                   updaterStatus={updaterStatus}
                   onNotice={setNotice}
                   onError={setErrorMessage}
+                  onReport={portal?.features?.report !== false ? () => setReportFor({ instance: null, subject: '' }) : null}
                 />
               )}
 
@@ -612,6 +628,52 @@ function App() {
         footer={<button className="btn-primary" onClick={() => setNotice(null)} autoFocus>{t('common.ok')}</button>}
       >
         <p className="modal-text">{notice}</p>
+      </Modal>
+
+      {/* Oyun çöktü: günlükler + (HardSetups) sorun bildir */}
+      <Modal
+        open={!!crash && !errorMessage}
+        onClose={() => setCrash(null)}
+        icon={<AlertTriangle size={18} />}
+        tone="danger"
+        title={t('err.title')}
+        footer={
+          <>
+            <button className="btn-ghost" onClick={() => api.openLogs()}><FolderOpen size={15} /> {t('err.openLogs')}</button>
+            {portal?.features?.report !== false && (
+              <button className="btn-secondary" onClick={() => {
+                const inst = findInstance(crash?.instanceId);
+                setCrash(null);
+                setReportFor({ instance: inst || null, subject: t('hs.report.crashSubject', { name: inst?.name || '' }) });
+              }}><LifeBuoy size={15} /> {t('hs.report.title')}</button>
+            )}
+            <button className="btn-primary" onClick={() => setCrash(null)} autoFocus>{t('common.ok')}</button>
+          </>
+        }
+      >
+        <p className="modal-text">{t('game.crashed', { code: crash?.code ?? '?' })}</p>
+      </Modal>
+
+      <ReportModal
+        open={!!reportFor}
+        onClose={() => setReportFor(null)}
+        portal={portal}
+        instance={reportFor?.instance || null}
+        defaultSubject={reportFor?.subject || ''}
+        onConnect={() => navigate({ page: 'account' })}
+        onNotice={setNotice}
+      />
+
+      {/* Güncellemeden sonraki ilk açılış */}
+      <Modal
+        open={!!whatsNew && !errorMessage}
+        onClose={() => setWhatsNew(null)}
+        icon={<Sparkles size={18} />}
+        size="md"
+        title={t('whatsnew.title', { version: whatsNew?.version || '' })}
+        footer={<button className="btn-primary" onClick={() => setWhatsNew(null)} autoFocus>{t('common.ok')}</button>}
+      >
+        <div className="whatsnew"><Markdown source={whatsNew?.notes || ''} onLink={(url) => api.portalOpenUrl(url)} /></div>
       </Modal>
 
       <AnimatePresence>

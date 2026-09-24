@@ -228,7 +228,7 @@ const launchGame = async (event, options = {}) => {
         const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
         log.info(`[LAUNCH] Oyun başladı (${seconds} sn)`);
         if (settings.rpcEnabled !== false) {
-            discord.setPlaying({ version: mcVersion, serverAddress: serverIp || null });
+            discord.setPlaying({ version: mcVersion, serverAddress: serverIp || null, product: instance.origin === 'hardsetups' ? instance.name : null });
         }
         event.reply('launch-finished');
     } catch (err) {
