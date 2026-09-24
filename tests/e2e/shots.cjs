@@ -77,6 +77,12 @@ const [W, H] = opt('size', '1280x800').split('x').map(Number);
         if (await clickIf(win, '.rail-home')) await shot(win, '03-ana-sayfa');
         if (await clickIf(win, '.rail-library')) {
             await shot(win, '04-vitrin');
+            if (await win.$('.hub-band .bell')) {
+                await win.click('.hub-band .bell');
+                await win.waitForSelector('.notif-item', { timeout: 5000 }).catch(() => {});
+                await shot(win, '04b-bildirimler');
+                await win.keyboard.press('Escape');
+            }
             await scroll(win, 700);
             await shot(win, '05-vitrin-asagi');
             await scroll(win, 700);

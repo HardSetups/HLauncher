@@ -92,15 +92,18 @@ export default function LibraryPage({
   const signedIn = !!portal?.signedIn;
   useEffect(() => { if (portal && !portal.outdated) load(true); }, [load, signedIn, portal?.outdated]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Öneriler için katalog (§5); alınamazsa öneri bölümü hiç görünmez
+  // Öneriler için katalog (§5); alınamazsa öneri bölümü hiç görünmez.
+  // Bağımlılık fonksiyonun kendisi değil varlığı: App her çizimde yeni ok fonksiyonu verir
+  const canSuggest = !!onOpenProduct;
+  const portalReady = !!portal && !portal.outdated;
   useEffect(() => {
-    if (!portal || portal.outdated || !onOpenProduct) return undefined;
+    if (!portalReady || !canSuggest) return undefined;
     let cancelled = false;
     api.portalProducts()
       .then((res) => { if (!cancelled && res?.ok) setCatalog(res.products); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [api, signedIn, portal?.outdated, onOpenProduct]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [api, signedIn, portalReady, canSuggest]);
 
   const busySlugs = new Set(tasks.filter((x) => x.status === 'running' && x.kind === 'hs').map((x) => x.slug));
 
