@@ -3,10 +3,11 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check } from 'lucide-react';
 import { contrastText } from '../utils/color';
+import { ACCENTS } from '../utils/accents.js';
 import { useI18n } from '../i18n.jsx';
 import AccountPanel from './AccountPanel.jsx';
 
-const ACCENT_CHOICES = ['#ff6a3d', '#00f2ff', '#ef4444', '#10b981', '#8b5cf6', '#f59e0b'];
+const ACCENT_CHOICES = ACCENTS.map((a) => a.color);
 const STEPS = 3;
 
 function Onboarding({ accent, account, setAccount, systemInfo, updateSetting, onError, onFinish }) {

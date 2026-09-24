@@ -20,6 +20,7 @@ import CreateInstanceModal from './components/CreateInstanceModal';
 import Modal from './components/Modal';
 import Onboarding from './components/Onboarding';
 import { contrastText } from './utils/color';
+import { DEFAULT_ACCENT } from './utils/accents.js';
 import { I18nProvider, useI18n } from './i18n.jsx';
 import { TaskProvider, useTasks } from './tasks.jsx';
 
@@ -148,7 +149,7 @@ function App() {
         setSettingsState(store.settings);
       }
     }).catch((err) => {
-      setSettingsState({ language: 'tr', accent: '#ff6a3d', ram: 4, fullscreen: false, javaPath: '', jvmPreset: 'balanced', customJvmArgs: '', checkUpdates: true, onboarded: true });
+      setSettingsState({ language: 'tr', accent: DEFAULT_ACCENT, ram: 4, fullscreen: false, javaPath: '', jvmPreset: 'balanced', customJvmArgs: '', checkUpdates: true, onboarded: true });
       surfaceError(err);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps

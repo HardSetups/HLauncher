@@ -6,7 +6,7 @@ const path = require('path');
 const DEFAULTS = {
     settings: {
         language: 'tr',
-        accent: '#ff6a3d',
+        accent: '#A52B12',      // HardSetups Kiremit (docs/tema/KIMLIK.md); src/utils/accents.js ile aynı
         bgImage: 'bg.png',
         ram: 4,                 // GB
         fullscreen: false,
@@ -110,13 +110,27 @@ function sanitizeServers(servers) {
         .filter((s) => s.address);
 }
 
+/**
+ * Tek seferlik geçişler (saf, testli). alpha.7: eski varsayılan vurgu (#ff6a3d) yeni
+ * varsayılana (Kiremit) taşınır — neredeyse herkes onu hiç değiştirmemişti. Başka renk
+ * seçenlere dokunulmaz; geçiş bir kez çalışır (migrations.accentKiremit).
+ */
+function migrate(data) {
+    const done = data.migrations || {};
+    if (done.accentKiremit) return false;
+    if (String(data.settings?.accent || '').toLowerCase() === '#ff6a3d') data.settings = { ...data.settings, accent: DEFAULTS.settings.accent };
+    data.migrations = { ...done, accentKiremit: true };
+    return true;
+}
+
 let instance = null;
 function getStore() {
     if (!instance) {
         const { getRootPath } = require('./paths.cjs');
         instance = new Store(path.join(getRootPath(), 'config.json'), DEFAULTS);
+        if (migrate(instance.data)) instance._save();
     }
     return instance;
 }
 
-module.exports = { getStore, Store, DEFAULTS, sanitizeSettingsPatch, sanitizeServers };
+module.exports = { getStore, Store, DEFAULTS, sanitizeSettingsPatch, sanitizeServers, migrate };

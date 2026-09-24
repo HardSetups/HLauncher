@@ -395,6 +395,20 @@ test('updater.feedFor: GitHub kaynağında besleme değişmez; HardSetups kayna�
     assert.deepStrictEqual(feedFor('hardsetups', '../x').url, 'https://api.hardsetups.com/v1/launcher/update/stable');
 });
 
+test('store.migrate: eski varsayılan vurgu bir kez Kiremit\'e taşınır, başka seçime dokunulmaz', () => {
+    const { migrate, DEFAULTS } = require('../electron/lib/store.cjs');
+    assert.strictEqual(DEFAULTS.settings.accent, '#A52B12');
+    const old = { settings: { accent: '#FF6A3D', ram: 6 } };
+    assert.strictEqual(migrate(old), true);
+    assert.deepStrictEqual(old.settings, { accent: '#A52B12', ram: 6 });
+    old.settings.accent = '#ff6a3d'; // oyuncu sonra yeniden seçerse geçiş tekrar etmez
+    assert.strictEqual(migrate(old), false);
+    assert.strictEqual(old.settings.accent, '#ff6a3d');
+    const other = { settings: { accent: '#10b981' } };
+    migrate(other);
+    assert.strictEqual(other.settings.accent, '#10b981');
+});
+
 test('updater.feedHeaders / isNoReleaseError: akış başlıkları ve "yayımlanmış sürüm yok" (404)', () => {
     const { feedHeaders, isNoReleaseError } = require('../electron/lib/updater.cjs');
     const id = '0f8fad5b-d9cb-469f-a165-70867728950e';

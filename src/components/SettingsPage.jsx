@@ -3,15 +3,8 @@ import { Check, FolderOpen, RefreshCw, RotateCw, Camera, Trash2, LifeBuoy } from
 import { contrastText } from '../utils/color';
 import { useI18n } from '../i18n.jsx';
 import { Switch } from './ui.jsx';
+import { ACCENTS } from '../utils/accents.js';
 
-const ACCENTS = [
-  { color: '#ff6a3d', key: 'fire' },
-  { color: '#00f2ff', key: 'ice' },
-  { color: '#ef4444', key: 'crimson' },
-  { color: '#10b981', key: 'emerald' },
-  { color: '#8b5cf6', key: 'purple' },
-  { color: '#f59e0b', key: 'amber' },
-];
 
 const JVM_PRESETS = ['balanced', 'lowram', 'zgc', 'custom'];
 
