@@ -8,6 +8,10 @@
 // --scenario: mock senaryosu (ör. maintenance, outdated, notDeployed → giriş ekranının durumları)
 // --accent=#10b981: vurgu rengi (config.json settings.accent)
 // --empty-home: vitrin boş gelir (canlıdaki gibi; ürün kataloğu dolu kalır)
+// --beta:     Ayarlar › "Beta sürümlerini de kur" açık (kütüphanede beta rozeti)
+// --empty-library: hesapta hiç ürün yok (boş kütüphane + katalog önerileri)
+// --install:  kütüphanedeki ilk ürünü kurar (kurulu kart görünümü)
+// --scenario=sparse | emptyStore: canlıdaki gibi az içerikli / tamamen boş vitrin (vitrin + katalog)
 // Giriş arayüzden bağımsız yapılır: portalLoginStart IPC'si çağrılır, kod mock'ta onaylanır.
 const fs = require('fs');
 const os = require('os');
@@ -28,7 +32,7 @@ const [W, H] = opt('size', '1280x800').split('x').map(Number);
     if (!flag('fresh')) {
         fs.mkdirSync(path.join(appData, '.hlauncher'), { recursive: true });
         fs.writeFileSync(path.join(appData, '.hlauncher', 'config.json'), JSON.stringify({
-            settings: { onboarded: true, checkUpdates: false, ...(opt('accent') ? { accent: opt('accent') } : {}) },
+            settings: { onboarded: true, checkUpdates: false, hsBetaChannel: flag('beta'), ...(opt('accent') ? { accent: opt('accent') } : {}) },
             account: { type: 'offline', name: 'Oyuncu' },
             lastSeenVersion: require(path.join(ROOT, 'package.json')).version,
         }));
@@ -48,6 +52,7 @@ const [W, H] = opt('size', '1280x800').split('x').map(Number);
     }
     const base = `http://127.0.0.1:${server.address().port}`;
     if (opt('scenario')) mock.state.scenario = opt('scenario');
+    if (flag('empty-library')) mock.state.owned = new Set();
     const env = { ...process.env, APPDATA: appData, HL_API_BASE: base, HL_EXTERNAL_BASE: base, HL_USER_DATA: path.join(appData, 'electron-user') };
     delete env.ELECTRON_RUN_AS_NODE;
     delete env.NODE_ENV;
@@ -59,6 +64,8 @@ const [W, H] = opt('size', '1280x800').split('x').map(Number);
         await win.screenshot({ path: file });
         console.log(`  ✓ ${file}`);
     };
+    // Tekerlek olayı imlecin altındaki öğeye gider: önce içerik alanının ortasına gel
+    const scroll = async (win, dy) => { await win.mouse.move(W / 2 + 40, H / 2); await win.mouse.wheel(0, dy); };
     const clickIf = async (win, selector) => {
         const el = await win.$(selector);
         if (el) { await el.click(); return true; }
@@ -115,11 +122,42 @@ const [W, H] = opt('size', '1280x800').split('x').map(Number);
         }
         if (await clickIf(win, '.rail-library')) {
             await shot(win, '04-vitrin');
-            await win.mouse.wheel(0, 700);
+            if (await win.$('.hub-band .bell')) {
+                await win.click('.hub-band .bell');
+                await win.waitForSelector('.notif-item', { timeout: 5000 }).catch(() => {});
+                await shot(win, '04b-bildirimler');
+                await win.keyboard.press('Escape');
+            }
+            await scroll(win, 700);
             await shot(win, '05-vitrin-asagi');
-            if (await clickIf(win, '.hub-tab-library')) await shot(win, '06-kutuphane');
+            await scroll(win, 700);
+            await shot(win, '05b-vitrin-asagi-2');
+            await scroll(win, 1400);
+            await shot(win, '05c-vitrin-son');
+            if (await clickIf(win, '.hub-tab-library')) {
+                await shot(win, '06-kutuphane');
+                await scroll(win, 700);
+                await shot(win, '06b-kutuphane-asagi');
+                // --install: ilk ürünü kur, kurulu kart görünümü (Oyna + menü)
+                if (flag('install') && await clickIf(win, '.hs-item .btn-primary')) {
+                    await win.waitForSelector('.hs-item.is-installed .btn-play', { timeout: 30000 }).catch(() => console.log('  – kurulum bitmedi'));
+                    await scroll(win, -2000);
+                    await shot(win, '06d-kuruldu');
+                }
+            }
+            if (await clickIf(win, '.hub-tab-store')) {
+                await win.waitForSelector('.pcard:not(.is-skeleton)', { timeout: 5000 }).catch(() => {});
+                if (await clickIf(win, '.pcard:not(.is-skeleton)')) {
+                    await win.waitForSelector('.pview-head', { timeout: 5000 }).catch(() => {});
+                    await shot(win, '06c-urun');
+                }
+            }
         }
-        if (await clickIf(win, '.rail-settings')) await shot(win, '07-ayarlar');
+        if (await clickIf(win, '.rail-settings')) {
+            await shot(win, '07-ayarlar');
+            await scroll(win, 500);
+            await shot(win, '07b-ayarlar-asagi');
+        }
         if (await clickIf(win, '.rail-account')) await shot(win, '08-hesap');
     } finally {
         await app.close().catch(() => {});

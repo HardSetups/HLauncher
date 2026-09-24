@@ -3,7 +3,7 @@
 // Satın alma: plan → teklif → onay (toplam + ödemeden sonraki bakiye) → sipariş.
 // Kart / ödeme bilgisi launcher'a HİÇ girmez; bakiye yükleme tarayıcıda.
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Star, Play, Check, Loader2, ShoppingCart, ExternalLink, Wallet, Cpu, MemoryStick, Gamepad2, AlertTriangle, RefreshCw, Download } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Star, Play, Check, Loader2, ShoppingCart, ExternalLink, Wallet, Cpu, MemoryStick, Gamepad2, AlertTriangle, RefreshCw, Download } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import Modal from './Modal.jsx';
 import Markdown from './Markdown.jsx';
@@ -11,6 +11,7 @@ import { Badges, Price } from './ProductCard.jsx';
 import { InstanceIcon } from './ui.jsx';
 import { imgSrc, portalErrorText } from '../utils/portal.js';
 import { formatMinor, subtractMinor } from '../utils/money.js';
+import '../styles/hub.css';
 
 function Stars({ value }) {
   return (
@@ -258,13 +259,21 @@ export default function ProductView({ slug, portal, onBack, onOpenLibrary, onIns
         </div>
         <div className="pview-cta">
           {product.owned ? (
-            <button className="btn-secondary" onClick={onOpenLibrary}><Check size={15} /> {t('hs.inLibrary')}</button>
+            <>
+              <span className="pview-owned"><Check size={15} /> {t('hs.owned')}</span>
+              <button className="btn-secondary btn-lg" onClick={onOpenLibrary}>{t('hs.inLibrary')} <ArrowRight size={15} /></button>
+            </>
           ) : (
             <>
               <Price minor={plan?.priceMinor || product.priceFromMinor} compareAt={plan?.compareAtMinor || product.compareAtMinor} currency={product.currency} />
               <button className="btn-primary btn-lg" onClick={buyClick} disabled={purchaseOn && !plan}>
                 {purchaseOn ? <><ShoppingCart size={16} /> {t('hs.buy')}</> : <><ExternalLink size={16} /> {t('hs.openStore')}</>}
               </button>
+              {plan && (
+                <span className="pview-plan-note">
+                  {plan.name} · {plan.durationDays ? t('hs.plan.days', { n: plan.durationDays }) : t('hs.plan.lifetime')} · {t('hs.plan.devices', { n: plan.maxActivations ?? 1 })}
+                </span>
+              )}
             </>
           )}
         </div>

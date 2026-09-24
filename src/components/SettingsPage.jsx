@@ -147,6 +147,16 @@ export default function SettingsPage({ settings, updateSetting, systemInfo, acce
       </section>
 
       <section className="settings-section">
+        <h2 className="settings-heading">HardSetups</h2>
+        <div className="settings-list">
+          {/* Açıkken kurulum/güncelleme ve kütüphane BETA kanalını ister; sunucu kararlı ile betadan yeni olanı verir */}
+          <Row title={t('hub.set.beta')} desc={t('hub.set.beta.desc')}>
+            <Switch checked={settings.hsBetaChannel === true} onChange={(v) => updateSetting('hsBetaChannel', v)} label={t('hub.set.beta')} />
+          </Row>
+        </div>
+      </section>
+
+      <section className="settings-section">
         <h2 className="settings-heading">{t('set.launcher')}</h2>
         <div className="settings-list">
           <Row title={t('set.rpc')} desc={t('set.rpc.desc')}>

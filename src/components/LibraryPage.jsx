@@ -1,16 +1,23 @@
 // HardSetups kütüphanesi: lisanslı ürünler (hesap) + anahtarla kurulanlar.
 // Kur / Oyna / Güncelle / Onar / Kaldır. Kurulumlar görev olarak yürür (indirme paneli),
 // sayfadan çıkınca kaybolmaz. Ürün kendi yönetilen örneğinde, ayrı klasörde yaşar.
+// Üstte özet (ürün / kurulu / güncelleme / eşitleme); kütüphane boşsa katalogdan
+// sahip olunmayan ürünler önerilir (gerçek katalog verisi, örnek içerik yok).
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Download, RefreshCw, KeyRound, MoreHorizontal, Wrench, FolderOpen, Trash2, Settings2, Loader2, CloudOff, AlertTriangle, ExternalLink } from 'lucide-react';
+import {
+  Download, RefreshCw, KeyRound, MoreHorizontal, Wrench, FolderOpen, Trash2, Settings2, Loader2, CloudOff, AlertTriangle,
+  ExternalLink, FlaskConical, HardDrive, ShieldCheck, Clock, Compass, Gamepad2, History,
+} from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { useTasks } from '../tasks.jsx';
-import { InstanceIcon, Menu, EmptyState } from './ui.jsx';
+import { InstanceIcon, Menu } from './ui.jsx';
 import { IconPlay, IconStop, IconLibrary } from './icons.jsx';
 import Modal from './Modal.jsx';
 import HardSetupsCard from './HardSetupsCard.jsx';
+import { CoverArt, ProductShelf } from './ProductCard.jsx';
 import { portalErrorText, imgSrc } from '../utils/portal.js';
+import { relativeTime, LOADER_LABELS } from '../utils/format.js';
 
 // Kurulum hatası → kullanıcıya gösterilecek metin + (varsa) yapılacak eylem (sözleşme §7.10, §11)
 function describeInstallError(t, error) {
@@ -45,14 +52,26 @@ function statusLine(t, item) {
   return { tone: 'muted', text: item.latestVersion?.version ? t('hs.notInstalledV', { v: item.latestVersion.version }) : t('hs.notInstalled') };
 }
 
+/** Lisans satırı: bitiş tarihi, süresiz ya da anahtarın son hanesi (yalnızca sunucunun verdiği). */
+function licenseLine(t, item, lang) {
+  if (item.source === 'licenseKey') return t('hub.lib.viaKey');
+  if (item.expiresAt) {
+    const when = relativeTime(Date.parse(item.expiresAt), lang);
+    return when ? t('hub.lib.expires', { when }) : null;
+  }
+  if (item.status === 'ACTIVE') return item.keyLast4 ? t('hub.lib.lifetimeKey', { last4: item.keyLast4 }) : t('hub.lib.lifetime');
+  return null;
+}
+
 export default function LibraryPage({
-  portal, instances, launch, onPlay, onStop, onOpenInstance, onInstancesRefresh, onError, onNotice,
+  portal, instances, launch, onPlay, onStop, onOpenInstance, onInstancesRefresh, onError, onNotice, onOpenProduct = null,
   embedded = false, autoInstallSlug = null, onAutoInstallDone = () => {},
 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { tasks, runTask } = useTasks();
   const api = window.electronAPI;
-  const [lib, setLib] = useState({ items: [], offline: false, loaded: false });
+  const [lib, setLib] = useState({ items: [], offline: false, loaded: false, fetchedAt: null });
+  const [catalog, setCatalog] = useState([]);
   const [loading, setLoading] = useState(false);
   const [keyOpen, setKeyOpen] = useState(false);
   const [licenseKey, setLicenseKey] = useState('');
@@ -63,7 +82,7 @@ export default function LibraryPage({
     setLoading(true);
     try {
       const res = await api.portalLibrary({ refresh });
-      if (res.ok) setLib({ items: res.items, offline: res.offline, loaded: true, error: res.error || null });
+      if (res.ok) setLib({ items: res.items, offline: res.offline, loaded: true, error: res.error || null, fetchedAt: res.fetchedAt || null });
       else onError(portalErrorText(t, res.error));
     } catch (err) {
       onError(String(err?.message || err));
@@ -72,6 +91,19 @@ export default function LibraryPage({
 
   const signedIn = !!portal?.signedIn;
   useEffect(() => { if (portal && !portal.outdated) load(true); }, [load, signedIn, portal?.outdated]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Öneriler için katalog (§5); alınamazsa öneri bölümü hiç görünmez.
+  // Bağımlılık fonksiyonun kendisi değil varlığı: App her çizimde yeni ok fonksiyonu verir
+  const canSuggest = !!onOpenProduct;
+  const portalReady = !!portal && !portal.outdated;
+  useEffect(() => {
+    if (!portalReady || !canSuggest) return undefined;
+    let cancelled = false;
+    api.portalProducts()
+      .then((res) => { if (!cancelled && res?.ok) setCatalog(res.products); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [api, signedIn, portalReady, canSuggest]);
 
   const busySlugs = new Set(tasks.filter((x) => x.status === 'running' && x.kind === 'hs').map((x) => x.slug));
 
@@ -133,15 +165,39 @@ export default function LibraryPage({
   if (!portal) return <div className={embedded ? 'hs-lib' : 'page-scroll hs-lib'}><Loader2 className="spin" /></div>;
 
   const items = lib.items;
+  const hosts = portal.imageHosts;
+  const ready = signedIn && !portal.outdated;
+  const installedCount = items.filter((i) => i.instanceId).length;
+  const updateCount = items.filter((i) => i.updateAvailable).length;
+  const emptyLibrary = lib.loaded && items.length === 0 && ready;
+  // Öneriler: katalogda olup kütüphanede olmayan ürünler
+  const ownedSlugs = new Set(items.map((i) => i.product.slug));
+  const suggestions = onOpenProduct ? catalog.filter((p) => !p.owned && !ownedSlugs.has(p.slug)) : [];
+  const synced = lib.fetchedAt ? relativeTime(lib.fetchedAt, lang) : null;
+  const keyButton = (
+    <button className="btn-secondary" onClick={() => setKeyOpen(true)} disabled={!!portal.outdated}><KeyRound size={15} /> {t('hs.key.btn')}</button>
+  );
+
   return (
     <div className={embedded ? 'hs-lib' : 'page-scroll hs-lib'}>
       <header className={embedded ? 'hs-lib-toolbar' : 'page-head'}>
-        <div>
+        <div className="hs-lib-intro">
           {!embedded && <h1>{t('hs.lib.title')}</h1>}
-          <p className="page-sub">{t('hs.lib.sub')}</p>
+          {items.length > 0 ? (
+            <div className="hub-stats">
+              <span className="hub-stat"><b>{items.length}</b><span>{t('hub.lib.stat.products')}</span></span>
+              <span className="hub-stat"><b>{installedCount}</b><span>{t('hub.lib.stat.installed')}</span></span>
+              {updateCount > 0 && <span className="hub-stat is-accent"><b>{updateCount}</b><span>{t('hub.lib.stat.updates')}</span></span>}
+              {lib.offline
+                ? <span className="hub-sync is-offline"><CloudOff size={13} /> {t('hub.lib.offlineShort')}</span>
+                : synced && <span className="hub-sync"><Clock size={13} /> {t('hub.lib.synced', { when: synced })}</span>}
+            </div>
+          ) : (
+            <p className="page-sub">{t('hs.lib.sub')}</p>
+          )}
         </div>
         <div className="page-head-actions">
-          <button className="btn-secondary" onClick={() => setKeyOpen(true)} disabled={!!portal.outdated}><KeyRound size={15} /> {t('hs.key.btn')}</button>
+          {!emptyLibrary && keyButton}
           {signedIn && (
             <button className="icon-btn icon-btn-framed" onClick={() => load(true)} disabled={loading} aria-label={t('common.refresh')} title={t('common.refresh')}>
               <RefreshCw size={16} className={loading ? 'spin' : undefined} />
@@ -156,13 +212,20 @@ export default function LibraryPage({
         <div className="banner is-info"><CloudOff size={16} /><span>{t('hs.lib.offline')}</span></div>
       )}
 
-      {lib.loaded && items.length === 0 && signedIn && !portal.outdated && (
-        <EmptyState icon={<IconLibrary size={26} />} title={t('hs.lib.empty.title')} text={t('hs.lib.empty.text')}
-          action={<button className="btn-secondary" onClick={() => api.portalOpenLink('store')}><ExternalLink size={15} /> {t('hs.lib.store')}</button>} />
+      {emptyLibrary && (
+        <div className="hub-empty is-library">
+          <span className="hub-empty-icon"><IconLibrary size={26} /></span>
+          <b className="hub-empty-title">{t('hub.lib.empty.title')}</b>
+          <p className="hub-empty-text">{t('hub.lib.empty.text')}</p>
+          <span className="hub-empty-actions">
+            {keyButton}
+            <button className="btn-ghost" onClick={() => api.portalOpenLink('store')}>{t('hs.lib.store')} <ExternalLink size={13} /></button>
+          </span>
+        </div>
       )}
-      {!lib.loaded && signedIn && !portal.outdated && (
+      {!lib.loaded && ready && (
         <div className="hs-grid" aria-busy="true">
-          {[0, 1, 2].map((i) => <div key={i} className="hs-item is-skeleton" />)}
+          {[0, 1].map((i) => <div key={i} className="hs-item is-skeleton" />)}
         </div>
       )}
 
@@ -177,59 +240,88 @@ export default function LibraryPage({
             const otherGame = !!(launch.launchingId || launch.runningId) && !running && !launching;
             const status = statusLine(t, item);
             const canInstall = item.installable && ['ACTIVE', 'KEY'].includes(item.status);
-            const icon = { id: slug, iconUrl: imgSrc(item.product.iconUrl, portal.imageHosts) };
+            const iconSrc = imgSrc(item.product.iconUrl, hosts);
+            const icon = { id: slug, iconUrl: iconSrc };
+            const beta = item.latestVersion?.channel === 'BETA';
+            const license = licenseLine(t, item, lang);
             return (
-              <motion.article key={slug} layout className={`hs-item${inst ? ' is-installed' : ''}`}>
-                <div className="hs-item-head">
-                  <InstanceIcon instance={icon} size={52} />
-                  <div className="hs-item-title">
-                    <h3 className="ellipsis" title={item.product.name}>{item.product.name}</h3>
-                    <span className={`hs-item-status is-${status.tone}`}>{status.text}</span>
-                    {item.source === 'licenseKey' && <span className="hs-badge">{t('hs.key.badge')}</span>}
+              <motion.article key={slug} layout className={`hs-item${inst ? ' is-installed' : ''}${item.updateAvailable ? ' has-update' : ''}`}>
+                <CoverArt src={imgSrc(item.product.coverUrl, hosts)} seed={slug} icon={iconSrc} iconSize={56} className="hs-item-cover">
+                  {(beta || item.source === 'licenseKey') && (
+                    <span className="badges">
+                      {beta && <span className="badge is-beta" title={t('hub.lib.betaHint')}><FlaskConical size={11} /> {t('hub.lib.beta')}</span>}
+                      {item.source === 'licenseKey' && <span className="badge is-key"><KeyRound size={11} /> {t('hs.key.badge')}</span>}
+                    </span>
+                  )}
+                </CoverArt>
+                <div className="hs-item-body">
+                  <div className="hs-item-head">
+                    <InstanceIcon instance={icon} size={44} />
+                    <div className="hs-item-title">
+                      <h3 className="ellipsis" title={item.product.name}>{item.product.name}</h3>
+                      <span className={`hs-item-status is-${status.tone}`}><span className="hs-dot" aria-hidden="true" />{status.text}</span>
+                    </div>
                   </div>
-                </div>
-                <div className="hs-item-actions">
-                  {busy ? (
-                    <button className="btn-secondary" disabled><Loader2 size={15} className="spin" /> {t('hs.working')}</button>
-                  ) : inst ? (
-                    <button
-                      className={`btn-play${running ? ' is-running' : ''}`}
-                      onClick={running ? onStop : () => onPlay(inst)}
-                      disabled={launching || otherGame || !!portal.outdated}
-                      title={portal.outdated ? t('hs.locked', { min: portal.outdated.minVersion || '' }) : otherGame ? t('play.busyOther') : undefined}
-                    >
-                      {launching ? <Loader2 size={16} className="spin" /> : running ? <IconStop size={15} /> : <IconPlay size={16} />}
-                      <span>{running ? t('play.stop') : t('play.now')}</span>
-                    </button>
-                  ) : (
-                    <button className="btn-primary" onClick={() => install(item, 'INSTALL')} disabled={!canInstall || !!portal.outdated || item.source === 'licenseKey'}>
-                      <Download size={15} /> {t('hs.install')}
-                    </button>
-                  )}
-                  {inst && item.updateAvailable && !busy && (
-                    <button className="btn-secondary" onClick={() => install(item, 'UPDATE')} disabled={running || launching}>
-                      <RefreshCw size={15} /> {t('hs.update')}
-                    </button>
-                  )}
-                  {inst && (
-                    <Menu
-                      align="end"
-                      trigger={({ toggle, open }) => (
-                        <button className="icon-btn icon-btn-framed" onClick={toggle} aria-expanded={open} aria-label={t('common.more')}><MoreHorizontal size={16} /></button>
-                      )}
-                      items={[
-                        ...(item.source === 'account' ? [{ label: t('hs.repair'), icon: <Wrench size={15} />, disabled: busy || running || launching, onSelect: () => install(item, 'REPAIR') }] : []),
-                        { label: t('prof.openFolder'), icon: <FolderOpen size={15} />, onSelect: () => api.openInstanceDir(inst.id) },
-                        { label: t('inst.settings'), icon: <Settings2 size={15} />, onSelect: () => onOpenInstance(inst.id, 'settings') },
-                        { label: t('hs.uninstall'), icon: <Trash2 size={15} />, danger: true, disabled: busy || running || launching, onSelect: () => setUninstall({ item, backup: true }) },
-                      ]}
-                    />
-                  )}
+                  {/* Durum satırında olmayan gerçek bilgiler: oyun sürümü, son oynama, lisans */}
+                  <ul className="hs-item-meta">
+                    {inst?.mcVersion && <li><Gamepad2 size={13} /> Minecraft {inst.mcVersion}{LOADER_LABELS[inst.loader] && inst.loader !== 'release' ? ` · ${LOADER_LABELS[inst.loader]}` : ''}</li>}
+                    {item.updateAvailable && item.installedVersion && <li><HardDrive size={13} /> {t('hub.lib.installedV', { v: item.installedVersion })}</li>}
+                    {inst?.lastPlayed && <li><History size={13} /> {t('hub.lib.lastPlayed', { when: relativeTime(inst.lastPlayed, lang) })}</li>}
+                    {license && <li><ShieldCheck size={13} /> {license}</li>}
+                  </ul>
+                  <div className="hs-item-actions">
+                    {busy ? (
+                      <button className="btn-secondary hs-main-btn" disabled><Loader2 size={15} className="spin" /> {t('hs.working')}</button>
+                    ) : inst ? (
+                      <button
+                        className={`btn-play hs-main-btn${running ? ' is-running' : ''}`}
+                        onClick={running ? onStop : () => onPlay(inst)}
+                        disabled={launching || otherGame || !!portal.outdated}
+                        title={portal.outdated ? t('hs.locked', { min: portal.outdated.minVersion || '' }) : otherGame ? t('play.busyOther') : undefined}
+                      >
+                        {launching ? <Loader2 size={16} className="spin" /> : running ? <IconStop size={15} /> : <IconPlay size={16} />}
+                        <span>{running ? t('play.stop') : t('play.now')}</span>
+                      </button>
+                    ) : (
+                      <button className="btn-primary hs-main-btn" onClick={() => install(item, 'INSTALL')} disabled={!canInstall || !!portal.outdated || item.source === 'licenseKey'}>
+                        <Download size={15} /> {t('hs.install')}
+                      </button>
+                    )}
+                    {inst && item.updateAvailable && !busy && (
+                      <button className="btn-secondary" onClick={() => install(item, 'UPDATE')} disabled={running || launching}>
+                        <RefreshCw size={15} /> {t('hs.update')}
+                      </button>
+                    )}
+                    {inst && (
+                      <Menu
+                        align="end"
+                        trigger={({ toggle, open }) => (
+                          <button className="icon-btn icon-btn-framed" onClick={toggle} aria-expanded={open} aria-label={t('common.more')} title={t('common.more')}><MoreHorizontal size={16} /></button>
+                        )}
+                        items={[
+                          ...(item.source === 'account' ? [{ label: t('hs.repair'), icon: <Wrench size={15} />, disabled: busy || running || launching, onSelect: () => install(item, 'REPAIR') }] : []),
+                          { label: t('prof.openFolder'), icon: <FolderOpen size={15} />, onSelect: () => api.openInstanceDir(inst.id) },
+                          { label: t('inst.settings'), icon: <Settings2 size={15} />, onSelect: () => onOpenInstance(inst.id, 'settings') },
+                          { label: t('hs.uninstall'), icon: <Trash2 size={15} />, danger: true, disabled: busy || running || launching, onSelect: () => setUninstall({ item, backup: true }) },
+                        ]}
+                      />
+                    )}
+                  </div>
                 </div>
               </motion.article>
             );
           })}
         </motion.div>
+      )}
+
+      {suggestions.length > 0 && (lib.loaded || !ready) && (
+        <section className="feed-section hub-suggest">
+          <header className="feed-head">
+            <h2 className="feed-title"><Compass size={16} />{items.length ? t('hub.lib.more') : t('hub.lib.suggest')}</h2>
+            {!emptyLibrary && <button type="button" className="link-btn" onClick={() => api.portalOpenLink('store')}>{t('hs.lib.store')} <ExternalLink size={12} /></button>}
+          </header>
+          <ProductShelf products={suggestions} imageHosts={hosts} onOpen={onOpenProduct} />
+        </section>
       )}
 
       {/* Lisans anahtarıyla kurulum (§11) */}
