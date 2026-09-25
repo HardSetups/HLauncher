@@ -614,6 +614,9 @@ input[type='range']::-webkit-slider-thumb {
 }
 .menu-end { right: 0; }
 .menu-start { left: 0; }
+/* Portal ile kabuğa çizilen panel (ui.jsx Menu): konum JS'ten gelir; kiplerin (modal 9000) üstünde */
+.menu-panel.is-floating { position: fixed; top: 0; left: 0; right: auto; z-index: 9500; visibility: hidden; }
+.floating-root { display: contents; }
 .menu-item {
   display: flex;
   align-items: center;

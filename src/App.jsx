@@ -520,6 +520,7 @@ function App() {
           onStop={stopGame}
         />
         {sharedModals}
+        <div id="hl-floating" className="floating-root" />
       </div>
     );
   }
@@ -527,6 +528,8 @@ function App() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="app-shell" style={{ '--accent': accent, '--on-accent': onAccent }}>
+      {/* Açılır menüler buraya portal ile çizilir (ui.jsx Menu): kesilmez, vurgu rengini miras alır */}
+      <div id="hl-floating" className="floating-root" />
       <Rail
         view={view}
         navigate={navigate}
