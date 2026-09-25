@@ -1064,25 +1064,29 @@ button.news-item:hover { background: var(--raised-2); border-color: var(--line-2
 .vmenu-chevron { color: var(--text-3); transition: transform 0.15s; }
 .vmenu-chevron.is-open { transform: rotate(180deg); }
 .vmenu-latest { font-size: 11px; color: var(--accent-text); margin-left: 6px; }
+/* Panel kabuğa portal ile çizilir (VersionMenu → ui.jsx useFloating): konum, yükseklik ve blok
+   tetikleyicideki genişlik JS'ten gelir; kiplerin (modal 9000) üstünde.
+   Flex (grid değil): yalnızca max-height varken grid satırı içeriğe göre uzuyor, panel listeyi
+   kesiyor ve liste kaymıyordu (eski sürümlere inilemiyordu). Tek satırlı flex'te satır
+   yüksekliği panelin max-height'ına sıkışır, sütunlar gerilir, liste kendi içinde kayar. */
 .vmenu-panel {
-  position: absolute;
+  position: fixed;
+  top: 0;
   left: 0;
-  top: calc(100% + 6px);
-  z-index: 300;
+  z-index: 9500;
+  visibility: hidden;
   width: 420px;
-  display: grid;
-  grid-template-columns: 140px 1fr;
+  max-width: calc(100vw - 16px);
+  display: flex;
   background: var(--raised);
   border: 1px solid var(--line-2);
   border-radius: 10px;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
   overflow: hidden;
 }
-.vmenu-panel.is-up { top: auto; bottom: calc(100% + 6px); }
-.vmenu-panel.is-end { left: auto; right: 0; }
-.vmenu-loaders { padding: 6px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow-y: auto; }
+.vmenu-loaders { flex: 0 0 140px; padding: 6px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow-y: auto; }
 .vmenu-heading { font-size: 12px; color: var(--text-3); padding: 6px 9px 4px; }
-.vmenu-versions { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.vmenu-versions { flex: 1 1 0; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .vmenu-search { display: flex; align-items: center; gap: 8px; padding: 0 10px; height: 40px; border-bottom: 1px solid var(--line); color: var(--text-3); flex-shrink: 0; }
 .vmenu-search input { height: 100%; padding: 0; border: none; background: none; }
 /* Sarmalayıcı odağı gösteriyor; içteki alanın ayrı çerçevesi gereksiz */
@@ -1093,8 +1097,7 @@ button.news-item:hover { background: var(--raised-2); border-color: var(--line-2
 .vmenu-item.is-selected { color: var(--text); background: var(--raised-2); }
 .vmenu-item.is-selected svg { color: var(--accent-text); }
 .vmenu-beta { font-size: 9px; margin-left: 2px; color: var(--warn); }
-.vmenu-panel.is-single { grid-template-columns: 1fr; width: 280px; }
-.vmenu.is-block .vmenu-panel.is-single { width: 100%; }
+.vmenu-panel.is-single { width: 280px; }
 .vmenu-trigger-text .is-strong { color: var(--text); font-weight: 600; }
 .vmenu-item-latest { border-bottom: 1px solid var(--line); border-radius: var(--r-sm) var(--r-sm) 0 0; margin-bottom: 4px; }
 .vmenu-empty { padding: 16px; text-align: center; font-size: 13px; color: var(--text-3); }
@@ -1222,15 +1225,17 @@ button.news-item:hover { background: var(--raised-2); border-color: var(--line-2
 }
 .modal-sm { max-width: 420px; }
 .modal-md { max-width: 500px; }
-.modal-head { display: flex; align-items: center; gap: 10px; padding: 18px 18px 0 20px; }
-.modal-title { font-size: 17px; flex: 1; }
+.modal-head { display: flex; align-items: center; gap: 10px; flex-shrink: 0; padding: 18px 18px 0 20px; }
+.modal-title { font-size: 17px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .modal-icon { width: 32px; height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 8px; corner-shape: var(--shape); background: var(--raised-3); color: var(--text-2); box-shadow: inset 0 1px 0 var(--hl); }
 .modal-icon.tone-danger { background: var(--danger-weak); color: var(--danger); }
 .modal-icon.tone-success { background: color-mix(in srgb, var(--ok) 13%, transparent); color: var(--ok); }
 .modal-close { margin-left: auto; }
-.modal-body { padding: 12px 20px 4px; }
-.modal-text { color: var(--text-2); line-height: 1.55; }
-.modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 18px 20px 20px; }
+/* Uzun içerik (sorun bildir, satın alma onayı) alçak pencerede gövdede kayar: başlık ve
+   düğmeler hep görünür. Açılır menüler portal ile çizildiği için gövde onları kesmez. */
+.modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 20px 4px; }
+.modal-text { color: var(--text-2); line-height: 1.55; overflow-wrap: anywhere; }
+.modal-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; flex-shrink: 0; padding: 18px 20px 20px; }
 
 .form-stack { display: flex; flex-direction: column; gap: 14px; }
 .divider-label { display: flex; align-items: center; gap: 10px; margin: 18px 0 12px; color: var(--text-3); font-size: 12px; }
