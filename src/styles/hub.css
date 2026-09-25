@@ -210,8 +210,8 @@
 .hs-hub .feed-update[open] { border-color: var(--line-2); }
 .hs-hub .feed-update .md { margin: 10px 0 2px 48px; font-size: 13px; }
 
-/* Kampanyalar */
-.hs-hub .camp-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+/* Kampanyalar: auto-fit — tek kampanya ikili bölümde yarım genişlikte kalıp yanında boş sütun bırakmasın */
+.hs-hub .camp-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
 .hs-hub .camp {
   position: relative;
   gap: 10px;

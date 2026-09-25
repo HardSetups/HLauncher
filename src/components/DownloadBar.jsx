@@ -65,6 +65,17 @@ export default function DownloadBar({ extraTasks = [] }) {
   const known = running.filter((x) => x.pct != null);
   const overall = known.length ? Math.round(known.reduce((s, x) => s + x.pct, 0) / known.length) : null;
 
+  // Her şey başarıyla bitince panel başlığa iner: bitmiş satırlar (5 sn kalır) sağ alttaki
+  // düğmeleri örtmesin (ör. kurulumdan hemen sonra kütüphane kartındaki "Oyna"). Yeni bir görev
+  // başlayınca yeniden açılır; hata varsa açık kalır (ayrıntı okunmalı).
+  // (Önceki değere göre çizim sırasında ayarlanır: React'in "prop değişince durum" kalıbı)
+  const [prevRunning, setPrevRunning] = useState(running.length);
+  if (running.length !== prevRunning) {
+    setPrevRunning(running.length);
+    if (running.length > prevRunning) setOpen(true);
+    else if (running.length === 0 && errors.length === 0) setOpen(false);
+  }
+
   const headline = running.length
     ? t('dl.running', { count: running.length })
     : errors.length ? t('dl.failed', { count: errors.length }) : t('dl.allDone');

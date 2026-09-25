@@ -63,8 +63,9 @@ export default function Rail({ view, navigate, instances, runningId, account, on
             </RailButton>
           );
         })}
-        <RailButton label={t('inst.new')} onClick={onCreateInstance} className="rail-add"><IconAdd size={20} /></RailButton>
       </div>
+      {/* Listenin dışında: çok profil varken (alçak pencerede) liste kayar, "yeni profil" hep görünür */}
+      <RailButton label={t('inst.new')} onClick={onCreateInstance} className="rail-add"><IconAdd size={20} /></RailButton>
 
       <div className="rail-group rail-bottom">
         <RailButton active={page === 'settings'} label={t('nav.settings')} onClick={() => navigate({ page: 'settings' })} className="rail-settings"><IconSettings /></RailButton>

@@ -496,7 +496,7 @@ input[type='range']::-webkit-slider-thumb {
 .rail-inst:hover .inst-icon { transform: translateY(-1px); }
 .rail-inst.is-active .inst-icon { box-shadow: 0 0 0 2px var(--bg-deep), 0 0 0 3.5px var(--accent-edge); }
 .rail-running { position: absolute; right: 3px; bottom: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--ok); border: 2px solid var(--bg-deep); }
-.rail-add { color: var(--text-3); border: 1px dashed var(--line-2); width: 36px; height: 36px; }
+.rail-add { color: var(--text-3); border: 1px dashed var(--line-2); width: 36px; height: 36px; margin-top: -2px; }
 .rail-add:hover { border-color: var(--text-3); border-style: solid; }
 .rail-avatar { width: 30px; height: 30px; border-radius: 7px; image-rendering: pixelated; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06); }
 .rail-tip {
@@ -1166,7 +1166,8 @@ button.news-item:hover { background: var(--raised-2); border-color: var(--line-2
 .field-hint { font-size: 12px; color: var(--text-3); }
 .add-form-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
 
-.server-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--raised); }
+/* overflow: satır üzerine gelme dolgusu listenin yuvarlak köşelerini taşırmasın ("oyna" menüsü portal ile çizilir) */
+.server-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--raised); overflow: hidden; }
 .server-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .server-row:last-child { border-bottom: none; }
 .server-row:hover { background: var(--raised-2); }
