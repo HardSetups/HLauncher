@@ -23,6 +23,13 @@ const defaultSleep = (ms, isCanceled) => new Promise((resolve) => {
     tick();
 });
 
+/** Sunucudan gelen kullanıcı özeti yalnızca bilinen, metin alanlarıyla tutulur (arayüze ham nesne gitmez). */
+const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : null);
+function pickUser(u) {
+    if (!u || typeof u !== 'object') return null;
+    return { id: str(u.id, 64), username: str(u.username, 64), avatarUrl: str(u.avatarUrl, 2048), emailVerified: u.emailVerified === true };
+}
+
 /**
  * @param {object} o
  * @param {{load: () => ({refreshToken: string, deviceId: string, user: object}|null), save: (s: object) => boolean, clear: () => void}} o.storage
@@ -38,7 +45,7 @@ function createSession({ storage, onChange = () => {}, now = Date.now, sleep = d
     const saved = safeLoad();
     let refreshToken = saved?.refreshToken || null;
     let deviceId = saved?.deviceId || null;
-    let user = saved?.user || null;
+    let user = pickUser(saved?.user);
 
     function safeLoad() {
         try { return storage.load(); } catch { return null; }
@@ -129,7 +136,7 @@ function createSession({ storage, onChange = () => {}, now = Date.now, sleep = d
                     // Onaylandıysa iptal edilmiş olsa bile oturumu kur: sunucuda cihaz zaten oluştu
                     refreshToken = tok.refreshToken;
                     deviceId = tok.deviceId || null;
-                    user = tok.user || null;
+                    user = pickUser(tok.user);
                     persist();
                     setAccess(tok.accessToken, tok.accessTokenExpiresIn);
                     onChange(snapshot());

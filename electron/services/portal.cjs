@@ -39,7 +39,9 @@ const LINK_KINDS = new Set(['account', 'wallet', 'topup', 'devices', 'licenses',
  */
 function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRunning = () => false }) {
     const isDev = !app.isPackaged;
-    const baseUrl = resolveBaseUrl(process.env.HL_API_BASE, { allowLocalHttp: isDev });
+    // HL_API_BASE yalnızca paketlenmemiş sürümde: paketli exe'de bir ortam değişkeni oturum
+    // (refresh) token'ını ve kurulum trafiğini başka bir sunucuya yönlendiremesin
+    const baseUrl = resolveBaseUrl(isDev ? process.env.HL_API_BASE : undefined, { allowLocalHttp: isDev });
     const appVersion = app.getVersion();
     // Config alınamazken (uçlar canlıda henüz yok ya da ağ hatası) üretim tabanında sözleşme
     // §2'deki host kullanılır: §11 (lisans anahtarıyla kurulum) canlıda config'siz de çalışır
@@ -144,7 +146,9 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
             const { data } = await api.get('/v1/launcher/config', { auth: 'none' });
             state.config = data;
             state.unavailable = false;
-            state.maintenance = data?.maintenance?.active ? { message: data.maintenance.message || null, scheduledEnd: null } : null;
+            // Mesaj yalnızca metin olarak geçer (nesne gelirse arayüz çizimde çökmesin)
+            const msg = data?.maintenance?.message;
+            state.maintenance = data?.maintenance?.active ? { message: typeof msg === 'string' ? msg.slice(0, 500) : null, scheduledEnd: null } : null;
             const min = data?.minVersion;
             state.outdated = min && compareVersions(appVersion, min) < 0 ? { minVersion: min } : null;
             if (state.outdated) log.warn(`[PORTAL] Launcher sürümü (${appVersion}) en düşük sürümün (${min}) altında`);
@@ -487,7 +491,9 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         const pick = (files) => bylicense.pickFile(files, { allowBeta: channel === 'BETA' });
         const call = () => api.post('/v1/downloads/by-license', { licenseKey: key, channel }, { auth: 'none' });
         const first = (await call()).data;
-        const product = first?.license?.product;
+        // Ürün kodu yol ve etiket olarak kullanılır (profil kaydı, kaldırmada yedek adı): yalnızca slug
+        const rawProduct = first?.license?.product;
+        const product = typeof rawProduct === 'string' && /^[a-z0-9][a-z0-9-]{0,63}$/.test(rawProduct) ? rawProduct : null;
         const file = pick(first?.files);
         if (!file) throw codedError('NOT_FOUND', 'Bu ürün için yayınlanmış sürüm yok', { details: { reason: 'noPublishedVersion' } });
 
@@ -505,7 +511,8 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         if (isArchive) {
             const archiveSize = Number(file.sizeBytes) || 0;
             let done = 0;
-            const dest = path.join(instanceDir, '.hl-staging', 'dl', file.sha256.slice(0, 32));
+            // pickFile sha256'yı 64 haneli hex olarak doğruladı: dosya adı klasör dışına çıkamaz
+            const dest = path.join(instanceDir, '.hl-staging', 'dl', file.sha256.toLowerCase().slice(0, 32));
             await downloadVerified(
                 { url: file.url, dest, sha256: file.sha256, sizeBytes: file.sizeBytes },
                 {
@@ -558,7 +565,7 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         if (!inst) throw codedError('NOT_INSTALLED', 'Bu ürün kurulu değil');
         const { backupPath } = installer.uninstallProduct(getInstanceDir(inst.id), {
             backupDir: backupWorlds ? path.join(dataRoot, 'yedekler') : null,
-            label: inst.product,
+            label: inst.product, // installer.uninstallProduct etiketi yalnızca [a-z0-9-] olarak kullanır
         });
         instances.remove(inst.id);
         if (store.get('activeInstanceId') === inst.id) store.set('activeInstanceId', 'default');

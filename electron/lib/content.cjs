@@ -35,7 +35,9 @@ function loadersFor(type, loader) {
 
 function assertSafeName(fileName) {
     const name = String(fileName || '');
-    if (!name || name.includes('/') || name.includes('\\') || name.includes('..') || path.isAbsolute(name)) {
+    // '.' klasörün kendisi (silmede tüm klasör gider), ':' NTFS veri akışı / sürücü adı
+    if (!name || name === '.' || name.includes('/') || name.includes('\\') || name.includes('..') || name.includes(':')
+        || [...name].some((c) => c.charCodeAt(0) < 32) || path.isAbsolute(name) || name.length > 255) {
         throw new Error('Geçersiz dosya adı');
     }
     return name;

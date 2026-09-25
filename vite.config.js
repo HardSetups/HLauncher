@@ -14,10 +14,14 @@ const cspPlugin = () => ({
         "default-src 'self'",
         "script-src 'self'",
         "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' https: data: hlimg:",
+        // Uzak resimler yalnızca bilinen kaynaklardan: Modrinth ikonları ve oyuncu kafaları.
+        // HardSetups görselleri hlimg: (ana süreçte imageHosts ile denetlenir); skin/sunucu ikonları data:
+        "img-src 'self' data: hlimg: https://cdn.modrinth.com https://minotar.net https://crafatar.com",
         "font-src 'self'",
         "connect-src 'self' https://api.mcstatus.io",
         "object-src 'none'",
+        "frame-src 'none'",
+        "form-action 'none'",
         "base-uri 'self'",
       ].join('; ')
       return html.replace('<head>', `<head>\n    <meta http-equiv="Content-Security-Policy" content="${csp}" />`)

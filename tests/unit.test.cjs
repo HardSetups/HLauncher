@@ -215,6 +215,34 @@ test('sanitizeServers: şemayı zorlar, güvensizleri temizler', () => {
     assert.strictEqual(clean[0].favorite, false);       // 'evet' → false
     assert.strictEqual(clean[0].manifestUrl, '');        // javascript: reddedildi
     assert.strictEqual(clean[1].manifestUrl, 'https://y.com/hlauncher.json');
+    // http manifest ağda değiştirilebilir (mod enjeksiyonu): kaydedilmez
+    assert.strictEqual(sanitizeServers([{ address: 'mc.z.com', manifestUrl: 'http://z.com/hlauncher.json' }])[0].manifestUrl, '');
+});
+
+test('sanitizeSettingsPatch: değerler de doğrulanır; kod çalıştırabilecek Java yolu ve JVM bayrakları yazılmaz', () => {
+    const { isSafeJvmArg, isValidJavaPath } = require('../electron/lib/store.cjs');
+    assert.deepStrictEqual(sanitizeSettingsPatch({ ram: 8.5, language: 'de', accent: 'red', fullscreen: 'evet', jvmPreset: 'evil' }), {});
+    assert.deepStrictEqual(sanitizeSettingsPatch({ ram: 8, language: 'en', accent: '#A52B12', fullscreen: true, jvmPreset: 'zgc' }),
+        { ram: 8, language: 'en', accent: '#A52B12', fullscreen: true, jvmPreset: 'zgc' });
+    assert.deepStrictEqual(sanitizeSettingsPatch({ javaPath: 'C:\\Program Files\\Java\\bin\\javaw.exe' }), { javaPath: 'C:\\Program Files\\Java\\bin\\javaw.exe' });
+    assert.deepStrictEqual(sanitizeSettingsPatch({ javaPath: '' }), { javaPath: '' });
+    for (const bad of ['C:\\Windows\\System32\\cmd.exe', '\\\\saldirgan\\pay\\java.exe', '//host/java.exe', 'C:\\x\\java.exe\n']) {
+        assert.deepStrictEqual(sanitizeSettingsPatch({ javaPath: bad }), {}, bad);
+        assert.strictEqual(isValidJavaPath(bad), false, bad);
+    }
+    assert.deepStrictEqual(sanitizeSettingsPatch({ customJvmArgs: '-XX:+UseG1GC -Xss2M' }), { customJvmArgs: '-XX:+UseG1GC -Xss2M' });
+    for (const bad of ['-javaagent:\\\\h\\a.jar', '-XX:OnOutOfMemoryError=calc', '-agentpath:x.dll', '@args.txt', '-cp x', '-Djava.library.path=C:\\x']) {
+        assert.deepStrictEqual(sanitizeSettingsPatch({ customJvmArgs: `-Xss2M ${bad}` }), {}, bad);
+        assert.strictEqual(isSafeJvmArg(bad.split(' ')[0]), false, bad);
+    }
+    const { jvmArgsFor } = require('../electron/launcher.cjs');
+    assert.deepStrictEqual(jvmArgsFor('custom', '-Xss2M -javaagent:x.jar -XX:+UseG1GC'), ['-Xss2M', '-XX:+UseG1GC']); // eski kayıtta kalmışsa da kullanılmaz
+});
+
+test('redact: alan adı olmadan geçen lisans anahtarı da maskelenir', () => {
+    const { redact } = require('../electron/lib/redact.cjs');
+    assert.strictEqual(redact('Lisans doğrulanıyor: HSMN-OPQR-STUV-WXYZ tamam'), 'Lisans doğrulanıyor: [gizli] tamam');
+    assert.strictEqual(redact('kod WDJB-MJHT ve 1.21.1'), 'kod WDJB-MJHT ve 1.21.1'); // cihaz kodu biçimi ve sürümler bozulmaz
 });
 
 // ─── zip.cjs zip-slip koruması ──────────────────────────────────────────────

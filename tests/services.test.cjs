@@ -804,11 +804,28 @@ test('portal.home (v1.7): hesaba özel kuponlar yalnızca girişliyken; bilinmey
 
 test('bylicense.pickFile: beta kapalıyken kararlı en yeni, açıkken kanal fark etmeksizin en yeni', () => {
     const { pickFile } = require('../electron/services/bylicense.cjs');
-    const f = (version, channel) => ({ version, channel, url: `https://cdn.hardsetups.com/${version}`, sha256: 'a'.repeat(64) });
+    const f = (version, channel) => ({ version, channel, url: `https://cdn.hardsetups.com/${version}`, sha256: 'a'.repeat(64), sizeBytes: '1024' });
     const files = [f('1.3.0', 'STABLE'), f('1.4.0-beta.2', 'BETA'), f('1.2.0', 'STABLE')];
     assert.strictEqual(pickFile(files).version, '1.3.0');
     assert.strictEqual(pickFile(files, { allowBeta: true }).version, '1.4.0-beta.2');
     assert.strictEqual(pickFile([f('0.2.0', 'BETA')]).version, '0.2.0', 'yalnızca beta varsa yine o');
+    // sha256 dosya adında kullanılır: yalnızca 64 haneli hex (yol kaçışı ../ ile klasör dışına yazılamaz); boyut tam sayı
+    assert.strictEqual(pickFile([{ ...f('9.9.9', 'STABLE'), sha256: `${'../'.repeat(10)}Desktop/pwn`.padEnd(64, 'x') }]), null);
+    assert.strictEqual(pickFile([{ ...f('9.9.9', 'STABLE'), sizeBytes: 'çok' }]), null);
+});
+
+test('installer.extractArchive: boyutu 0 beyan edilip şişen üye (zip bombası) reddedilir', () => {
+    const AdmZip = require('adm-zip');
+    const zip = new AdmZip();
+    zip.addFile('paket/mods/bomba.jar', Buffer.alloc(2 * 1024 * 1024, 0));
+    const buf = zip.toBuffer();
+    // Merkezi dizindeki "açılmış boyut" alanını 0 yap (beyana güvenen kod sınırı atlardı)
+    const cd = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+    buf.writeUInt32LE(0, cd + 24);
+    const dir = tmpDir();
+    const file = path.join(dir, 'bomba.zip');
+    fs.writeFileSync(file, buf);
+    assert.throws(() => installer.extractArchive(file, [{ from: 'paket/mods/', toDir: 'mods/', isDir: true }], path.join(dir, 'out')), { code: 'EBADARCHIVE' });
 });
 
 test('portal: ürün kataloğu (§5) ve "Kayıt ol" bağlantısı (config\'te yoksa site/kayit)', async () => {

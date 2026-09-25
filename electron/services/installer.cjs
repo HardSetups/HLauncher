@@ -180,9 +180,14 @@ function extractArchive(zipFile, rules, outDir) {
         const rel = targetFor(name, rules);
         if (!rel) continue;
         matchedRules.add(rules.find((r) => targetFor(name, [r])));
-        total += entry.header.size;
-        if (total > MAX_ARCHIVE_BYTES) throw codedError('EBADARCHIVE', 'Arşiv beklenenden çok büyük');
+        // Beyan edilen boyuta güvenilmez: 0 beyan edilip sıkıştırılmış içerik taşıyan üye (zip bombası)
+        // reddedilir, açılan gerçek boyut beyanla aynı olmalı ve toplam sınırı gerçek boyutla sayılır
+        const declared = entry.header.size;
+        if (declared === 0 && entry.header.compressedSize > 2) throw codedError('EBADARCHIVE', 'Arşivde boyutu tutarsız bir dosya var');
+        if (total + declared > MAX_ARCHIVE_BYTES) throw codedError('EBADARCHIVE', 'Arşiv beklenenden çok büyük');
         const data = entry.getData();
+        if (data.length !== declared) throw codedError('EBADARCHIVE', 'Arşivde boyutu tutarsız bir dosya var');
+        total += data.length;
         const dest = safeJoin(outDir, rel);
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.writeFileSync(dest, data);
@@ -221,7 +226,11 @@ function pruneManaged(instanceDir, managedPaths, keepPaths, previousPaths) {
             const rel = `${mp}${d.name}`;
             if (keepPaths.has(rel)) continue;
             const full = path.join(dir, d.name);
-            if (previousPaths.has(rel)) {
+            // Önceki sürümün dosyası yalnızca kullanıcı değiştirmediyse (hash aynıysa) silinir;
+            // aynı adla kendi kopyasını koyduysa o da .yedek/'e taşınır
+            const prev = previousPaths.get?.(rel);
+            const untouched = !prev || (prev.sha256 ? hashFile(full, 'sha256') === prev.sha256 : prev.sha512 ? hashFile(full, 'sha512') === prev.sha512 : true);
+            if (previousPaths.has(rel) && untouched) {
                 fs.rmSync(full, { force: true });
                 removed.push(rel);
             } else {
@@ -340,7 +349,7 @@ async function syncProduct({ manifest, instanceDir, allowedHosts, allowLocalHttp
     // ── 5. Uygula (buradan sonra örnek klasörü değişir) ──
     report('commit');
     const keep = new Set(records.map((r) => r.path));
-    const prevPaths = new Set((previous?.files || []).map((r) => r.path));
+    const prevPaths = new Map((previous?.files || []).map((r) => [r.path, r]));
     const { removed, movedAside } = pruneManaged(instanceDir, m.managedPaths, keep, prevPaths);
     for (const { from, rel } of toMove) {
         const target = safeJoin(instanceDir, rel);
@@ -394,7 +403,9 @@ function uninstallProduct(instanceDir, { backupDir = null, label = 'urun', now =
     if (backupDir && fs.existsSync(saves) && fs.readdirSync(saves).length) {
         fs.mkdirSync(backupDir, { recursive: true });
         const stampText = new Date(now()).toISOString().replace(/[-:]/g, '').replace(/\..+$/, '').replace('T', '-');
-        backupPath = path.join(backupDir, `${label}-dunyalar-${stampText}.zip`);
+        // Etiket dosya adına girer: yalnızca [a-z0-9-] (yol ayırıcı ya da '..' ile klasör dışına yazılmasın)
+        const safeLabel = String(label || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 64) || 'urun';
+        backupPath = path.join(backupDir, `${safeLabel}-dunyalar-${stampText}.zip`);
         const zip = new AdmZip();
         zip.addLocalFolder(saves, 'saves');
         zip.writeZip(backupPath);

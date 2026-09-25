@@ -5,7 +5,7 @@ const { Client } = require('minecraft-launcher-core');
 
 const log = require('./lib/logger.cjs');
 const { getRootPath, getInstanceDir } = require('./lib/paths.cjs');
-const { getStore } = require('./lib/store.cjs');
+const { getStore, isSafeJvmArg, isValidJavaPath } = require('./lib/store.cjs');
 const { friendlyError } = require('./lib/errors.cjs');
 const { ensureJava, getRequiredJava } = require('./lib/java.cjs');
 const { getLatestRelease } = require('./lib/versions.cjs');
@@ -47,7 +47,8 @@ const JVM_PRESETS = {
 
 function jvmArgsFor(preset, customArgs, requiredJava) {
     if (preset === 'custom') {
-        return String(customArgs || '').split(/\s+/).filter(Boolean);
+        // Kod yükleten bayraklar (ör. -javaagent) ayar dosyasına bir şekilde girmiş olsa da kullanılmaz
+        return String(customArgs || '').split(/\s+/).filter(Boolean).filter(isSafeJvmArg);
     }
     if (preset === 'zgc' && requiredJava < 17) return JVM_PRESETS.balanced;
     return JVM_PRESETS[preset] || JVM_PRESETS.balanced;
@@ -139,7 +140,8 @@ const launchGame = async (event, options = {}) => {
     const trimmedJava = (settings.javaPath || '').trim();
     let selectedJava;
     if (trimmedJava && trimmedJava !== 'java') {
-        if (!fs.existsSync(trimmedJava)) {
+        // Yalnızca java/javaw çalıştırılabiliri; ağ (UNC) yolu değil
+        if (!isValidJavaPath(trimmedJava) || !fs.existsSync(trimmedJava)) {
             event.reply('launch-error', `Belirtilen Java bulunamadı:\n${trimmedJava}\n\nAyarlar'dan geçerli bir java.exe seçin veya alanı boş bırakın.`);
             return;
         }

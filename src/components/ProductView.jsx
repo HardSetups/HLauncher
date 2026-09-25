@@ -2,7 +2,7 @@
 // Açıklama güvenli markdown; video launcher'da oynamaz, tarayıcıda açılır.
 // Satın alma: plan → teklif → onay (toplam + ödemeden sonraki bakiye) → sipariş.
 // Kart / ödeme bilgisi launcher'a HİÇ girmez; bakiye yükleme tarayıcıda.
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ArrowLeft, ArrowRight, Star, Play, Check, Loader2, ShoppingCart, ExternalLink, Wallet, Cpu, MemoryStick, Gamepad2, AlertTriangle, RefreshCw, Download } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import Modal from './Modal.jsx';
@@ -54,6 +54,9 @@ function PurchaseModal({ open, product, plan, onClose, onInstall }) {
   const { t, lang } = useI18n();
   const api = window.electronAPI;
   const [step, setStep] = useState('form'); // form | confirm | done
+  const [armed, setArmed] = useState(true);
+  const armTimer = useRef(null);
+  useEffect(() => () => clearTimeout(armTimer.current), []);
   const [coupon, setCoupon] = useState('');
   const [quote, setQuote] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -87,10 +90,16 @@ function PurchaseModal({ open, product, plan, onClose, onInstall }) {
       if (!res.ok) { setError(describe(res.error)); setStep('form'); return; }
       setQuote(res.quote);
       setAccepted(new Set());
+      // "Devam"a çift tıklamanın ikinci tıklaması aynı yerdeki "Satın al"a düşmesin: onay adımı
+      // göründükten sonra düğme 700 ms pasif kalır (tutar ve bakiye görülmeden sipariş olmaz)
+      setArmed(false);
+      clearTimeout(armTimer.current);
+      armTimer.current = setTimeout(() => setArmed(true), 700);
       setStep('confirm');
     } finally { setBusy(false); }
   };
   const buy = async () => {
+    if (!armed) return;
     setBusy(true); setError(null);
     try {
       const res = await api.portalPurchase(quote.quoteId, [...accepted]);
@@ -135,7 +144,7 @@ function PurchaseModal({ open, product, plan, onClose, onInstall }) {
               ? <button className="btn-primary" onClick={() => topup(quote.topupUrl)}><Wallet size={15} /> {t('hs.buy.topup')}</button>
               : !billingReady
                 ? <button className="btn-primary" onClick={() => api.portalOpenUrl(quote.billingProfile.manageUrl)}><ExternalLink size={15} /> {t('hs.buy.billingManage')}</button>
-                : <button className="btn-primary" onClick={buy} disabled={busy || !allAccepted}>{busy ? <Loader2 size={15} className="spin" /> : <ShoppingCart size={15} />} {t('hs.buy.confirm', { amount: fmt(quote?.totalMinor) })}</button>}
+                : <button className="btn-primary" onClick={buy} disabled={busy || !allAccepted || !armed}>{busy ? <Loader2 size={15} className="spin" /> : <ShoppingCart size={15} />} {t('hs.buy.confirm', { amount: fmt(quote?.totalMinor) })}</button>}
           </>
         ) : (
           <>

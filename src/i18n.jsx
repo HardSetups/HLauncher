@@ -292,6 +292,8 @@ export const DICTS = {
     'top.online': 'oyuncu çevrimiçi',
     'common.cancel': 'Vazgeç',
     'err.unknown': 'Bilinmeyen bir hata oluştu.',
+    'err.page.title': 'Bu sayfa gösterilemedi',
+    'err.page.text': 'Beklenmedik bir veri yüzünden sayfa açılamadı. Tekrar deneyebilir ya da soldan başka bir sayfaya geçebilirsin.',
     'prof.deleteTitle': 'Profili sil',
     'nav.menu': 'Ana menü',
     'nav.copyAddress': 'Adresi kopyala: {address}',
@@ -1059,6 +1061,8 @@ export const DICTS = {
     'top.online': 'players online',
     'common.cancel': 'Cancel',
     'err.unknown': 'An unknown error occurred.',
+    'err.page.title': 'This page couldn\'t be shown',
+    'err.page.text': 'Unexpected data kept the page from opening. You can try again or switch to another page from the left.',
     'prof.deleteTitle': 'Delete profile',
     'nav.menu': 'Main menu',
     'nav.copyAddress': 'Copy address: {address}',
@@ -1547,7 +1551,9 @@ export function I18nProvider({ lang, setLang, children }) {
   const t = useCallback((key, params) => {
     let text = DICTS[lang]?.[key] ?? DICTS.tr[key] ?? key;
     if (params) {
-      for (const [k, v] of Object.entries(params)) text = text.replaceAll(`{${k}}`, String(v));
+      // Tek geçişte değiştirilir: değerdeki "$&" gibi desenler yorumlanmaz, bir değerin içindeki
+      // "{x}" sonraki parametreyle yeniden değiştirilmez
+      text = text.replace(/\{(\w+)\}/g, (m, k) => (Object.prototype.hasOwnProperty.call(params, k) ? String(params[k]) : m));
     }
     return text;
   }, [lang]);

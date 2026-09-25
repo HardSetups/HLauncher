@@ -23,6 +23,7 @@ import AuthScreen, { AuthSplash } from './components/AuthScreen';
 import { authView, isRevokedReason } from './components/auth/authView.js';
 import { contrastText } from './utils/color';
 import { DEFAULT_ACCENT } from './utils/accents.js';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { I18nProvider, useI18n } from './i18n.jsx';
 import { TaskProvider, useTasks } from './tasks.jsx';
 
@@ -508,6 +509,7 @@ function App() {
   if (gated) {
     return (
       <div className="app-shell" style={{ '--accent': accent, '--on-accent': onAccent }}>
+        <ErrorBoundary>
         <AuthScreen
           portal={portal}
           view={gate}
@@ -519,6 +521,7 @@ function App() {
           running={runningInst ? { name: runningInst.name } : launchingInst ? { name: launchingInst.name, launching: true } : null}
           onStop={stopGame}
         />
+        </ErrorBoundary>
         {sharedModals}
         <div id="hl-floating" className="floating-root" />
       </div>
@@ -565,6 +568,7 @@ function App() {
         <main className={`app-main${tasks.length || launch.launchingId || updaterStatus.state === 'downloading' ? ' has-dl' : ''}`}>
           <AnimatePresence mode="wait">
             <motion.div key={pageKey} className="page" {...pageMotion}>
+              <ErrorBoundary>
               {page === 'home' && (
                 <HomePage
                   instances={sortedInstances}
@@ -689,6 +693,7 @@ function App() {
                   onError={setErrorMessage}
                 />
               )}
+              </ErrorBoundary>
             </motion.div>
           </AnimatePresence>
         </main>

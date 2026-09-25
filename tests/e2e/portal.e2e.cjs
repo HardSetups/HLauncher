@@ -250,6 +250,16 @@ async function main() {
         assert.strictEqual(await win.$('.auth'), null, 'ağ hatası oturumu kapattı');
         await win.screenshot({ path: path.join(OUT, '06-cevrimdisi.png') });
         step('çevrimdışı: kayıtlı oturumla launcher doğrudan açıldı');
+
+        // Güvenlik: pencere başka bir sayfaya (ör. pencereye sürüklenen yerel .html) gezinemez; preload
+        // köprüsü yalnızca uygulama sayfasında kalır. (Playwright iptal edilen gezinmeden sonra tıklamayı
+        // beklettiği için bu denetim en sonda.)
+        const pageUrl = await win.evaluate(() => globalThis.location.href);
+        await win.evaluate(() => { globalThis.location.href = 'file:///C:/Windows/win.ini'; }).catch(() => {});
+        await new Promise((r) => setTimeout(r, 800));
+        assert.strictEqual(await win.evaluate(() => globalThis.location.href), pageUrl, 'file:// gezinmesi engellenmeli');
+        assert.ok(await win.evaluate(() => !!document.querySelector('.rail')), 'uygulama sayfası yerinde kalmalı');
+        step('güvenlik: uygulama dışına gezinme engellendi');
     } finally {
         await app.close().catch(() => {});
         await new Promise((r) => server.close(r));

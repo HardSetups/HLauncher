@@ -49,6 +49,7 @@
 - Tarayıcıda yalnızca izinli adresler açılır; kamera/mikrofon/bildirim gibi tarayıcı izinleri kapalı
 - Microsoft oturumu, şifreli depolama yoksa diske yazılmaz
 - Ürün görselleri yalnızca izinli adreslerden, boyut ve tür denetiminden geçerek yüklenir; indirmeler yalnızca izinli sunuculardan yapılır
+- Yayın öncesi güvenlik taraması: pencereye sürüklenen bir dosya artık launcher'ın içinde açılamaz; geliştirici araçları kapalı; Java yolu ve özel JVM ayarları kod çalıştırmaya izin vermeyecek şekilde denetleniyor; sunucu paketleri (hlauncher.json) yalnızca https ile alınıyor; modpack ve ürün arşivleri boyut hilelerine karşı korunuyor; bir sayfa beklenmedik veriyle açılamazsa pencerenin tamamı yerine yalnızca o sayfa hata gösteriyor
 
 ## 1.0.0-alpha.6 — 2026-09-24
 

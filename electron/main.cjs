@@ -37,6 +37,9 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 function startApp() {
+    // Vite geliştirme sunucusu yalnızca paketlenmemiş sürümde: NODE_ENV=development tanımlı bir
+    // makinede paketli exe localhost:5173'teki (başkasının açabileceği) bir sayfayı yüklemesin
+    const IS_DEV_SERVER = !app.isPackaged && process.env.NODE_ENV === 'development';
     const log = require('./lib/logger.cjs');
     const { getStore, sanitizeSettingsPatch, sanitizeServers } = require('./lib/store.cjs');
     const { getLogsDir, getRootPath } = require('./lib/paths.cjs');
@@ -83,9 +86,12 @@ function startApp() {
 
     // Tarayıcıda yalnızca https + izinli host açılır (sözleşme §2): launcher'ın
     // sabit listesi + sunucunun linkHosts'u. trusted: geliştirmede yerel mock onay sayfası.
+    // hosts verilirse (sunucudan gelen bağlantılar: ürün açıklaması, duyuru, bildirim) YALNIZCA o liste
+    // geçerlidir; launcher'ın sabit listesi (github.com vb.) sunucu içeriğine açılmaz. trusted yalnızca
+    // paketlenmemiş sürümde (yerel http API sayfaları).
     const openExternalSafe = (url, hosts = null, { trusted = false } = {}) => {
-        const allowed = [...links.DEFAULT_LINK_HOSTS, ...(hosts || portal?.linkHosts() || [])];
-        if (trusted || links.isAllowedLink(url, allowed)) {
+        const allowed = hosts || [...links.DEFAULT_LINK_HOSTS, ...(portal?.linkHosts() || [])];
+        if ((trusted && !app.isPackaged) || links.isAllowedLink(url, allowed)) {
             shell.openExternal(url);
             return true;
         }
@@ -141,6 +147,8 @@ function startApp() {
                 sandbox: true,
                 webSecurity: true,
                 allowRunningInsecureContent: false,
+                // Paketli sürümde geliştirici araçları kapalı (Ctrl+Shift+I ile IPC'ye erişilmesin)
+                devTools: !app.isPackaged,
             },
         });
         if (saved?.maximized) mainWindow.maximize();
@@ -151,14 +159,14 @@ function startApp() {
             openExternalSafe(url);
             return { action: 'deny' };
         });
+        // Uygulama durum tabanlı yönlendirici kullanır; gerçek gezinmeye hiç gerek yok. Önceden
+        // her file:// adresine izin veriliyordu: pencereye sürüklenen yerel bir .html dosyası
+        // preload köprüsüyle (electronAPI) yüklenip IPC'yi kullanabiliyordu. Artık hepsi engelli;
+        // yalnızca geliştirmede Vite sunucusunun kendi adresi serbest.
         mainWindow.webContents.on('will-navigate', (e, url) => {
-            const allowed = process.env.NODE_ENV === 'development'
-                ? url.startsWith('http://127.0.0.1:5173')
-                : url.startsWith('file://');
-            if (!allowed) {
-                e.preventDefault();
-                openExternalSafe(url);
-            }
+            if (IS_DEV_SERVER && url.startsWith('http://127.0.0.1:5173/')) return;
+            e.preventDefault();
+            openExternalSafe(url);
         });
         // <webview> hiçbir koşulda eklenemez
         mainWindow.webContents.on('will-attach-webview', (e) => e.preventDefault());
@@ -182,15 +190,15 @@ function startApp() {
             } catch { /* pencere çoktan yok olduysa geç */ }
         });
 
-        if (process.env.NODE_ENV === 'development') {
+        if (IS_DEV_SERVER) {
             mainWindow.loadURL('http://127.0.0.1:5173');
         } else {
             mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
         }
 
-        // Tanıtım görseli modu (site/dokümantasyon için): HL_SCREENSHOT=<png yolu>
+        // Tanıtım görseli modu (site/dokümantasyon için, yalnızca paketlenmemiş): HL_SCREENSHOT=<png yolu>
         // Pencere yüklendikten ~6.5 sn sonra (sunucu durumları gelsin diye) kare alır ve çıkar.
-        if (process.env.HL_SCREENSHOT) {
+        if (!app.isPackaged && process.env.HL_SCREENSHOT) {
             mainWindow.webContents.once('did-finish-load', () => {
                 setTimeout(async () => {
                     try {
@@ -216,6 +224,9 @@ function startApp() {
 
     app.whenReady().then(() => {
         log.info(`[MAIN] HLauncher ${app.getVersion()} başladı (veri: ${getRootPath()}, sandbox: ${NO_SANDBOX ? 'kapalı' : 'açık'})`);
+        // Pencere çerçevesiz, menü görünmüyor; paketli sürümde varsayılan menünün kısayolları
+        // (yeniden yükle, geliştirici araçları) da olmasın
+        if (app.isPackaged) require('electron').Menu.setApplicationMenu(null);
 
         // Kamera, mikrofon, bildirim, konum vb. hiçbir tarayıcı izni verilmez;
         // yalnızca panoya yazma (UUID / adres kopyalama) serbest.
@@ -297,8 +308,11 @@ function startApp() {
         OFFLINE_INVALID: 'Çevrimdışı lisans bilgisi doğrulanamadı. İnternete bağlanıp tekrar dene.',
     };
     ipcMain.on('launch-game', async (event, options) => {
-        const opts = options || {};
-        const inst = opts.instanceId ? instances.get(opts.instanceId) : null;
+        // Profil launcher.cjs ile AYNI kuralla burada bir kez çözülür (kimlik yoksa aktif profil,
+        // o da yoksa varsayılan) ve açılışa kimliğiyle gider: kimliksiz çağrı lisans kapısını atlayamaz
+        const requested = options || {};
+        const inst = instances.get(requested.instanceId || getStore().get('activeInstanceId')) || instances.get('default');
+        const opts = { ...requested, instanceId: inst?.id || requested.instanceId };
         if (inst?.origin === 'hardsetups') {
             const check = portal ? await portal.launchCheck(inst) : { allowed: false, reason: 'NOT_READY' };
             if (!check.allowed) {
@@ -309,8 +323,8 @@ function startApp() {
         }
         // "Kaldığın yerden devam" sırası + son seçilen profil
         if (inst) {
-            instances.markPlayed(opts.instanceId);
-            getStore().set('activeInstanceId', opts.instanceId);
+            instances.markPlayed(inst.id);
+            getStore().set('activeInstanceId', inst.id);
         }
         // Kullanım sayaçları (§15; onay + sunucu açıksa): açılış, açılamama ve çökme olay kanalından sayılır
         const product = inst?.origin === 'hardsetups' ? inst.product : null;

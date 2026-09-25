@@ -61,10 +61,20 @@ function pickLoaderVersion(loaders, constraints) {
 // ─── Mod incelemesi ─────────────────────────────────────────────────────────
 
 /** Jar içeriğinden fabric.mod.json → { id, loaderConstraint } (yoksa null alanlar). */
+// İnceleme için açılan üyelerin sınırı (beyana güvenilmez; 0 beyan edip şişen üye reddedilir)
+const MAX_INSPECT_BYTES = 256 * 1024 * 1024;
+function boundedData(entry, max) {
+    const declared = entry.header.size;
+    if ((declared === 0 && entry.header.compressedSize > 2) || declared > max) throw codedError('EBADARCHIVE', 'Arşivde boyutu tutarsız bir dosya var');
+    const data = entry.getData();
+    if (data.length !== declared) throw codedError('EBADARCHIVE', 'Arşivde boyutu tutarsız bir dosya var');
+    return data;
+}
+
 function readFabricMeta(jarBuffer) {
     try {
         const fmj = new AdmZip(jarBuffer).getEntry('fabric.mod.json');
-        const meta = fmj ? JSON.parse(fmj.getData().toString('utf8')) : null;
+        const meta = fmj ? JSON.parse(boundedData(fmj, 1024 * 1024).toString('utf8')) : null;
         return { id: meta?.id || null, loaderConstraint: meta?.depends?.fabricloader ?? null };
     } catch { return { id: null, loaderConstraint: null }; }
 }
@@ -77,7 +87,7 @@ function inspectArchive(zipFile) {
     for (const entry of zip.getEntries()) {
         const name = entry.entryName.replace(/\\/g, '/');
         if (entry.isDirectory || !MOD_JAR.test(name)) continue;
-        mods.push({ file: name.split('/').pop(), ...readFabricMeta(entry.getData()) });
+        mods.push({ file: name.split('/').pop(), ...readFabricMeta(boundedData(entry, MAX_INSPECT_BYTES)) });
     }
     if (!mods.length) throw codedError('EBADARCHIVE', 'Arşivde mod dosyası bulunamadı (beklenen: <klasör>/mods/*.jar)');
     return { mods, hasLicenseStamp: !!zip.getEntry('.hs-license') };
@@ -123,7 +133,11 @@ async function resolveDependencies(dependencies, { mcVersion, loader }, endpoint
         const match = (Array.isArray(versions) ? versions : []).find((v) => v.version_number === version &&
             (v.loaders || []).includes(loader) && (v.game_versions || []).includes(mcVersion));
         const file = match?.files?.find((f) => f.primary) || match?.files?.[0];
-        if (!file?.hashes?.sha512 || !file.filename) {
+        // Modrinth dosyaları yalnızca kendi CDN'inden (içerik sayfasındaki güncellemeyle aynı kural)
+        const url = String(file?.url || '');
+        const fromModrinthCdn = url.startsWith('https://cdn.modrinth.com/')
+            || (endpoints !== DEFAULT_ENDPOINTS && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(url)); // yerel test sunucusu
+        if (!file?.hashes?.sha512 || !file.filename || !fromModrinthCdn) {
             throw codedError('EDEPENDENCY', `Gerekli bağımlılık bulunamadı: ${project} ${version} (${loader}, Minecraft ${mcVersion})`);
         }
         out.push({
@@ -173,7 +187,10 @@ function manifestFromResponse(data, file) {
 
 /** by-license yanıtındaki en uygun dosya: STABLE içinde en yeni sürüm. */
 function pickFile(files, { allowBeta = false } = {}) {
-    const list = (Array.isArray(files) ? files : []).filter((f) => f && typeof f.url === 'string' && f.sha256);
+    // sha256 dosya adında da kullanılır (indirme önbelleği): yalnızca 64 haneli hex; boyut güvenli tam sayı
+    const list = (Array.isArray(files) ? files : []).filter((f) => f && typeof f.url === 'string'
+        && typeof f.sha256 === 'string' && /^[a-f0-9]{64}$/i.test(f.sha256)
+        && Number.isSafeInteger(Number(f.sizeBytes)) && Number(f.sizeBytes) > 0);
     // Beta açıksa kanal fark etmez, en yeni sürüm; kapalıyken kararlı olan varsa o
     const stable = allowBeta ? [] : list.filter((f) => (f.channel || 'STABLE') === 'STABLE');
     return (stable.length ? stable : list).sort((a, b) => compareVersions(b.version || '0.0.0', a.version || '0.0.0'))[0] || null;
