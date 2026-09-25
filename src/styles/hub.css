@@ -160,8 +160,9 @@
     var(--raised-2);
 }
 .hub-feed .hero-text { left: 30px; bottom: 28px; right: 38%; gap: 8px; align-items: flex-start; }
-.hub-feed .hero-title { font-size: clamp(26px, 3vw, 36px); color: var(--text); }
-.hub-feed .hero-sub { font-size: 14.5px; color: var(--text-2); max-width: 46ch; }
+/* Uzun başlık/alt metin kartın üstünden taşıp kesilmesin: en fazla 2 satır (…) */
+.hub-feed .hero-title { font-size: clamp(26px, 3vw, 36px); color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.hub-feed .hero-sub { font-size: 14.5px; color: var(--text-2); max-width: 46ch; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .hub-feed .hero-text .badges { margin-bottom: 2px; }
 .hero-cta { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-top: 10px; }
 .hero-go { height: 40px; padding: 0 18px; border-radius: var(--r-md); corner-shape: var(--shape); font-weight: 600; transition: background-color var(--t-fast) var(--ease); }
@@ -209,8 +210,8 @@
 .hs-hub .feed-update[open] { border-color: var(--line-2); }
 .hs-hub .feed-update .md { margin: 10px 0 2px 48px; font-size: 13px; }
 
-/* Kampanyalar */
-.hs-hub .camp-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+/* Kampanyalar: auto-fit — tek kampanya ikili bölümde yarım genişlikte kalıp yanında boş sütun bırakmasın */
+.hs-hub .camp-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
 .hs-hub .camp {
   position: relative;
   gap: 10px;
@@ -446,8 +447,11 @@
   font-size: 12px;
   color: var(--text-2);
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.hs-item-meta svg { color: var(--text-3); }
+.hs-item-meta svg { color: var(--text-3); flex-shrink: 0; }
 .hs-hub .hs-item-actions { gap: 8px; margin-top: auto; }
 .hs-hub .hs-item-actions > button, .hs-hub .hs-item-actions .menu > .icon-btn-framed { height: 42px; }
 .hs-hub .hs-item-actions .icon-btn-framed { width: 42px; }

@@ -231,7 +231,7 @@ export default function AccountPage({ account, setAccount, portal, onError }) {
               <img className="acct-avatar" src={avatar} alt="" />
               <div className="acct-info">
                 <span className={`acct-type is-${account.type}`}>{isMs ? t('acc.type.microsoft') : t('acc.type.offline')}</span>
-                <h2 className="acct-name">{account.name}</h2>
+                <h2 className="acct-name" title={account.name}>{account.name}</h2>
                 {isMs && account.uuid && (
                   <button className="acct-uuid" onClick={copyUuid} title={t('acc.copyUuid')}>
                     <span className="ellipsis">{account.uuid}</span>{copied ? <Check size={12} /> : <Copy size={12} />}

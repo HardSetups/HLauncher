@@ -496,7 +496,7 @@ input[type='range']::-webkit-slider-thumb {
 .rail-inst:hover .inst-icon { transform: translateY(-1px); }
 .rail-inst.is-active .inst-icon { box-shadow: 0 0 0 2px var(--bg-deep), 0 0 0 3.5px var(--accent-edge); }
 .rail-running { position: absolute; right: 3px; bottom: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--ok); border: 2px solid var(--bg-deep); }
-.rail-add { color: var(--text-3); border: 1px dashed var(--line-2); width: 36px; height: 36px; }
+.rail-add { color: var(--text-3); border: 1px dashed var(--line-2); width: 36px; height: 36px; margin-top: -2px; }
 .rail-add:hover { border-color: var(--text-3); border-style: solid; }
 .rail-avatar { width: 30px; height: 30px; border-radius: 7px; image-rendering: pixelated; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06); }
 .rail-tip {
@@ -525,14 +525,16 @@ input[type='range']::-webkit-slider-thumb {
   padding: 0 8px 0 18px;
   -webkit-app-region: drag;
 }
-.crumbs { display: flex; align-items: center; min-width: 0; -webkit-app-region: no-drag; font-weight: 600; font-size: 13.5px; }
-.crumb { display: inline-flex; align-items: center; min-width: 0; }
+/* Uzun profil / ürün adı: son kırıntı kısalır (…), sağdaki durum ve pencere düğmeleri yerinde kalır */
+.crumbs { display: flex; align-items: center; min-width: 0; overflow: hidden; -webkit-app-region: no-drag; font-weight: 600; font-size: 13.5px; }
+.crumb { display: inline-flex; align-items: center; flex-shrink: 0; }
+.crumb:last-child { flex-shrink: 1; min-width: 0; }
 .crumb-sep { color: var(--text-3); margin: 0 4px; opacity: 0.7; }
-.crumb-link { color: var(--text-2); padding: 3px 6px; border-radius: 6px; }
+.crumb-link { color: var(--text-2); padding: 3px 6px; border-radius: 6px; white-space: nowrap; }
 .crumb-link:hover { color: var(--text); background: var(--hover); }
-.crumb-current { color: var(--text); padding: 3px 6px; }
-.topbar-drag { flex: 1; align-self: stretch; }
-.topbar-right { display: flex; align-items: center; gap: 8px; -webkit-app-region: no-drag; }
+.crumb-current { color: var(--text); padding: 3px 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-drag { flex: 1; min-width: 24px; align-self: stretch; }
+.topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; min-width: 0; -webkit-app-region: no-drag; }
 
 .run-status {
   display: inline-flex;
@@ -719,7 +721,8 @@ input[type='range']::-webkit-slider-thumb {
 }
 .band-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; max-width: 480px; }
 .band-hello { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.band-title { font-family: var(--font-display); font-size: var(--fs-3xl); font-weight: 700; line-height: 1.06; color: var(--text); overflow-wrap: anywhere; }
+.band-title { font-family: var(--font-display); font-size: var(--fs-3xl); font-weight: 700; line-height: 1.06; color: var(--text); }
+.band-name { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .band-tagline { color: var(--text-2); font-size: 14px; max-width: 420px; }
 .band-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .band-chip {
@@ -1064,25 +1067,29 @@ button.news-item:hover { background: var(--raised-2); border-color: var(--line-2
 .vmenu-chevron { color: var(--text-3); transition: transform 0.15s; }
 .vmenu-chevron.is-open { transform: rotate(180deg); }
 .vmenu-latest { font-size: 11px; color: var(--accent-text); margin-left: 6px; }
+/* Panel kabuğa portal ile çizilir (VersionMenu → ui.jsx useFloating): konum, yükseklik ve blok
+   tetikleyicideki genişlik JS'ten gelir; kiplerin (modal 9000) üstünde.
+   Flex (grid değil): yalnızca max-height varken grid satırı içeriğe göre uzuyor, panel listeyi
+   kesiyor ve liste kaymıyordu (eski sürümlere inilemiyordu). Tek satırlı flex'te satır
+   yüksekliği panelin max-height'ına sıkışır, sütunlar gerilir, liste kendi içinde kayar. */
 .vmenu-panel {
-  position: absolute;
+  position: fixed;
+  top: 0;
   left: 0;
-  top: calc(100% + 6px);
-  z-index: 300;
+  z-index: 9500;
+  visibility: hidden;
   width: 420px;
-  display: grid;
-  grid-template-columns: 140px 1fr;
+  max-width: calc(100vw - 16px);
+  display: flex;
   background: var(--raised);
   border: 1px solid var(--line-2);
   border-radius: 10px;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
   overflow: hidden;
 }
-.vmenu-panel.is-up { top: auto; bottom: calc(100% + 6px); }
-.vmenu-panel.is-end { left: auto; right: 0; }
-.vmenu-loaders { padding: 6px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow-y: auto; }
+.vmenu-loaders { flex: 0 0 140px; padding: 6px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow-y: auto; }
 .vmenu-heading { font-size: 12px; color: var(--text-3); padding: 6px 9px 4px; }
-.vmenu-versions { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.vmenu-versions { flex: 1 1 0; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .vmenu-search { display: flex; align-items: center; gap: 8px; padding: 0 10px; height: 40px; border-bottom: 1px solid var(--line); color: var(--text-3); flex-shrink: 0; }
 .vmenu-search input { height: 100%; padding: 0; border: none; background: none; }
 /* Sarmalayıcı odağı gösteriyor; içteki alanın ayrı çerçevesi gereksiz */
@@ -1093,8 +1100,7 @@ button.news-item:hover { background: var(--raised-2); border-color: var(--line-2
 .vmenu-item.is-selected { color: var(--text); background: var(--raised-2); }
 .vmenu-item.is-selected svg { color: var(--accent-text); }
 .vmenu-beta { font-size: 9px; margin-left: 2px; color: var(--warn); }
-.vmenu-panel.is-single { grid-template-columns: 1fr; width: 280px; }
-.vmenu.is-block .vmenu-panel.is-single { width: 100%; }
+.vmenu-panel.is-single { width: 280px; }
 .vmenu-trigger-text .is-strong { color: var(--text); font-weight: 600; }
 .vmenu-item-latest { border-bottom: 1px solid var(--line); border-radius: var(--r-sm) var(--r-sm) 0 0; margin-bottom: 4px; }
 .vmenu-empty { padding: 16px; text-align: center; font-size: 13px; color: var(--text-3); }
@@ -1160,7 +1166,8 @@ button.news-item:hover { background: var(--raised-2); border-color: var(--line-2
 .field-hint { font-size: 12px; color: var(--text-3); }
 .add-form-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
 
-.server-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--raised); }
+/* overflow: satır üzerine gelme dolgusu listenin yuvarlak köşelerini taşırmasın ("oyna" menüsü portal ile çizilir) */
+.server-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--raised); overflow: hidden; }
 .server-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .server-row:last-child { border-bottom: none; }
 .server-row:hover { background: var(--raised-2); }
@@ -1222,15 +1229,17 @@ button.news-item:hover { background: var(--raised-2); border-color: var(--line-2
 }
 .modal-sm { max-width: 420px; }
 .modal-md { max-width: 500px; }
-.modal-head { display: flex; align-items: center; gap: 10px; padding: 18px 18px 0 20px; }
-.modal-title { font-size: 17px; flex: 1; }
+.modal-head { display: flex; align-items: center; gap: 10px; flex-shrink: 0; padding: 18px 18px 0 20px; }
+.modal-title { font-size: 17px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .modal-icon { width: 32px; height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 8px; corner-shape: var(--shape); background: var(--raised-3); color: var(--text-2); box-shadow: inset 0 1px 0 var(--hl); }
 .modal-icon.tone-danger { background: var(--danger-weak); color: var(--danger); }
 .modal-icon.tone-success { background: color-mix(in srgb, var(--ok) 13%, transparent); color: var(--ok); }
 .modal-close { margin-left: auto; }
-.modal-body { padding: 12px 20px 4px; }
-.modal-text { color: var(--text-2); line-height: 1.55; }
-.modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 18px 20px 20px; }
+/* Uzun içerik (sorun bildir, satın alma onayı) alçak pencerede gövdede kayar: başlık ve
+   düğmeler hep görünür. Açılır menüler portal ile çizildiği için gövde onları kesmez. */
+.modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 20px 4px; }
+.modal-text { color: var(--text-2); line-height: 1.55; overflow-wrap: anywhere; }
+.modal-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; flex-shrink: 0; padding: 18px 20px 20px; }
 
 .form-stack { display: flex; flex-direction: column; gap: 14px; }
 .divider-label { display: flex; align-items: center; gap: 10px; margin: 18px 0 12px; color: var(--text-3); font-size: 12px; }
@@ -1433,7 +1442,8 @@ button.news-item:hover { background: var(--raised-2); border-color: var(--line-2
 .acct-info { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
 .acct-type { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: var(--raised-3); color: var(--text-2); }
 .acct-type.is-microsoft { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
-.acct-name { font-family: var(--font-display); font-size: 24px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+/* nowrap olmadan ellipsis çalışmaz: boşluksuz uzun ad kesiliyordu (… yok) */
+.acct-name { font-family: var(--font-display); font-size: 24px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .acct-uuid { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 6px; margin-left: -6px; font-size: 12px; font-weight: 500; color: var(--text-3); font-family: Consolas, 'Cascadia Mono', monospace; border-radius: 5px; corner-shape: round; }
 .acct-uuid:hover { color: var(--text); background: var(--raised-2); }
 .acct-actions { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
@@ -1454,7 +1464,7 @@ button.news-item:hover { background: var(--raised-2); border-color: var(--line-2
 .hs-card-text p { color: var(--text-2); font-size: 13px; }
 .hs-safe { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-3); }
 .hs-safe svg { color: var(--ok); }
-.hs-username { font-family: var(--font-display); font-size: 20px; line-height: 1.2; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.hs-username { font-family: var(--font-display); font-size: 20px; line-height: 1.2; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hs-balance { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text-2); }
 .hs-balance b { color: var(--text); font-variant-numeric: tabular-nums; }
 .hs-balance .link-btn { font-size: 12px; margin-left: 6px; }
@@ -1472,7 +1482,8 @@ button.news-item:hover { background: var(--raised-2); border-color: var(--line-2
 .hs-fallback .link-btn { font-size: 12px; }
 .hs-fallback-url { flex-basis: 100%; text-align: center; font-family: Consolas, 'Cascadia Mono', monospace; color: var(--text-3); overflow-wrap: anywhere; }
 
-.portal-banner { margin: 12px 16px 0; }
+/* Üst bar ile içerik yüzeyi arasında: altta boşluk (yüzeyin yuvarlak köşesine yapışıyordu) */
+.portal-banner { margin: 0 16px 10px; }
 
 /* ── HardSetups kütüphanesi ── */
 .page-head-actions { display: flex; align-items: center; gap: 8px; }
@@ -1510,8 +1521,10 @@ button.news-item:hover { background: var(--raised-2); border-color: var(--line-2
 .notif-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 8px 10px; text-align: left; font-weight: 400; border-radius: var(--r-sm); color: var(--text-2); }
 .notif-item:hover { background: var(--raised-2); }
 .notif-item.is-unread { color: var(--text); }
-.notif-item.is-unread .notif-title::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 1px; background: var(--accent-edge); vertical-align: middle; }
-.notif-title { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: 13px; }
+/* Okunmamış işareti ve dış bağlantı ikonu başlığın ilk satırında kalır (uzun başlık iki satıra iner) */
+.notif-item.is-unread .notif-title::before { content: ''; flex-shrink: 0; width: 6px; height: 6px; margin: 6px 1px 0 0; border-radius: 1px; background: var(--accent-edge); }
+.notif-title { display: inline-flex; align-items: flex-start; gap: 5px; font-weight: 600; font-size: 13px; }
+.notif-title svg { margin-top: 3px; }
 .notif-body { font-size: 12.5px; color: var(--text-2); }
 .notif-time { font-size: 11.5px; color: var(--text-3); }
 .notif-empty { display: flex; justify-content: center; padding: 22px 10px; color: var(--text-3); font-size: 13px; }

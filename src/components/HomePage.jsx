@@ -136,7 +136,10 @@ export default function HomePage({
 
         <div className="band-main">
           <div className="band-hello">
-            <h1 className="band-title">{name ? `${greeting}, ${name}` : greeting}</h1>
+            {/* Ad ayrı parça: uzun kullanıcı adı kelime ortasından bölünmez, sığmazsa kısalır (…) */}
+            <h1 className="band-title" title={name ? `${greeting}, ${name}` : undefined}>
+              {name ? <>{greeting}, <span className="band-name">{name}</span></> : greeting}
+            </h1>
             {!signedIn && <p className="band-tagline">{t('home.band.tagline')}</p>}
             {(balance || unread > 0 || canConnect) && (
               <div className="band-chips">

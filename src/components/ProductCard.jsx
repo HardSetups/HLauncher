@@ -79,7 +79,7 @@ export default function ProductCard({ product, imageHosts, onOpen, layout = 'gri
       </CoverArt>
       <span className="pcard-body">
         {wide && <InstanceIcon instance={{ id: product.slug, iconUrl: icon }} size={44} className="pcard-icon" />}
-        <span className="pcard-name ellipsis">{product.name}</span>
+        <span className="pcard-name ellipsis" title={product.name}>{product.name}</span>
         {product.shortDescription && <span className="pcard-desc">{product.shortDescription}</span>}
         <span className="pcard-foot">
           {product.owned

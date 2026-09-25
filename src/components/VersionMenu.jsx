@@ -1,9 +1,13 @@
 // Sürüm (+ isteğe bağlı loader) seçici: açılır panel, aranabilir sürüm listesi.
 // hideLoaders → yalnızca sürüm; allowLatest → "Her zaman en yeni" (null) seçeneği.
-import { useState, useMemo, useRef, useEffect } from 'react';
+// Panel Menu gibi kabuğa portal ile sabit konumla çizilir (ui.jsx useFloating): modal gövdesi ya da
+// kaydırılan sayfa onu kesmez; yer olan tarafa açılır, kaydırınca tetikleyiciyle birlikte gider.
+import { useState, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Search, Check } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
+import { useFloating, floatingHost } from './ui.jsx';
 
 const LOADERS = [
   { id: 'release', label: 'Vanilla' },
@@ -22,35 +26,13 @@ function VersionMenu({
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  // Panel yerleşimi: yer olan tarafa açılır, yüksekliği sığacak kadar
-  const [placement, setPlacement] = useState({ up: false, maxHeight: 320 });
   const rootRef = useRef(null);
+  const panelRef = useRef(null);
+  const close = useCallback(() => setOpen(false), []);
+  // Blok tetikleyicide panel tetikleyici kadar geniş (ör. profil ayarları, yeni profil)
+  useFloating({ open, onClose: close, anchorRef: rootRef, panelRef, align, matchWidth: block, maxHeight: 340, minHeight: 200, lockSide: true });
 
-  const toggle = () => {
-    if (!open && rootRef.current) {
-      // Taşanı kırpan en yakın kaydırma alanına göre ölç (yoksa pencere)
-      const r = rootRef.current.getBoundingClientRect();
-      const box = rootRef.current.closest('.page-scroll, .modal')?.getBoundingClientRect() || { top: 0, bottom: window.innerHeight };
-      const bottom = Math.min(box.bottom, window.innerHeight);
-      const below = bottom - r.bottom - 10;
-      const above = r.top - Math.max(box.top, 0) - 10;
-      const up = below < 280 && above > below;
-      setPlacement({ up, maxHeight: Math.max(200, Math.min(340, up ? above : below)) });
-    }
-    setOpen((v) => !v);
-  };
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const onDown = (e) => { if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false); };
-    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+  const toggle = () => setOpen((v) => !v);
 
   const filtered = useMemo(() => {
     const q = query.trim();
@@ -83,15 +65,17 @@ function VersionMenu({
         <ChevronDown size={16} className={`vmenu-chevron${open ? ' is-open' : ''}`} />
       </button>
 
+      {createPortal(
       <AnimatePresence>
         {open && (
           <motion.div
-            className={`vmenu-panel${placement.up ? ' is-up' : ''}${align === 'end' ? ' is-end' : ''}${hideLoaders ? ' is-single' : ''}`}
-            style={{ maxHeight: placement.maxHeight }}
+            ref={panelRef}
+            className={`vmenu-panel is-floating${hideLoaders ? ' is-single' : ''}`}
             role="dialog"
             aria-label={t('dash.version.label')}
-            initial={{ opacity: 0, y: placement.up ? 6 : -6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: placement.up ? 6 : -6, scale: 0.98 }}
-            transition={{ duration: 0.14 }}
+            /* konum, yükseklik ve görünürlük: useFloating */
+            initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }}
+            transition={{ duration: 0.14, ease: [0.2, 0.8, 0.2, 1] }}
           >
             {!hideLoaders && (
               <div className="vmenu-loaders">
@@ -99,6 +83,7 @@ function VersionMenu({
                 {LOADERS.map((l) => (
                   <button
                     key={l.id}
+                    type="button"
                     className={`vmenu-item${loaderType === l.id ? ' is-selected' : ''}`}
                     onClick={() => setLoaderType(l.id)}
                     title={l.experimental ? t('vp.experimental') : undefined}
@@ -117,7 +102,7 @@ function VersionMenu({
               </label>
               <div className="vmenu-list">
                 {allowLatest && !query && (
-                  <button className={`vmenu-item vmenu-item-latest${followsLatest ? ' is-selected' : ''}`} onClick={() => choose(null)}>
+                  <button type="button" className={`vmenu-item vmenu-item-latest${followsLatest ? ' is-selected' : ''}`} onClick={() => choose(null)}>
                     <span>{t('vp.alwaysLatestItem')} <span className="muted">· {latestId}</span></span>
                     {followsLatest && <Check size={14} />}
                   </button>
@@ -127,7 +112,7 @@ function VersionMenu({
                 {filtered.map((v) => {
                   const selected = !followsLatest && selectedVersion === v.id;
                   return (
-                    <button key={v.id} className={`vmenu-item${selected ? ' is-selected' : ''}`} onClick={() => choose(v.id)}>
+                    <button key={v.id} type="button" className={`vmenu-item${selected ? ' is-selected' : ''}`} onClick={() => choose(v.id)}>
                       <span>
                         {v.id}
                         {v.id === latestId && <span className="vmenu-latest">{t('vp.latestShort')}</span>}
@@ -140,7 +125,9 @@ function VersionMenu({
             </div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      floatingHost(),
+      )}
     </div>
   );
 }

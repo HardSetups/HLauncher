@@ -306,16 +306,18 @@ export default function ContentList({ instance, type, onError, onNotice, onAdd, 
         </div>
       )}
 
+      {/* Diğer silme onaylarıyla aynı: tehlike ikonu, düğmeler alt satırda 8 px arayla */}
       <Modal
         open={!!pendingRemove}
         onClose={() => setPendingRemove(null)}
+        icon={<Trash2 size={18} />}
+        tone="danger"
         title={t('content.removeTitle')}
-        accentColor="#ef4444"
         footer={
-          <div className="modal-actions">
+          <>
             <button className="btn-ghost" onClick={() => setPendingRemove(null)}>{t('common.cancel')}</button>
             <button className="btn-danger" onClick={confirmRemove} autoFocus>{t('common.delete')}</button>
-          </div>
+          </>
         }
       >
         <p className="modal-text">{pendingRemove ? t('content.removeConfirm', { name: pendingRemove.title || pendingRemove.name }) : ''}</p>

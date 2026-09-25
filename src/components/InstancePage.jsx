@@ -43,7 +43,7 @@ export default function InstancePage({
       <header className="inst-head">
         <InstanceIcon instance={instance} size={76} />
         <div className="inst-title">
-          <h1 className="ellipsis">{instance.name}</h1>
+          <h1 className="ellipsis" title={instance.name}>{instance.name}</h1>
           <p className="inst-meta">
             <span>{instanceSubtitle(instance, latestVersionId)}</span>
             <span className="dot-sep" />
