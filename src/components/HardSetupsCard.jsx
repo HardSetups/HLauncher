@@ -162,7 +162,7 @@ export default function HardSetupsCard({ portal, onError }) {
         <span className="hs-mark" aria-hidden="true">{(portal.user?.username || 'H').slice(0, 1).toUpperCase()}</span>
         <div className="hs-card-text">
           <span className="acct-type is-microsoft">{t('hs.connected')}</span>
-          <h3 className="hs-username">{portal.user?.username}</h3>
+          <h3 className="hs-username" title={portal.user?.username}>{portal.user?.username}</h3>
           {balance && (
             <span className="hs-balance">
               <Wallet size={13} /> {t('hs.balance')}: <b>{balance}</b>

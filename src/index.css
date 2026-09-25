@@ -525,14 +525,16 @@ input[type='range']::-webkit-slider-thumb {
   padding: 0 8px 0 18px;
   -webkit-app-region: drag;
 }
-.crumbs { display: flex; align-items: center; min-width: 0; -webkit-app-region: no-drag; font-weight: 600; font-size: 13.5px; }
-.crumb { display: inline-flex; align-items: center; min-width: 0; }
+/* Uzun profil / ürün adı: son kırıntı kısalır (…), sağdaki durum ve pencere düğmeleri yerinde kalır */
+.crumbs { display: flex; align-items: center; min-width: 0; overflow: hidden; -webkit-app-region: no-drag; font-weight: 600; font-size: 13.5px; }
+.crumb { display: inline-flex; align-items: center; flex-shrink: 0; }
+.crumb:last-child { flex-shrink: 1; min-width: 0; }
 .crumb-sep { color: var(--text-3); margin: 0 4px; opacity: 0.7; }
-.crumb-link { color: var(--text-2); padding: 3px 6px; border-radius: 6px; }
+.crumb-link { color: var(--text-2); padding: 3px 6px; border-radius: 6px; white-space: nowrap; }
 .crumb-link:hover { color: var(--text); background: var(--hover); }
-.crumb-current { color: var(--text); padding: 3px 6px; }
-.topbar-drag { flex: 1; align-self: stretch; }
-.topbar-right { display: flex; align-items: center; gap: 8px; -webkit-app-region: no-drag; }
+.crumb-current { color: var(--text); padding: 3px 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-drag { flex: 1; min-width: 24px; align-self: stretch; }
+.topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; min-width: 0; -webkit-app-region: no-drag; }
 
 .run-status {
   display: inline-flex;
@@ -719,7 +721,8 @@ input[type='range']::-webkit-slider-thumb {
 }
 .band-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; max-width: 480px; }
 .band-hello { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.band-title { font-family: var(--font-display); font-size: var(--fs-3xl); font-weight: 700; line-height: 1.06; color: var(--text); overflow-wrap: anywhere; }
+.band-title { font-family: var(--font-display); font-size: var(--fs-3xl); font-weight: 700; line-height: 1.06; color: var(--text); }
+.band-name { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .band-tagline { color: var(--text-2); font-size: 14px; max-width: 420px; }
 .band-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .band-chip {
@@ -1438,7 +1441,8 @@ button.news-item:hover { background: var(--raised-2); border-color: var(--line-2
 .acct-info { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
 .acct-type { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: var(--raised-3); color: var(--text-2); }
 .acct-type.is-microsoft { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
-.acct-name { font-family: var(--font-display); font-size: 24px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+/* nowrap olmadan ellipsis çalışmaz: boşluksuz uzun ad kesiliyordu (… yok) */
+.acct-name { font-family: var(--font-display); font-size: 24px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .acct-uuid { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 6px; margin-left: -6px; font-size: 12px; font-weight: 500; color: var(--text-3); font-family: Consolas, 'Cascadia Mono', monospace; border-radius: 5px; corner-shape: round; }
 .acct-uuid:hover { color: var(--text); background: var(--raised-2); }
 .acct-actions { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
@@ -1459,7 +1463,7 @@ button.news-item:hover { background: var(--raised-2); border-color: var(--line-2
 .hs-card-text p { color: var(--text-2); font-size: 13px; }
 .hs-safe { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-3); }
 .hs-safe svg { color: var(--ok); }
-.hs-username { font-family: var(--font-display); font-size: 20px; line-height: 1.2; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.hs-username { font-family: var(--font-display); font-size: 20px; line-height: 1.2; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hs-balance { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text-2); }
 .hs-balance b { color: var(--text); font-variant-numeric: tabular-nums; }
 .hs-balance .link-btn { font-size: 12px; margin-left: 6px; }
@@ -1515,8 +1519,10 @@ button.news-item:hover { background: var(--raised-2); border-color: var(--line-2
 .notif-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 8px 10px; text-align: left; font-weight: 400; border-radius: var(--r-sm); color: var(--text-2); }
 .notif-item:hover { background: var(--raised-2); }
 .notif-item.is-unread { color: var(--text); }
-.notif-item.is-unread .notif-title::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 1px; background: var(--accent-edge); vertical-align: middle; }
-.notif-title { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: 13px; }
+/* Okunmamış işareti ve dış bağlantı ikonu başlığın ilk satırında kalır (uzun başlık iki satıra iner) */
+.notif-item.is-unread .notif-title::before { content: ''; flex-shrink: 0; width: 6px; height: 6px; margin: 6px 1px 0 0; border-radius: 1px; background: var(--accent-edge); }
+.notif-title { display: inline-flex; align-items: flex-start; gap: 5px; font-weight: 600; font-size: 13px; }
+.notif-title svg { margin-top: 3px; }
 .notif-body { font-size: 12.5px; color: var(--text-2); }
 .notif-time { font-size: 11.5px; color: var(--text-3); }
 .notif-empty { display: flex; justify-content: center; padding: 22px 10px; color: var(--text-3); font-size: 13px; }
