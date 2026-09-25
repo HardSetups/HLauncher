@@ -1,10 +1,11 @@
 # Değişiklik Günlüğü
 
-## 1.0.0-alpha.7 — yayımlanmadı
+## 1.0.0-alpha.7 — 2026-09-25
 
 ### Yeni görünüm
 - Baştan tasarlanan tema: koyu grafit katmanlar, düz olmayan ama sakin bir arka plan, kartlarda ince ışık ve gölge. Varsayılan vurgu rengi artık HardSetups **Kiremit** (eski varsayılan turuncuyu kullananlar bir kez Kiremit'e geçer; başka renk seçtiysen dokunulmaz)
 - **Ana sayfa** yenilendi: üstte selamlama, bakiye ve son oynadığın profil için **Oyna**; hızlı erişim düğmeleri; HardSetups ürünleri, duyurular ve haberler; **Kaldığın yerden devam** ve profillerin altta
+- Açılır menüler (bildirimler, ⋯ menüleri) artık kartların ve bantların kenarında kesilmiyor; yer yoksa yukarı açılıyor
 
 ### HardSetups hesabı
 - Launcher artık **HardSetups hesabıyla** kullanılır. İlk açılışta **Giriş yap** ya da **Kayıt ol** ekranı gelir; giriş tarayıcıda yapılır, launcher parolanı görmez, ekranda bir bağlantı kodu çıkar
