@@ -103,15 +103,20 @@ function initUpdater(app, store, win) {
         activeFeed = feed;
         if (feed) {
             autoUpdater.setFeedURL(feed);
-            autoUpdater.requestHeaders = feedHeaders(store.get('installId'), app.getVersion());
             log.info(`[UPDATER] Kaynak: ${feed.url}`);
         }
 
+        // Başlıklar (kurulum kimliği, sürüm) yalnızca latest.yml isteğine gider: dosya ucu başlık
+        // istemez ve 302 ile CDN'e yönlenir (§0: bu başlıklar yalnızca API host'una). electron-updater
+        // 'update-available'ı indirmeyi başlatmadan hemen önce, eşzamanlı yayar.
+        const feedRequestHeaders = () => feedHeaders(store.get('installId'), app.getVersion());
         let pendingVersion = null;
         autoUpdater.on('checking-for-update', () => {
+            if (feed) autoUpdater.requestHeaders = feedRequestHeaders();
             if (lastStatus.state !== 'downloading') send({ state: 'checking' });
         });
         autoUpdater.on('update-available', (info) => {
+            if (feed) autoUpdater.requestHeaders = null;
             pendingVersion = info.version;
             log.info(`[UPDATER] Yeni sürüm bulundu: ${info.version}`);
             send({ state: 'downloading', version: info.version, percent: 0, notes: plainReleaseNotes(info.releaseNotes) });
