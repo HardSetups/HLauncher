@@ -1,5 +1,18 @@
 # Değişiklik Günlüğü
 
+## 1.0.0-alpha.8 — 2026-09-25
+
+### Düzeltmeler
+- **Sürüm seçici:** liste artık kesilmiyor ve kendi içinde kayıyor, eski sürümlere inilebiliyor; pencere dışına taşmıyor, sayfa kaydırılınca kapanıyor. Yeni profil penceresinde Escape önce yalnızca listeyi kapatıyor
+- **Uzun adlar:** üst bardaki yol, karşılama, hesap ve profil adları, vitrin başlıkları ve bildirimler taşmıyor; kısaltılan adın tamamı üzerine gelince görünüyor
+- **İndirme paneli:** kurulum bitince küçülüyor, Kütüphanem'deki **Oyna** düğmesini örtmüyor; hata varsa açık kalıyor
+- Çok profil varken sol raydaki **Yeni profil** düğmesi hep görünür
+- Pencereler alçak ekranda kendi içinde kayıyor; başlık ve düğmeler hep görünür
+- Mod silme onayı diğer onaylarla aynı görünümde; küçük hizalama düzeltmeleri
+
+### Güvenlik
+- Güncelleme indirilirken cihaz kimliği artık indirme sunucusuna gönderilmiyor; yalnızca "yeni sürüm var mı" sorgusunda HardSetups'a gidiyor
+
 ## 1.0.0-alpha.7 — 2026-09-25
 
 ### Yeni görünüm
