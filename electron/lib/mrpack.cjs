@@ -24,11 +24,32 @@ function safeJoin(baseDir, relPath) {
     return target;
 }
 
+// Modrinth modpack biçiminin izin verdiği indirme adresleri (yalnızca https)
+const MRPACK_HOSTS = new Set(['cdn.modrinth.com', 'github.com', 'raw.githubusercontent.com', 'gitlab.com']);
+const MAX_OVERRIDE_BYTES = 1024 * 1024 * 1024; // overrides toplamı
+const MAX_OVERRIDE_ENTRIES = 20000;
+
+function allowedMrpackUrl(url) {
+    try {
+        const u = new URL(url);
+        return u.protocol === 'https:' && MRPACK_HOSTS.has(u.hostname) && !u.username && !u.password;
+    } catch { return false; }
+}
+
+/** Beyana güvenilmeyen açma: 0 beyan edip şişen üye (zip bombası) ya da beyanla uyuşmayan boyut reddedilir. */
+function boundedData(entry, max) {
+    const declared = entry.header.size;
+    if ((declared === 0 && entry.header.compressedSize > 2) || declared > max) throw new Error('Modpack arşivinde boyutu tutarsız bir dosya var');
+    const data = entry.getData();
+    if (data.length !== declared) throw new Error('Modpack arşivinde boyutu tutarsız bir dosya var');
+    return data;
+}
+
 function parseIndex(zipPath) {
     const zip = new AdmZip(zipPath);
     const entry = zip.getEntry('modrinth.index.json');
     if (!entry) throw new Error('Geçerli bir .mrpack değil (modrinth.index.json yok)');
-    const index = JSON.parse(entry.getData().toString('utf8'));
+    const index = JSON.parse(boundedData(entry, 16 * 1024 * 1024).toString('utf8'));
     if (index.formatVersion !== 1) throw new Error(`Desteklenmeyen mrpack formatı: ${index.formatVersion}`);
     return { zip, index };
 }
@@ -54,8 +75,10 @@ async function importMrpack(mrpackPath, onProgress = () => {}) {
     const managedFiles = [];
     let done = 0;
     for (const file of files) {
-        const url = file.downloads?.[0];
-        if (!url) continue;
+        // Biçimin izin verdiği ilk https adresi; sha1 zorunlu (doğrulamasız dosya profile girmez)
+        const url = (Array.isArray(file.downloads) ? file.downloads : []).find(allowedMrpackUrl);
+        if (!url) throw new Error(`Modpack izin verilmeyen bir adresten dosya istiyor: ${path.basename(String(file.path || ''))}`);
+        if (!/^[a-f0-9]{40}$/i.test(String(file.hashes?.sha1 || ''))) throw new Error(`Modpack dosyasında doğrulama özeti eksik: ${path.basename(String(file.path || ''))}`);
         const dest = safeJoin(instanceDir, file.path);
         onProgress({
             percent: Math.floor((done / Math.max(files.length, 1)) * 80),
@@ -69,14 +92,19 @@ async function importMrpack(mrpackPath, onProgress = () => {}) {
 
     // overrides/ ve client-overrides/ içeriğini profile kopyala
     onProgress({ percent: 85, key: 'be.copyingConfigs' });
+    let overrideBytes = 0;
+    let overrideCount = 0;
     for (const overrideDir of ['overrides/', 'client-overrides/']) {
         for (const entry of zip.getEntries()) {
             if (entry.isDirectory || !entry.entryName.startsWith(overrideDir)) continue;
             const rel = entry.entryName.slice(overrideDir.length);
             if (!rel) continue;
+            if (++overrideCount > MAX_OVERRIDE_ENTRIES) throw new Error('Modpack çok fazla dosya içeriyor');
+            const data = boundedData(entry, MAX_OVERRIDE_BYTES - overrideBytes);
+            overrideBytes += data.length;
             const dest = safeJoin(instanceDir, rel);
             fs.mkdirSync(path.dirname(dest), { recursive: true });
-            fs.writeFileSync(dest, entry.getData());
+            fs.writeFileSync(dest, data);
         }
     }
 

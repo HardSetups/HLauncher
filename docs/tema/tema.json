@@ -1,0 +1,65 @@
+{
+  "$comment": "HardSetups tema kimliği — tek kaynak. Launcher (src/index.css), oyun içi modlar ve site bu değerleri kullanır. Değiştirirken docs/tema/KIMLIK.md'yi de güncelle.",
+  "id": "hardsetups:kiremit",
+  "name": "HardSetups Kiremit",
+  "version": 1,
+  "palette": {
+    "kiremit": {
+      "300": "#F4957F",
+      "400": "#EC6A51",
+      "500": "#A52B12",
+      "600": "#7F200D"
+    },
+    "kor": "#F0A04B",
+    "grafit": {
+      "950": "#0B0C0F",
+      "900": "#101216",
+      "850": "#15171C",
+      "800": "#1B1E24",
+      "750": "#22252C",
+      "700": "#2B2F37",
+      "600": "#3A3F49"
+    },
+    "text": {
+      "primary": "#F2F3F5",
+      "secondary": "#B3B7C0",
+      "tertiary": "#7C818C"
+    },
+    "status": {
+      "success": "#3FCF7B",
+      "warning": "#E7A93B",
+      "danger": "#E5484D",
+      "info": "#4C8DFF"
+    }
+  },
+  "roles": {
+    "background": "grafit.900",
+    "backgroundDeep": "grafit.950",
+    "surface": "grafit.850",
+    "raised": "grafit.800",
+    "raised2": "grafit.750",
+    "line": "grafit.700",
+    "lineStrong": "grafit.600",
+    "accentFill": "kiremit.500",
+    "accentFillPressed": "kiremit.600",
+    "accentText": "kiremit.400",
+    "onAccentFill": "#FFFFFF",
+    "highlight": "kor"
+  },
+  "shape": {
+    "chamferPx": { "launcherControl": 5, "launcherPanel": 8, "inGameTexel": 1 },
+    "radiusPx": { "sm": 7, "md": 9, "lg": 12 }
+  },
+  "motion": {
+    "fastMs": 120,
+    "baseMs": 180,
+    "slowMs": 260,
+    "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)"
+  },
+  "typography": {
+    "launcherDisplay": "Chakra Petch 600/700",
+    "launcherUi": "Segoe UI Variable",
+    "site": "Poppins",
+    "inGame": "minecraft:default (vanilla; Türkçe karakterler için Unicode yedeği açık)"
+  }
+}

@@ -32,17 +32,25 @@ function pickLoader(kind, loaders) {
     return (stable || loaders[0]).loader?.version || null;
 }
 
-async function install(kind, rootPath, mcVer, onProgress) {
+/**
+ * @param {string} [pinnedVersion] HardSetups ürünlerinde sunucunun sabitlediği loader
+ *   sürümü (sözleşme §7.9); verilirse "en yeni kararlı" seçimi yapılmaz.
+ */
+async function install(kind, rootPath, mcVer, onProgress, pinnedVersion = null) {
     const meta = META[kind];
     if (!meta) throw new Error(`Bilinmeyen loader: ${kind}`);
     const label = kind === 'fabric' ? 'Fabric' : 'Quilt';
+    if (pinnedVersion && !/^[\w.+-]{1,64}$/.test(pinnedVersion)) throw new Error(`Geçersiz ${label} sürümü`);
 
-    const local = findInstalled(kind, rootPath, mcVer);
+    const local = pinnedVersion ? null : findInstalled(kind, rootPath, mcVer);
     if (local) { log.info(`[${label.toUpperCase()}] Yerel: ${local}`); return local; }
 
-    onProgress({ type: kind, percent: 0, key: 'be.checkingVersions', params: { name: label } });
-    const loaders = await httpGetJson(`${meta.base}/versions/loader/${mcVer}`);
-    const loaderVersion = pickLoader(kind, loaders);
+    let loaderVersion = pinnedVersion;
+    if (!loaderVersion) {
+        onProgress({ type: kind, percent: 0, key: 'be.checkingVersions', params: { name: label } });
+        const loaders = await httpGetJson(`${meta.base}/versions/loader/${mcVer}`);
+        loaderVersion = pickLoader(kind, loaders);
+    }
     if (!loaderVersion) throw new Error(`${mcVer} için ${label} bulunamadı`);
 
     const fullId = `${meta.prefix}-${loaderVersion}-${mcVer}`;

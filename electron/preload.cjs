@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearCache:     () => ipcRenderer.invoke('system:clear-cache'),
     openInstanceDir:(id) => ipcRenderer.invoke('instances:open-dir', id),
     getStoreData:   () => ipcRenderer.invoke('store:all'),
+    markVersionSeen: () => ipcRenderer.invoke('app:seen-version'),
     getNews:        () => ipcRenderer.invoke('news:get'),
 
     // Launcher güncellemeleri
@@ -54,6 +55,35 @@ contextBridge.exposeInMainWorld('electronAPI', {
     loginMicrosoft: () => ipcRenderer.invoke('account:login-microsoft'),
     loginOffline:   (name) => ipcRenderer.invoke('account:login-offline', name),
     logout:         () => ipcRenderer.invoke('account:logout'),
+
+    // HardSetups hesabı (portal) — token'lar ana süreçte kalır, burada yalnızca özet
+    portalState:        () => ipcRenderer.invoke('portal:state'),
+    portalRefresh:      () => ipcRenderer.invoke('portal:refresh'),
+    portalLoginStart:   (opts) => ipcRenderer.invoke('portal:login-start', opts), // { register: true } → "Kayıt ol"
+    portalLoginCancel:  () => ipcRenderer.invoke('portal:login-cancel'),
+    portalOpenVerification: () => ipcRenderer.invoke('portal:open-verification'),
+    portalCopyVerification: () => ipcRenderer.invoke('portal:copy-verification'),
+    portalLogout:       () => ipcRenderer.invoke('portal:logout'),
+    portalOpenLink:     (kind) => ipcRenderer.invoke('portal:open-link', kind),
+    portalOpenUrl:      (url) => ipcRenderer.invoke('portal:open-url', url),
+    portalHome:         (reason) => ipcRenderer.invoke('portal:home', reason),
+    portalDismissAnnouncement: (id) => ipcRenderer.invoke('portal:dismiss-announcement', id),
+    portalProducts:     () => ipcRenderer.invoke('portal:products'),
+    portalProduct:      (slug) => ipcRenderer.invoke('portal:product', slug),
+    portalQuote:        (productSlug, plan, coupon) => ipcRenderer.invoke('portal:quote', productSlug, plan, coupon),
+    portalPurchase:     (quoteId, consents) => ipcRenderer.invoke('portal:purchase', quoteId, consents),
+    portalNotifications: (cursor) => ipcRenderer.invoke('portal:notifications', cursor),
+    portalNotificationsRead: (opts) => ipcRenderer.invoke('portal:notifications-read', opts),
+    portalReportPreview: (instanceId) => ipcRenderer.invoke('portal:report-preview', instanceId),
+    portalReportSend:   (payload) => ipcRenderer.invoke('portal:report-send', payload),
+    portalLibrary:      (opts) => ipcRenderer.invoke('portal:library', opts),
+    portalInstall:      (slug, action, taskId) => ipcRenderer.invoke('portal:install', slug, action, taskId),
+    portalInstallKey:   (licenseKey, taskId) => ipcRenderer.invoke('portal:install-key', licenseKey, taskId),
+    portalUninstall:    (slug, opts) => ipcRenderer.invoke('portal:uninstall', slug, opts),
+    portalOpenBackups:  () => ipcRenderer.invoke('portal:open-backups'),
+    onPortalState:      (cb) => subscribe('portal:state', cb),
+    onPortalLogin:      (cb) => subscribe('portal:login', cb),
+    onPortalSession:    (cb) => subscribe('portal:session', cb),
 
     // Profiller
     listInstances:    () => ipcRenderer.invoke('instances:list'),

@@ -65,6 +65,8 @@ function create({ name, mcVersion = null, loader = 'release', ram = null, origin
 
     const data = ensureDefault();
     let finalId = id || slugify(name);
+    // 'hs-' öneki HardSetups ürünlerine (yönetilen örnekler) ayrılmış
+    if (origin !== 'hardsetups' && finalId.startsWith('hs-')) finalId = `p-${finalId}`;
     while (data.instances.some((i) => i.id === finalId)) {
         finalId = `${finalId}-${crypto.randomBytes(2).toString('hex')}`;
     }

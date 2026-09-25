@@ -26,3 +26,7 @@ installer
 *.njsproj
 *.sln
 *.sw?
+
+# Paylaşım için oluşturulan arşivler (ör. docs/tema/oyun-ici.rar)
+*.rar
+*.7z

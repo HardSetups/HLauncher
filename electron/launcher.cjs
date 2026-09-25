@@ -5,7 +5,7 @@ const { Client } = require('minecraft-launcher-core');
 
 const log = require('./lib/logger.cjs');
 const { getRootPath, getInstanceDir } = require('./lib/paths.cjs');
-const { getStore } = require('./lib/store.cjs');
+const { getStore, isSafeJvmArg, isValidJavaPath } = require('./lib/store.cjs');
 const { friendlyError } = require('./lib/errors.cjs');
 const { ensureJava, getRequiredJava } = require('./lib/java.cjs');
 const { getLatestRelease } = require('./lib/versions.cjs');
@@ -47,7 +47,8 @@ const JVM_PRESETS = {
 
 function jvmArgsFor(preset, customArgs, requiredJava) {
     if (preset === 'custom') {
-        return String(customArgs || '').split(/\s+/).filter(Boolean);
+        // Kod yükleten bayraklar (ör. -javaagent) ayar dosyasına bir şekilde girmiş olsa da kullanılmaz
+        return String(customArgs || '').split(/\s+/).filter(Boolean).filter(isSafeJvmArg);
     }
     if (preset === 'zgc' && requiredJava < 17) return JVM_PRESETS.balanced;
     return JVM_PRESETS[preset] || JVM_PRESETS.balanced;
@@ -76,8 +77,11 @@ function parseAddress(address) {
 
 const LOADER_LABELS = { optifine: 'OptiFine', fabric: 'Fabric', quilt: 'Quilt', forge: 'Forge', neoforge: 'NeoForge' };
 
-/** Loader'ı kurar; MCLC için { customVersionId } veya { forgeInstaller } döndürür. */
-async function prepareLoader(loader, rootPath, mcVersion, onProgress) {
+/**
+ * Loader'ı kurar; MCLC için { customVersionId } veya { forgeInstaller } döndürür.
+ * pinnedVersion: HardSetups ürünlerinde sunucunun sabitlediği loader sürümü.
+ */
+async function prepareLoader(loader, rootPath, mcVersion, onProgress, pinnedVersion = null) {
     switch (loader) {
         case 'release':
             return {};
@@ -85,7 +89,7 @@ async function prepareLoader(loader, rootPath, mcVersion, onProgress) {
             return { customVersionId: await optifine.install(rootPath, mcVersion, onProgress) };
         case 'fabric':
         case 'quilt':
-            return { customVersionId: await fabriclike.install(loader, rootPath, mcVersion, onProgress) };
+            return { customVersionId: await fabriclike.install(loader, rootPath, mcVersion, onProgress, pinnedVersion) };
         case 'forge':
         case 'neoforge':
             return { forgeInstaller: await forge.ensureInstaller(loader, mcVersion, onProgress) };
@@ -120,7 +124,7 @@ const launchGame = async (event, options = {}) => {
         const label = LOADER_LABELS[loader];
         event.reply('java-status', { type: loader, percent: 0, key: 'be.checking', params: { name: label } });
         try {
-            loaderResult = await prepareLoader(loader, rootPath, mcVersion, (p) => event.reply('java-status', p));
+            loaderResult = await prepareLoader(loader, rootPath, mcVersion, (p) => event.reply('java-status', p), instance.loaderVersion || null);
             event.reply('java-status', { type: 'done', percent: 100, key: 'be.ready', params: { name: label } });
         } catch (err) {
             log.error(`[LAUNCH] ${label} kurulum hatası: ${err.stack || err.message}`);
@@ -136,7 +140,8 @@ const launchGame = async (event, options = {}) => {
     const trimmedJava = (settings.javaPath || '').trim();
     let selectedJava;
     if (trimmedJava && trimmedJava !== 'java') {
-        if (!fs.existsSync(trimmedJava)) {
+        // Yalnızca java/javaw çalıştırılabiliri; ağ (UNC) yolu değil
+        if (!isValidJavaPath(trimmedJava) || !fs.existsSync(trimmedJava)) {
             event.reply('launch-error', `Belirtilen Java bulunamadı:\n${trimmedJava}\n\nAyarlar'dan geçerli bir java.exe seçin veya alanı boş bırakın.`);
             return;
         }
@@ -190,6 +195,9 @@ const launchGame = async (event, options = {}) => {
             const { host, port } = parseAddress(serverIp);
             gameArgs.push('--server', host, '--port', port);
         }
+    } else if (instance.quickPlayWorld && supportsQuickPlay(mcVersion)) {
+        // HardSetups ürünü doğrudan dünyaya açılır (sözleşme §7.9: --quickPlaySingleplayer)
+        quickPlay = { type: 'singleplayer', identifier: instance.quickPlayWorld };
     }
 
     const requiredJava = getRequiredJava(mcVersion);
@@ -222,7 +230,7 @@ const launchGame = async (event, options = {}) => {
         const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
         log.info(`[LAUNCH] Oyun başladı (${seconds} sn)`);
         if (settings.rpcEnabled !== false) {
-            discord.setPlaying({ version: mcVersion, serverAddress: serverIp || null });
+            discord.setPlaying({ version: mcVersion, serverAddress: serverIp || null, product: instance.origin === 'hardsetups' ? instance.name : null });
         }
         event.reply('launch-finished');
     } catch (err) {

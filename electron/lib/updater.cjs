@@ -1,8 +1,7 @@
-// Otomatik güncelleme (electron-updater + GitHub Releases).
-// - Kaynak: package.json → build.publish (HardSetups/HLauncher-releases: yalnızca
-//   derlenmiş dosyalar, herkese açık). alpha.6 öncesi kurulumlar kaynak repoyu
-//   dinlediği için sürümler scripts/release.cjs ile iki repoya birden yüklenir.
-//   Sürüm bir ön sürümse (1.0.0-alpha.N) Pre-release'ler de görülür.
+// Otomatik güncelleme (electron-updater).
+// - Kaynak (alpha.7'den beri): HardSetups güncelleme akışı (aşağıda). Sürümler panelden
+//   (Admin › Lisanslar › Launcher › Sürümler) yayımlanır. alpha.7 köprü sürümdür: GitHub'a da
+//   yüklenir ki GitHub'ı dinleyen kurulu alpha.6 ve öncesi ona geçebilsin.
 // - Açılışta ve açık kaldığı sürece her CHECK_INTERVAL'de bir denetler;
 //   Ayarlar'daki anahtar kapatılırsa zamanlayıcı durur (yeniden başlatma gerekmez).
 // - Güncelleme arka planda iner; "hazır" olunca arayüz kullanıcıya sorar.
@@ -13,10 +12,38 @@ const log = require('./logger.cjs');
 const CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3 saat
 const FIRST_CHECK_DELAY_MS = 8 * 1000;        // açılışı yavaşlatma
 
+// Güncelleme kaynağı (sözleşme §12). 'hardsetups': generic sağlayıcı
+// https://api.hardsetups.com/v1/launcher/update/<kanal> (latest.yml sunucuda üretilir, dosya
+// adresi göreli → 302 ile imzalı CDN; blockmap yok → nsis.differentialPackage: false).
+// Kademeli yayın kovası X-HL-Device'tan hesaplanır; kurulum kimliği YALNIZCA bu kaynağa gider.
+// 'github': package.json build.publish (HardSetups/HLauncher-releases) — alpha.6'ya kadar.
+const UPDATE_SOURCE = 'hardsetups';
+const HARDSETUPS_UPDATE_BASE = 'https://api.hardsetups.com/v1/launcher/update';
+
+/** Kaynak + kanal → electron-updater besleme ayarı (saf, testli). */
+function feedFor(source, channel = 'stable') {
+    if (source !== 'hardsetups') return null; // app-update.yml (GitHub) geçerli
+    const ch = channel === 'beta' ? 'beta' : 'stable';
+    return { provider: 'generic', url: `${HARDSETUPS_UPDATE_BASE}/${ch}` };
+}
+
+/** HardSetups akışına giden başlıklar (saf, testli): kurulum kimliği + sürüm. */
+function feedHeaders(installId, appVersion) {
+    const h = { 'X-HL-Version': String(appVersion) };
+    if (typeof installId === 'string' && /^[0-9a-f-]{36}$/.test(installId)) h['X-HL-Device'] = installId;
+    return h;
+}
+
+/** Yayımlanmış uygun sürüm yoksa akış latest.yml için 404 döner: bu "güncelleme yok" demektir (§12). */
+function isNoReleaseError(err) {
+    return err?.statusCode === 404 || /\b404\b/.test(String(err?.message || ''));
+}
+
 let autoUpdater = null;
 let mainWindow = null;
 let timer = null;
 let lastStatus = { state: 'idle' };
+let activeFeed = null; // HardSetups akışı kullanılıyorsa (feedFor sonucu)
 
 function send(status) {
     lastStatus = { ...status, at: Date.now() };
@@ -72,6 +99,13 @@ function initUpdater(app, store, win) {
         autoUpdater.logger = log;
         autoUpdater.autoDownload = true;
         autoUpdater.autoInstallOnAppQuit = true;
+        const feed = feedFor(UPDATE_SOURCE, store.get('settings')?.updateChannel);
+        activeFeed = feed;
+        if (feed) {
+            autoUpdater.setFeedURL(feed);
+            autoUpdater.requestHeaders = feedHeaders(store.get('installId'), app.getVersion());
+            log.info(`[UPDATER] Kaynak: ${feed.url}`);
+        }
 
         let pendingVersion = null;
         autoUpdater.on('checking-for-update', () => {
@@ -95,6 +129,11 @@ function initUpdater(app, store, win) {
         });
         autoUpdater.on('update-not-available', () => send({ state: 'uptodate' }));
         autoUpdater.on('error', (err) => {
+            if (feed && isNoReleaseError(err) && lastStatus.state !== 'downloading') {
+                log.info('[UPDATER] Akışta yayımlanmış sürüm yok');
+                send({ state: 'uptodate' });
+                return;
+            }
             log.info(`[UPDATER] Hata: ${err.message}`);
             // Hazır bir güncelleme varsa sonraki denetimin ağ hatası onu gölgelemesin
             if (lastStatus.state !== 'ready') send({ state: 'error', message: err.message });
@@ -118,7 +157,10 @@ function setEnabled(enabled) {
 function checkNow() {
     if (!autoUpdater) return lastStatus;
     if (['downloading', 'ready'].includes(lastStatus.state)) return lastStatus;
-    autoUpdater.checkForUpdates().catch((err) => send({ state: 'error', message: err.message }));
+    autoUpdater.checkForUpdates().catch((err) => {
+        if (activeFeed && isNoReleaseError(err)) send({ state: 'uptodate' });
+        else send({ state: 'error', message: err.message });
+    });
     return { state: 'checking' };
 }
 
@@ -132,4 +174,4 @@ function installNow() {
 
 function getStatus() { return lastStatus; }
 
-module.exports = { initUpdater, setEnabled, checkNow, installNow, getStatus, plainReleaseNotes };
+module.exports = { initUpdater, setEnabled, checkNow, installNow, getStatus, plainReleaseNotes, feedFor, feedHeaders, isNoReleaseError, UPDATE_SOURCE };

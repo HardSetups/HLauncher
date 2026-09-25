@@ -11,6 +11,7 @@ import { Menu, EmptyState } from './ui.jsx';
 import SkinViewer3D from './SkinViewer3D.jsx';
 import SkinPreview2D, { CapePreview } from './SkinPreview2D.jsx';
 import AccountPanel from './AccountPanel.jsx';
+import HardSetupsCard from './HardSetupsCard.jsx';
 import Modal from './Modal.jsx';
 
 const ANIMS = ['idle', 'walk', 'run', 'wave', 'crouch'];
@@ -40,7 +41,7 @@ function UsernameImport({ onImport, close }) {
   );
 }
 
-export default function AccountPage({ account, setAccount, onError }) {
+export default function AccountPage({ account, setAccount, portal, onError }) {
   const { t } = useI18n();
   const api = window.electronAPI;
   const isMs = account?.type === 'microsoft';
@@ -251,6 +252,9 @@ export default function AccountPage({ account, setAccount, onError }) {
               <AccountPanel account={account} setAccount={setAccount} onError={onError} />
             </section>
           )}
+
+          {/* ── HardSetups hesabı (Minecraft hesabından ayrı giriş) ── */}
+          <HardSetupsCard portal={portal} onError={onError} />
 
           {account && !isMs && (
             <div className="callout">

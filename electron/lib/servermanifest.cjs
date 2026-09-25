@@ -44,7 +44,11 @@ function validateManifest(m) {
 }
 
 async function fetchManifest(url) {
-    if (!/^https?:\/\//.test(url)) throw new Error('Manifest adresi http(s) olmalı');
+    // Yalnızca https: manifest mod adreslerini ve sha1'lerini taşır; http'de ağdaki biri mod enjekte edebilirdi.
+    // Yerel geliştirme/test sunucusu (127.0.0.1 / localhost) için http serbest.
+    if (!/^https:\/\//.test(url) && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(url)) {
+        throw new Error('Manifest adresi https olmalı (güvenlik için http kabul edilmiyor)');
+    }
     const manifest = await httpGetJson(url);
     const { ok, errors } = validateManifest(manifest);
     if (!ok) throw new Error(`Manifest geçersiz:\n- ${errors.join('\n- ')}`);

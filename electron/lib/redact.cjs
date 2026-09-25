@@ -22,6 +22,8 @@ const RULES = [
     [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+/g, MASK],
     // "alan": "değer" / alan=değer biçimli gizli alanlar (JSON dökümü, sorgu dizesi)
     [new RegExp(`((?:"|\\b)(?:${SECRET_FIELDS})"?\\s*[:=]\\s*)("[^"]*"|[^\\s,&}\\]]+)`, 'gi'), `$1"${MASK}"`],
+    // Alan adı olmadan geçen lisans anahtarı (XXXX-XXXX-XXXX-XXXX biçimi; mod kendi günlüğüne yazabilir)
+    [/\b[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}\b/g, MASK],
 ];
 
 /** Metindeki gizli değerleri [gizli] ile değiştirir. */

@@ -7,6 +7,9 @@ import { useI18n } from '../i18n.jsx';
 import { useTasks } from '../tasks.jsx';
 import { IconPlay } from './icons.jsx';
 
+// Tema hareket eğrisi (index.css --ease ile aynı)
+const EASE = [0.2, 0.8, 0.2, 1];
+
 function progressText(t, p) {
   if (!p) return '';
   return p.key ? t(p.key, p.params) : (p.message || '');
@@ -24,11 +27,11 @@ function TaskRow({ task, onDismiss }) {
     <motion.li
       layout
       initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0, marginTop: 0 }}
-      transition={{ duration: 0.18 }}
+      transition={{ duration: 0.18, ease: EASE }}
       className={`dl-row is-${task.status}`}
     >
       <span className="dl-icon">
-        {task.iconUrl ? <img src={task.iconUrl} alt="" /> : task.kind === 'launch' ? <IconPlay size={15} /> : task.kind === 'update' ? <RefreshCw size={15} /> : <Package size={15} />}
+        {task.iconUrl ? <img src={task.iconUrl} alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : task.kind === 'launch' ? <IconPlay size={15} /> : task.kind === 'update' ? <RefreshCw size={15} /> : <Package size={15} />}
       </span>
       <span className="dl-body">
         <span className="dl-title ellipsis">{task.title}</span>
@@ -73,7 +76,7 @@ export default function DownloadBar({ extraTasks = [] }) {
           className="dl-panel"
           aria-label={t('dl.title')}
           initial={{ opacity: 0, y: 16, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 16, scale: 0.98 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: 0.22, ease: EASE }}
         >
           <button className="dl-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
             <span className={`dl-head-icon${running.length ? ' is-busy' : errors.length ? ' is-error' : ' is-done'}`}>
@@ -95,7 +98,7 @@ export default function DownloadBar({ extraTasks = [] }) {
               <motion.ul
                 className="dl-list"
                 initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
+                transition={{ duration: 0.22, ease: EASE }}
               >
                 <AnimatePresence initial={false}>
                   {all.map((task) => <TaskRow key={task.id} task={task} onDismiss={dismissTask} />)}

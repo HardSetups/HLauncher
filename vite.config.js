@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react-swc'
 
 // Paketli sürüme sıkı CSP enjekte eder (dev'de HMR inline script'leri için uygulanmaz).
 // img https: → sunucu ikonları (mcstatus data:), skin servisleri, mod ikonları.
+// img hlimg: → HardSetups resimleri, ana süreç önbelleğinden (izinli host + resim doğrulaması).
 const cspPlugin = () => ({
   name: 'hlauncher-csp',
   transformIndexHtml: {
@@ -13,10 +14,14 @@ const cspPlugin = () => ({
         "default-src 'self'",
         "script-src 'self'",
         "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' https: data:",
+        // Uzak resimler yalnızca bilinen kaynaklardan: Modrinth ikonları ve oyuncu kafaları.
+        // HardSetups görselleri hlimg: (ana süreçte imageHosts ile denetlenir); skin/sunucu ikonları data:
+        "img-src 'self' data: hlimg: https://cdn.modrinth.com https://minotar.net https://crafatar.com",
         "font-src 'self'",
         "connect-src 'self' https://api.mcstatus.io",
         "object-src 'none'",
+        "frame-src 'none'",
+        "form-action 'none'",
         "base-uri 'self'",
       ].join('; ')
       return html.replace('<head>', `<head>\n    <meta http-equiv="Content-Security-Policy" content="${csp}" />`)
@@ -35,8 +40,9 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     watch: {
-      // electron-builder çıktıları izlenmesin — paketleme sırasında EBUSY çökmesini önler
-      ignored: ['**/release/**', '**/installer/**'],
+      // electron-builder çıktıları, belgeler ve arşivler izlenmesin — paketleme ya da bir arşiv
+      // programı dosyayı kilitlerken EBUSY ile Vite (ve launcher) çöküyordu
+      ignored: ['**/release/**', '**/installer/**', '**/docs/**', '**/*.{rar,zip,7z}'],
     },
   },
   build: {

@@ -12,19 +12,22 @@ if (process.env.ELECTRON_RUN_AS_NODE) {
     process.exit(0);
 }
 
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, session, clipboard, protocol } = require('electron');
 const os = require('os');
 const path = require('path');
 
 app.commandLine.appendSwitch('disable-gpu-cache');
-// Bazı Windows sistemlerinde (sürücü/antivirüs etkileşimi) Chromium'un korumalı
-// alt süreçleri (GPU, ağ servisi, renderer) kurulu konumdan başlatılınca
-// STATUS_BREAKPOINT ile çöküyor: pencere ya hiç açılmıyor ya da görünmez
-// kalıyor. Uygulama yalnızca yerel paketlenmiş içerik yüklediği için paketli
-// sürümde sandbox'ı kapatmak güvenli ve sorunu kökten çözüyor.
-if (app.isPackaged) {
+// Chromium sandbox'ı açık. Yalnızca STATUS_BREAKPOINT çökmesinin görüldüğü
+// makinelerde kapanır (ayrıntı ve otomatik geri dönüş: lib/compat.cjs).
+const compat = require('./lib/compat.cjs');
+const NO_SANDBOX = compat.sandboxDisabled(require('./lib/store.cjs').getStore());
+if (NO_SANDBOX) {
     app.commandLine.appendSwitch('no-sandbox');
 }
+
+// Testler/ekran görüntüleri (yalnızca paketlenmemiş): ayrı Electron userData'sı. Tek instance
+// kilidi userData'ya bağlı; bu olmadan açık bir geliştirme kopyası e2e'yi kapatır.
+if (!app.isPackaged && process.env.HL_USER_DATA) app.setPath('userData', process.env.HL_USER_DATA);
 
 // Tek instance: ikinci kopya açılırsa mevcut pencereye odaklan.
 if (!app.requestSingleInstanceLock()) {
@@ -34,11 +37,14 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 function startApp() {
+    // Vite geliştirme sunucusu yalnızca paketlenmemiş sürümde: NODE_ENV=development tanımlı bir
+    // makinede paketli exe localhost:5173'teki (başkasının açabileceği) bir sayfayı yüklemesin
+    const IS_DEV_SERVER = !app.isPackaged && process.env.NODE_ENV === 'development';
     const log = require('./lib/logger.cjs');
     const { getStore, sanitizeSettingsPatch, sanitizeServers } = require('./lib/store.cjs');
     const { getLogsDir, getRootPath } = require('./lib/paths.cjs');
     const { friendlyError } = require('./lib/errors.cjs');
-    const { launchGame, stopGame } = require('./launcher.cjs');
+    const { launchGame, stopGame, isGameRunning } = require('./launcher.cjs');
     const { getRecentReleaseVersions, getLatestRelease } = require('./lib/versions.cjs');
     const instances = require('./lib/instances.cjs');
     const accounts = require('./lib/accounts.cjs');
@@ -50,11 +56,79 @@ function startApp() {
     const optifineLoader = require('./lib/loaders/optifine.cjs');
     const updater = require('./lib/updater.cjs');
     const { getNews } = require('./lib/news.cjs');
+    const links = require('./lib/links.cjs');
 
     process.on('uncaughtException', (err) => log.error(`[MAIN] Yakalanmamış hata: ${err.stack || err.message}`));
     process.on('unhandledRejection', (reason) => log.error(`[MAIN] İşlenmemiş promise reddi: ${reason}`));
 
+    // Sandbox'lı alt süreç açılışta STATUS_BREAKPOINT ile düşerse bu makinede
+    // sandbox'ı kalıcı olarak kapatıp bir kez yeniden başla (lib/compat.cjs).
+    const startedAt = Date.now();
+    const onProcessGone = (kind, details) => {
+        log.warn(`[MAIN] Alt süreç kapandı (${kind}): ${details.type || ''} ${details.reason} ${details.exitCode}`);
+        if (NO_SANDBOX || !compat.isSandboxCrash(details, Date.now() - startedAt)) return;
+        log.warn('[MAIN] STATUS_BREAKPOINT: sandbox bu makinede kapatılıyor, yeniden başlatılıyor');
+        getStore().set('compat', { ...getStore().get('compat'), noSandbox: true });
+        app.relaunch();
+        app.exit(0);
+    };
+    app.on('child-process-gone', (_e, details) => onProcessGone('child', details));
+    app.on('render-process-gone', (_e, _wc, details) => onProcessGone('renderer', details));
+
+    // HardSetups portalı (hesap, config, cihaz kodu girişi) — app ready sonrası kurulur
+    const { createPortal } = require('./services/portal.cjs');
+    let portal = null;
+
+    // Sunucu resimleri hlimg:// üzerinden ana süreç önbelleğinden gelir (sözleşme §2).
+    // Şema app ready'den ÖNCE kaydedilmeli.
+    const imagecache = require('./services/imagecache.cjs');
+    protocol.registerSchemesAsPrivileged([{ scheme: imagecache.SCHEME, privileges: { standard: true, secure: true } }]);
+
+    // Tarayıcıda yalnızca https + izinli host açılır (sözleşme §2): launcher'ın
+    // sabit listesi + sunucunun linkHosts'u. trusted: geliştirmede yerel mock onay sayfası.
+    // hosts verilirse (sunucudan gelen bağlantılar: ürün açıklaması, duyuru, bildirim) YALNIZCA o liste
+    // geçerlidir; launcher'ın sabit listesi (github.com vb.) sunucu içeriğine açılmaz. trusted yalnızca
+    // paketlenmemiş sürümde (yerel http API sayfaları).
+    const openExternalSafe = (url, hosts = null, { trusted = false } = {}) => {
+        const allowed = hosts || [...links.DEFAULT_LINK_HOSTS, ...(portal?.linkHosts() || [])];
+        if ((trusted && !app.isPackaged) || links.isAllowedLink(url, allowed)) {
+            shell.openExternal(url);
+            return true;
+        }
+        let host = '';
+        try { host = new URL(url).host; } catch { /* geçersiz adres */ }
+        log.warn(`[MAIN] İzinsiz bağlantı açılmadı: ${host || '(geçersiz adres)'}`);
+        return false;
+    };
+
     let mainWindow;
+
+    // Tepsi (kullanıcı kararı: Ayarlar'da, varsayılan kapalı). Tepsi yalnızca ayar
+    // açıkken ve pencere ilk kez gizlenince oluşur; "Çıkış" gerçekten kapatır.
+    let tray = null;
+    let quitting = false;
+    app.on('before-quit', () => { quitting = true; });
+    const trayEnabled = () => getStore().get('settings')?.minimizeToTray === true;
+    const showWindow = () => {
+        if (!mainWindow) return;
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+    };
+    function ensureTray() {
+        if (tray) return;
+        const { Tray, Menu } = require('electron');
+        const icon = app.isPackaged ? path.join(process.resourcesPath, 'public', 'logo.ico') : path.join(__dirname, '..', 'public', 'logo.ico');
+        const en = getStore().get('settings')?.language === 'en';
+        tray = new Tray(icon);
+        tray.setToolTip('HLauncher');
+        tray.setContextMenu(Menu.buildFromTemplate([
+            { label: en ? 'Open HLauncher' : 'HLauncher\'ı aç', click: showWindow },
+            { type: 'separator' },
+            { label: en ? 'Quit' : 'Çıkış', click: () => { quitting = true; app.quit(); } },
+        ]));
+        tray.on('click', showWindow);
+    }
 
     function createWindow() {
         const saved = getStore().get('windowBounds');
@@ -70,32 +144,45 @@ function startApp() {
                 preload: path.join(__dirname, 'preload.cjs'),
                 nodeIntegration: false,
                 contextIsolation: true,
+                sandbox: true,
+                webSecurity: true,
+                allowRunningInsecureContent: false,
+                // Paketli sürümde geliştirici araçları kapalı (Ctrl+Shift+I ile IPC'ye erişilmesin)
+                devTools: !app.isPackaged,
             },
         });
         if (saved?.maximized) mainWindow.maximize();
 
         // Güvenlik: renderer yeni pencere açamaz ve uygulama dışına gezinemez.
-        // https linkler (Discord, haberler) sistem tarayıcısında açılır.
+        // İzinli https bağlantılar (Discord, haberler, mağaza) sistem tarayıcısında açılır.
         mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-            if (/^https:\/\//.test(url)) shell.openExternal(url);
+            openExternalSafe(url);
             return { action: 'deny' };
         });
+        // Uygulama durum tabanlı yönlendirici kullanır; gerçek gezinmeye hiç gerek yok. Önceden
+        // her file:// adresine izin veriliyordu: pencereye sürüklenen yerel bir .html dosyası
+        // preload köprüsüyle (electronAPI) yüklenip IPC'yi kullanabiliyordu. Artık hepsi engelli;
+        // yalnızca geliştirmede Vite sunucusunun kendi adresi serbest.
         mainWindow.webContents.on('will-navigate', (e, url) => {
-            const allowed = process.env.NODE_ENV === 'development'
-                ? url.startsWith('http://127.0.0.1:5173')
-                : url.startsWith('file://');
-            if (!allowed) {
-                e.preventDefault();
-                if (/^https:\/\//.test(url)) shell.openExternal(url);
-            }
+            if (IS_DEV_SERVER && url.startsWith('http://127.0.0.1:5173/')) return;
+            e.preventDefault();
+            openExternalSafe(url);
         });
+        // <webview> hiçbir koşulda eklenemez
+        mainWindow.webContents.on('will-attach-webview', (e) => e.preventDefault());
 
         // Büyüt/küçült durumunu arayüze bildir (başlık çubuğu simgesi için)
         mainWindow.on('maximize', () => mainWindow.webContents.send('window-maximized', true));
         mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-maximized', false));
 
-        // Pencere boyut/konumunu kapanışta hatırla
-        mainWindow.on('close', () => {
+        // Pencere boyut/konumunu kapanışta hatırla. "Tepsiye küçült" açıksa kapatmak gizler.
+        mainWindow.on('close', (e) => {
+            if (!quitting && trayEnabled()) {
+                e.preventDefault();
+                ensureTray();
+                mainWindow.hide();
+                return;
+            }
             try {
                 const maximized = mainWindow.isMaximized();
                 const bounds = maximized ? mainWindow.getNormalBounds() : mainWindow.getBounds();
@@ -103,15 +190,15 @@ function startApp() {
             } catch { /* pencere çoktan yok olduysa geç */ }
         });
 
-        if (process.env.NODE_ENV === 'development') {
+        if (IS_DEV_SERVER) {
             mainWindow.loadURL('http://127.0.0.1:5173');
         } else {
             mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
         }
 
-        // Tanıtım görseli modu (site/dokümantasyon için): HL_SCREENSHOT=<png yolu>
+        // Tanıtım görseli modu (site/dokümantasyon için, yalnızca paketlenmemiş): HL_SCREENSHOT=<png yolu>
         // Pencere yüklendikten ~6.5 sn sonra (sunucu durumları gelsin diye) kare alır ve çıkar.
-        if (process.env.HL_SCREENSHOT) {
+        if (!app.isPackaged && process.env.HL_SCREENSHOT) {
             mainWindow.webContents.once('did-finish-load', () => {
                 setTimeout(async () => {
                     try {
@@ -136,9 +223,57 @@ function startApp() {
     });
 
     app.whenReady().then(() => {
-        log.info(`[MAIN] HLauncher ${app.getVersion()} başladı (veri: ${getRootPath()})`);
+        log.info(`[MAIN] HLauncher ${app.getVersion()} başladı (veri: ${getRootPath()}, sandbox: ${NO_SANDBOX ? 'kapalı' : 'açık'})`);
+        // Pencere çerçevesiz, menü görünmüyor; paketli sürümde varsayılan menünün kısayolları
+        // (yeniden yükle, geliştirici araçları) da olmasın
+        if (app.isPackaged) require('electron').Menu.setApplicationMenu(null);
+
+        // Kamera, mikrofon, bildirim, konum vb. hiçbir tarayıcı izni verilmez;
+        // yalnızca panoya yazma (UUID / adres kopyalama) serbest.
+        const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write']);
+        session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => callback(ALLOWED_PERMISSIONS.has(permission)));
+        session.defaultSession.setPermissionCheckHandler((_wc, permission) => ALLOWED_PERMISSIONS.has(permission));
+
         createWindow();
+
+        portal = createPortal({
+            app,
+            store: getStore(),
+            dataRoot: getRootPath(),
+            log,
+            openExternal: openExternalSafe,
+            send: (channel, payload) => {
+                if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
+            },
+            isGameRunning,
+        });
+        log.info(`[PORTAL] API: ${portal.baseUrl}`);
+        // Portal ilk açılışta kurulum kimliğini üretir; güncelleyici onu akış başlığında kullanır (§12)
         updater.initUpdater(app, getStore(), mainWindow);
+
+        const images = imagecache.createImageCache({
+            cacheDir: path.join(getRootPath(), 'cache', 'img'),
+            isAllowed: (host, proto) => portal.imageHostAllowed(host, proto),
+            log,
+        });
+        protocol.handle(imagecache.SCHEME, async (request) => {
+            const url = imagecache.decodeImageUrl(request.url);
+            const res = url ? await images.get(url) : { status: 400 };
+            if (res.status !== 200) return new Response(null, { status: res.status });
+            return new Response(res.body, { headers: { 'Content-Type': res.type, 'Cache-Control': 'max-age=3600', 'X-Content-Type-Options': 'nosniff' } });
+        });
+        portal.loadConfig().then(() => portal.refreshMe({ force: true }));
+        // Sayaçlar toplu gider: yarım saatte bir ve kapanışta (en çok 3 sn beklenir)
+        setInterval(() => portal.flushTelemetry(), 30 * 60 * 1000).unref();
+        let flushedOnQuit = false;
+        app.on('before-quit', (e) => {
+            if (flushedOnQuit || !portal.telemetryPending()) return; // sayaç yoksa kapanış hiç bekletilmez
+            flushedOnQuit = true;
+            e.preventDefault();
+            Promise.race([portal.flushTelemetry(), new Promise((r) => setTimeout(r, 3000))]).finally(() => app.quit());
+        });
+        // Pencere odaklanınca hesap özeti (bakiye, bildirim sayısı) tazelenir (en sık dakikada bir)
+        mainWindow.on('focus', () => portal?.refreshMe());
 
         app.on('activate', () => {
             if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -150,7 +285,7 @@ function startApp() {
     });
 
     // ── Pencere / uygulama ──────────────────────────────────────────────────
-    ipcMain.on('close-app', () => app.quit());
+    ipcMain.on('close-app', () => mainWindow.close()); // tepsi ayarı 'close' olayında değerlendirilir
     ipcMain.on('minimize-app', () => mainWindow.minimize());
     ipcMain.on('toggle-maximize', () => {
         if (mainWindow.isMaximized()) mainWindow.unmaximize();
@@ -162,25 +297,74 @@ function startApp() {
     ipcMain.on('show-launcher', () => { mainWindow.show(); mainWindow.focus(); });
 
     // ── Oyun ────────────────────────────────────────────────────────────────
-    ipcMain.on('launch-game', (event, options) => {
-        const opts = options || {};
-        // "Kaldığın yerden devam" sırası + son seçilen profil
-        if (opts.instanceId && instances.get(opts.instanceId)) {
-            instances.markPlayed(opts.instanceId);
-            getStore().set('activeInstanceId', opts.instanceId);
+    // HardSetups ürünü açılmadan önce lisans kapısı (sözleşme §6.3); kapı mesajları Türkçe
+    const LAUNCH_BLOCK_TEXT = {
+        LAUNCHER_OUTDATED: 'Bu launcher sürümü HardSetups tarafından artık desteklenmiyor. HardSetups ürünlerini oynamak için launcher\'ı güncelle.',
+        NOT_SIGNED_IN: 'Bu ürünü oynamak için HardSetups hesabını bağla (Hesap sayfası).',
+        LICENSE_REQUIRED: 'Bu ürün için hesabında aktif bir lisans yok.',
+        OFFLINE_NO_ENVELOPE: 'İnternet yok ve bu cihazda çevrimdışı oynama izni henüz alınmamış. Bir kez internete bağlanıp launcher\'ı aç.',
+        OFFLINE_EXPIRED: 'Çevrimdışı oynama süren doldu. Lisansının doğrulanması için internete bağlan.',
+        OFFLINE_CLOCK: 'Bilgisayarının saati geri alınmış görünüyor. Saati düzeltip tekrar dene.',
+        OFFLINE_INVALID: 'Çevrimdışı lisans bilgisi doğrulanamadı. İnternete bağlanıp tekrar dene.',
+    };
+    ipcMain.on('launch-game', async (event, options) => {
+        // Profil launcher.cjs ile AYNI kuralla burada bir kez çözülür (kimlik yoksa aktif profil,
+        // o da yoksa varsayılan) ve açılışa kimliğiyle gider: kimliksiz çağrı lisans kapısını atlayamaz
+        const requested = options || {};
+        const inst = instances.get(requested.instanceId || getStore().get('activeInstanceId')) || instances.get('default');
+        const opts = { ...requested, instanceId: inst?.id || requested.instanceId };
+        if (inst?.origin === 'hardsetups') {
+            const check = portal ? await portal.launchCheck(inst) : { allowed: false, reason: 'NOT_READY' };
+            if (!check.allowed) {
+                log.warn(`[LAUNCH] HardSetups ürünü açılmadı: ${inst.product} (${check.reason})`);
+                event.reply('launch-error', LAUNCH_BLOCK_TEXT[check.reason] || `Bu ürünün lisansı şu an aktif değil (${check.reason}).`);
+                return;
+            }
         }
-        launchGame(event, opts).catch((err) => {
+        // "Kaldığın yerden devam" sırası + son seçilen profil
+        if (inst) {
+            instances.markPlayed(inst.id);
+            getStore().set('activeInstanceId', inst.id);
+        }
+        // Kullanım sayaçları (§15; onay + sunucu açıksa): açılış, açılamama ve çökme olay kanalından sayılır
+        const product = inst?.origin === 'hardsetups' ? inst.product : null;
+        const COUNTED = { 'launch-finished': 'launch', 'launch-error': 'launch_failed', 'game-crashed': 'crash' };
+        const counting = {
+            reply: (channel, ...args) => {
+                if (COUNTED[channel]) portal?.recordEvent(COUNTED[channel], product);
+                return event.reply(channel, ...args);
+            },
+        };
+        launchGame(counting, opts).catch((err) => {
             log.error(`[MAIN] launch-game hatası: ${err.stack || err.message}`);
-            event.reply('launch-error', friendlyError(err));
+            counting.reply('launch-error', friendlyError(err));
         });
     });
     ipcMain.on('stop-game', () => stopGame());
 
     // ── Sistem / ayarlar ────────────────────────────────────────────────────
-    ipcMain.handle('system:info', () => ({
+    // Paketli exe'nin Authenticode imzası (bir kez okunur). İmzasız derleme arayüzde
+    // "dev" olarak işaretlenir (sözleşme C4); geliştirmede null.
+    let signedPromise = null;
+    const checkSigned = () => {
+        if (!app.isPackaged || process.platform !== 'win32') return Promise.resolve(null);
+        if (!signedPromise) {
+            signedPromise = new Promise((resolve) => {
+                const exe = process.execPath.replace(/'/g, "''");
+                require('child_process').execFile('powershell.exe',
+                    ['-NoProfile', '-NonInteractive', '-Command', `(Get-AuthenticodeSignature -LiteralPath '${exe}').Status`],
+                    { timeout: 8000, windowsHide: true },
+                    (err, stdout) => resolve(err ? null : String(stdout).trim() === 'Valid'));
+            });
+        }
+        return signedPromise;
+    };
+    ipcMain.handle('system:info', async () => ({
         totalMemGb: Math.round(os.totalmem() / (1024 ** 3)),
         appVersion: app.getVersion(),
         logsDir: getLogsDir(),
+        packaged: app.isPackaged,
+        signed: await checkSigned(),
     }));
 
     ipcMain.handle('system:open-logs', () => shell.openPath(getLogsDir()));
@@ -236,8 +420,11 @@ function startApp() {
             servers: store.get('servers'),
             activeInstanceId: store.get('activeInstanceId'),
             account: accounts.getCurrent(),
+            lastSeenVersion: store.get('lastSeenVersion') || null,
         };
     });
+    // "Bu sürümde neler var" gösterildi: bu sürüm bir daha sorulmaz
+    ipcMain.handle('app:seen-version', () => { getStore().set('lastSeenVersion', app.getVersion()); return true; });
     ipcMain.handle('settings:patch', (_e, patch) => {
         const clean = sanitizeSettingsPatch(patch);
         // Otomatik güncelleme anahtarı yeniden başlatmadan etkili olsun
@@ -291,6 +478,56 @@ function startApp() {
     });
     ipcMain.handle('account:logout', () => { accounts.logout(); return true; });
 
+    // ── HardSetups hesabı (portal) ─────────────────────────────────────────
+    // Hepsi {ok, ...} | {ok:false, error} döndürür; token ve deviceCode renderer'a gitmez.
+    const portalCall = (label, fn) => async (_e, ...args) => {
+        if (!portal) return { ok: false, error: { code: 'NOT_READY', message: 'Launcher henüz hazır değil' } };
+        try {
+            return { ok: true, ...(await fn(...args)) };
+        } catch (err) {
+            log.error(`[PORTAL] ${label}: ${err.code || ''} ${err.message}`);
+            // Ana süreçte üretilen kodlu hatalar (PURCHASE_DISABLED, PORTAL_UNAVAILABLE…) kodunu korur
+            return { ok: false, error: err?.toJSON?.() || { code: err.code || 'UNKNOWN', message: friendlyError(err), details: err.details || {} } };
+        }
+    };
+    ipcMain.handle('portal:state', portalCall('Durum', () => ({ state: portal.publicState() })));
+    ipcMain.handle('portal:refresh', portalCall('Yenileme', async () => {
+        await portal.loadConfig();
+        await portal.refreshMe({ force: true });
+        return { state: portal.publicState() };
+    }));
+    ipcMain.handle('portal:login-start', portalCall('Giriş', (opts) => portal.startLogin({ register: opts?.register === true })));
+    ipcMain.handle('portal:login-cancel', portalCall('Giriş iptali', () => { portal.cancelLogin(); return {}; }));
+    ipcMain.handle('portal:open-verification', portalCall('Onay sayfası', () => ({ opened: portal.openVerification() })));
+    ipcMain.handle('portal:copy-verification', portalCall('Adres kopyalama', () => {
+        const url = portal.verificationUrl();
+        if (url) clipboard.writeText(url);
+        return { copied: !!url };
+    }));
+    ipcMain.handle('portal:logout', portalCall('Çıkış', async () => { await portal.logout(); return {}; }));
+    ipcMain.handle('portal:open-link', portalCall('Bağlantı', (kind) => ({ opened: portal.openLink(String(kind || '')) })));
+    ipcMain.handle('portal:open-url', portalCall('Bağlantı', (url) => ({ opened: portal.openUrl(url) })));
+    // Vitrin, ürün, satın alma, bildirimler (C3)
+    ipcMain.handle('portal:home', portalCall('Vitrin', (reason) => portal.home({ reason: ['open', 'focus', 'refresh'].includes(reason) ? reason : 'open' })));
+    ipcMain.handle('portal:dismiss-announcement', portalCall('Duyuru', (id) => ({ dismissed: portal.dismissAnnouncement(id) })));
+    ipcMain.handle('portal:products', portalCall('Ürün listesi', () => portal.products()));
+    ipcMain.handle('portal:product', portalCall('Ürün', (slug) => portal.product(String(slug || ''))));
+    ipcMain.handle('portal:quote', portalCall('Teklif', (productSlug, plan, coupon) => portal.quote(String(productSlug || ''), String(plan || ''), coupon ? String(coupon) : null)));
+    ipcMain.handle('portal:purchase', portalCall('Satın alma', (quoteId, consents) => portal.purchase(String(quoteId || ''), Array.isArray(consents) ? consents.map(String) : [])));
+    ipcMain.handle('portal:notifications', portalCall('Bildirimler', (cursor) => portal.notifications(cursor ? String(cursor) : null)));
+    // Sorun bildir (§10): önizleme temizlenmiş içerik; gönderimde dosyalar yeniden toplanır
+    ipcMain.handle('portal:report-preview', portalCall('Rapor önizleme', (instanceId) => portal.reportPreview(instanceId ? String(instanceId) : null)));
+    ipcMain.handle('portal:report-send', portalCall('Rapor gönderme', (payload) => portal.sendReport({
+        instanceId: payload?.instanceId ? String(payload.instanceId) : null,
+        subject: String(payload?.subject || ''),
+        message: String(payload?.message || ''),
+        fileIds: Array.isArray(payload?.fileIds) ? payload.fileIds.map(String).slice(0, 5) : [],
+        consent: payload?.consent === true,
+    })));
+    ipcMain.handle('portal:notifications-read', portalCall('Bildirim okundu', (opts) => portal.markNotificationsRead({
+        ids: Array.isArray(opts?.ids) ? opts.ids.map(String) : null, all: opts?.all === true,
+    })));
+
     // ── Profiller ───────────────────────────────────────────────────────────
     ipcMain.handle('instances:list', () => instances.list());
     // Renderer yalnızca kullanıcı alanlarını yazabilir (origin/managedFiles vb. korunur)
@@ -298,8 +535,16 @@ function startApp() {
         const clean = instances.sanitizeInstancePatch(data);
         return instances.create({ ...clean, name: clean.name || '', loader: clean.loader || 'release' });
     });
-    ipcMain.handle('instances:update', (_e, id, patch) => instances.update(id, instances.sanitizeInstancePatch(patch)));
+    ipcMain.handle('instances:update', (_e, id, patch) => {
+        const clean = instances.sanitizeInstancePatch(patch);
+        // HardSetups ürününün sürümü ve loader'ı sunucunun kurulum bildiriminden gelir
+        if (instances.get(id)?.origin === 'hardsetups') { delete clean.mcVersion; delete clean.loader; }
+        return instances.update(id, clean);
+    });
     ipcMain.handle('instances:delete', (_e, id) => {
+        const inst = instances.get(id);
+        // Yönetilen örnek: dünyalar yedeklenerek kaldırılır (sözleşme §7.7)
+        if (inst?.origin === 'hardsetups' && portal) return !!portal.uninstallProduct(inst.product, { backupWorlds: true });
         const removed = instances.remove(id);
         if (getStore().get('activeInstanceId') === id) getStore().set('activeInstanceId', 'default');
         return removed;
@@ -375,6 +620,30 @@ function startApp() {
         const summary = await content.installModpack(String(projectId || ''), modProgress(event, taskId));
         if (summary.iconUrl) instances.update(summary.instanceId, { iconUrl: summary.iconUrl });
         return summary;
+    }));
+
+    // ── HardSetups kütüphanesi ve kurulumlar (C2) ───────────────────────────
+    // Uzun işler taskId'li 'mod-progress' olaylarıyla indirme paneline ilerleme yollar.
+    const portalTask = (label, fn) => async (event, ...args) => {
+        if (!portal) return { ok: false, error: { code: 'NOT_READY', message: 'Launcher henüz hazır değil' } };
+        try {
+            return { ok: true, ...(await fn(event, ...args)) };
+        } catch (err) {
+            log.error(`[PORTAL] ${label}: ${err.code || ''} ${err.message}`);
+            return { ok: false, error: err?.toJSON?.() || { code: err.code || 'UNKNOWN', message: friendlyError(err), details: err.details || {} } };
+        }
+    };
+    ipcMain.handle('portal:library', portalTask('Kütüphane', (_e, opts) => portal.libraryView({ refresh: opts?.refresh !== false })));
+    ipcMain.handle('portal:install', portalTask('Kurulum', (event, slug, action, taskId) =>
+        portal.installProduct(String(slug || ''), String(action || 'INSTALL'), { onProgress: modProgress(event, taskId) })));
+    ipcMain.handle('portal:install-key', portalTask('Anahtarla kurulum', (event, licenseKey, taskId) =>
+        portal.installByLicense(String(licenseKey || ''), { onProgress: modProgress(event, taskId) })));
+    ipcMain.handle('portal:uninstall', portalTask('Kaldırma', (_e, slug, opts) =>
+        portal.uninstallProduct(String(slug || ''), { backupWorlds: opts?.backupWorlds !== false })));
+    ipcMain.handle('portal:open-backups', portalTask('Yedek klasörü', async () => {
+        const dir = path.join(getRootPath(), 'yedekler');
+        require('fs').mkdirSync(dir, { recursive: true });
+        return { error: await shell.openPath(dir) || undefined };
     }));
 
     ipcMain.handle('mods:performance-preset', async (event, instanceId, taskId) => {

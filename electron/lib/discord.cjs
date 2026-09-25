@@ -26,13 +26,14 @@ async function ensureClient() {
     }
 }
 
-async function setPlaying({ version, serverAddress }) {
+/** product: HardSetups ürünü adı → "HardSetups Launcher ile <ürün> oynuyor" (sözleşme C5). */
+async function setPlaying({ version, serverAddress, product = null }) {
     const c = await ensureClient();
     if (!c) return;
     try {
         await c.user?.setActivity({
-            details: serverAddress ? `${serverAddress} sunucusunda` : 'Tek oyunculu',
-            state: `Minecraft ${version}`,
+            details: product ? `${product} oynuyor` : serverAddress ? `${serverAddress} sunucusunda` : 'Tek oyunculu',
+            state: product ? 'HardSetups Launcher ile' : `Minecraft ${version}`,
             largeImageKey: 'logo',
             startTimestamp: Date.now(),
         });

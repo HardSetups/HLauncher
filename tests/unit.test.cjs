@@ -215,6 +215,34 @@ test('sanitizeServers: şemayı zorlar, güvensizleri temizler', () => {
     assert.strictEqual(clean[0].favorite, false);       // 'evet' → false
     assert.strictEqual(clean[0].manifestUrl, '');        // javascript: reddedildi
     assert.strictEqual(clean[1].manifestUrl, 'https://y.com/hlauncher.json');
+    // http manifest ağda değiştirilebilir (mod enjeksiyonu): kaydedilmez
+    assert.strictEqual(sanitizeServers([{ address: 'mc.z.com', manifestUrl: 'http://z.com/hlauncher.json' }])[0].manifestUrl, '');
+});
+
+test('sanitizeSettingsPatch: değerler de doğrulanır; kod çalıştırabilecek Java yolu ve JVM bayrakları yazılmaz', () => {
+    const { isSafeJvmArg, isValidJavaPath } = require('../electron/lib/store.cjs');
+    assert.deepStrictEqual(sanitizeSettingsPatch({ ram: 8.5, language: 'de', accent: 'red', fullscreen: 'evet', jvmPreset: 'evil' }), {});
+    assert.deepStrictEqual(sanitizeSettingsPatch({ ram: 8, language: 'en', accent: '#A52B12', fullscreen: true, jvmPreset: 'zgc' }),
+        { ram: 8, language: 'en', accent: '#A52B12', fullscreen: true, jvmPreset: 'zgc' });
+    assert.deepStrictEqual(sanitizeSettingsPatch({ javaPath: 'C:\\Program Files\\Java\\bin\\javaw.exe' }), { javaPath: 'C:\\Program Files\\Java\\bin\\javaw.exe' });
+    assert.deepStrictEqual(sanitizeSettingsPatch({ javaPath: '' }), { javaPath: '' });
+    for (const bad of ['C:\\Windows\\System32\\cmd.exe', '\\\\saldirgan\\pay\\java.exe', '//host/java.exe', 'C:\\x\\java.exe\n']) {
+        assert.deepStrictEqual(sanitizeSettingsPatch({ javaPath: bad }), {}, bad);
+        assert.strictEqual(isValidJavaPath(bad), false, bad);
+    }
+    assert.deepStrictEqual(sanitizeSettingsPatch({ customJvmArgs: '-XX:+UseG1GC -Xss2M' }), { customJvmArgs: '-XX:+UseG1GC -Xss2M' });
+    for (const bad of ['-javaagent:\\\\h\\a.jar', '-XX:OnOutOfMemoryError=calc', '-agentpath:x.dll', '@args.txt', '-cp x', '-Djava.library.path=C:\\x']) {
+        assert.deepStrictEqual(sanitizeSettingsPatch({ customJvmArgs: `-Xss2M ${bad}` }), {}, bad);
+        assert.strictEqual(isSafeJvmArg(bad.split(' ')[0]), false, bad);
+    }
+    const { jvmArgsFor } = require('../electron/launcher.cjs');
+    assert.deepStrictEqual(jvmArgsFor('custom', '-Xss2M -javaagent:x.jar -XX:+UseG1GC'), ['-Xss2M', '-XX:+UseG1GC']); // eski kayıtta kalmışsa da kullanılmaz
+});
+
+test('redact: alan adı olmadan geçen lisans anahtarı da maskelenir', () => {
+    const { redact } = require('../electron/lib/redact.cjs');
+    assert.strictEqual(redact('Lisans doğrulanıyor: HSMN-OPQR-STUV-WXYZ tamam'), 'Lisans doğrulanıyor: [gizli] tamam');
+    assert.strictEqual(redact('kod WDJB-MJHT ve 1.21.1'), 'kod WDJB-MJHT ve 1.21.1'); // cihaz kodu biçimi ve sürümler bozulmaz
 });
 
 // ─── zip.cjs zip-slip koruması ──────────────────────────────────────────────
@@ -386,6 +414,41 @@ test('updater.plainReleaseNotes: GitHub HTML notunu düz metne çevirir', () => 
     assert.strictEqual(plainReleaseNotes(html), 'Yeni\n• Skin kütüphanesi\n• İndirme & panel');
 });
 
+test('updater.feedFor: GitHub kaynağında besleme değişmez; HardSetups kaynağında kanal adresi', () => {
+    const { feedFor, UPDATE_SOURCE } = require('../electron/lib/updater.cjs');
+    assert.strictEqual(UPDATE_SOURCE, 'hardsetups', 'alpha.7 köprü sürüm: güncellemeler HardSetups akışından (kullanıcı kararı)');
+    assert.strictEqual(feedFor('github', 'beta'), null);
+    assert.deepStrictEqual(feedFor('hardsetups'), { provider: 'generic', url: 'https://api.hardsetups.com/v1/launcher/update/stable' });
+    assert.deepStrictEqual(feedFor('hardsetups', 'beta').url, 'https://api.hardsetups.com/v1/launcher/update/beta');
+    assert.deepStrictEqual(feedFor('hardsetups', '../x').url, 'https://api.hardsetups.com/v1/launcher/update/stable');
+});
+
+test('store.migrate: eski varsayılan vurgu bir kez Kiremit\'e taşınır, başka seçime dokunulmaz', () => {
+    const { migrate, DEFAULTS } = require('../electron/lib/store.cjs');
+    assert.strictEqual(DEFAULTS.settings.accent, '#A52B12');
+    const old = { settings: { accent: '#FF6A3D', ram: 6 } };
+    assert.strictEqual(migrate(old), true);
+    assert.deepStrictEqual(old.settings, { accent: '#A52B12', ram: 6 });
+    old.settings.accent = '#ff6a3d'; // oyuncu sonra yeniden seçerse geçiş tekrar etmez
+    assert.strictEqual(migrate(old), false);
+    assert.strictEqual(old.settings.accent, '#ff6a3d');
+    const other = { settings: { accent: '#10b981' } };
+    migrate(other);
+    assert.strictEqual(other.settings.accent, '#10b981');
+});
+
+test('updater.feedHeaders / isNoReleaseError: akış başlıkları ve "yayımlanmış sürüm yok" (404)', () => {
+    const { feedHeaders, isNoReleaseError } = require('../electron/lib/updater.cjs');
+    const id = '0f8fad5b-d9cb-469f-a165-70867728950e';
+    assert.deepStrictEqual(feedHeaders(id, '1.0.0-alpha.7'), { 'X-HL-Version': '1.0.0-alpha.7', 'X-HL-Device': id });
+    assert.deepStrictEqual(feedHeaders(undefined, '1.0.0'), { 'X-HL-Version': '1.0.0' }); // kimlik yoksa yalnız %100 sürümler
+    assert.deepStrictEqual(feedHeaders('C:\\Users\\x', '1.0.0'), { 'X-HL-Version': '1.0.0' });
+    assert.strictEqual(isNoReleaseError({ statusCode: 404 }), true);
+    assert.strictEqual(isNoReleaseError(new Error('Cannot find channel "latest.yml" update info: HttpError: 404')), true);
+    assert.strictEqual(isNoReleaseError(new Error('net::ERR_INTERNET_DISCONNECTED')), false);
+    assert.strictEqual(isNoReleaseError({ statusCode: 500, message: 'HttpError: 500' }), false);
+});
+
 test('updater.plainReleaseNotes: dizi biçimi, boş değer ve uzunluk sınırı', () => {
     assert.strictEqual(plainReleaseNotes([{ note: 'a' }, { note: 'b' }]), 'a\n\nb');
     assert.strictEqual(plainReleaseNotes(null), '');
@@ -429,6 +492,305 @@ test('redact.scrubLogFiles: eski log dosyalarındaki token temizlenir, başka do
     assert.ok(!fs.readFileSync(path.join(dir, 'hlauncher.log'), 'utf8').includes(FAKE_JWT));
     assert.strictEqual(fs.readFileSync(path.join(dir, 'hlauncher.old.log'), 'utf8'), 'temiz satır');
     assert.ok(fs.readFileSync(path.join(dir, 'notlar.txt'), 'utf8').includes(FAKE_JWT));
+});
+
+// ─── safepath.cjs ───────────────────────────────────────────────────────────
+const { normalizeRelative, safeJoin, isValidFolderName } = require('../electron/lib/safepath.cjs');
+
+test('safepath: kötü yol listesinin tamamı reddedilir', () => {
+    const bad = [
+        '', '..', '../x.jar', 'mods/../../x', 'mods/..\\..\\x', '/etc/passwd', '\\\\server\\share\\x',
+        '//server/share', 'C:\\Windows\\x.dll', 'c:x.jar', '\\\\?\\C:\\x', 'mods/x.jar:ads', 'mods/con',
+        'mods/NUL.jar', 'CON', 'lpt1.txt', 'mods/x.jar.', 'mods/x.jar ', 'mods./x.jar', 'mods/a\u0000b.jar',
+        'mods/<x>.jar', 'mods/x?.jar', 'a'.repeat(300),
+    ];
+    for (const p of bad) assert.throws(() => normalizeRelative(p, { allowDir: true }), { code: 'EUNSAFEPATH' }, `reddedilmeliydi: ${JSON.stringify(p)}`);
+});
+
+test('safepath: geçerli yollar normal biçime çevrilir', () => {
+    assert.strictEqual(normalizeRelative('mods\\x.jar'), 'mods/x.jar');
+    assert.strictEqual(normalizeRelative('./config//hardsetups/ayarlar.json'), 'config/hardsetups/ayarlar.json');
+    assert.strictEqual(normalizeRelative('mods/', { allowDir: true }), 'mods/');
+    assert.strictEqual(normalizeRelative('.hardsetups/lisans-damgasi.json'), '.hardsetups/lisans-damgasi.json');
+    assert.throws(() => normalizeRelative('mods/'), { code: 'EUNSAFEPATH' });
+});
+
+test('safepath.safeJoin: sonuç her zaman kökün içinde', () => {
+    const base = path.join(tmpAppData, 'instance');
+    assert.strictEqual(safeJoin(base, 'mods/x.jar'), path.join(base, 'mods', 'x.jar'));
+    assert.throws(() => safeJoin(base, '../instance-2/x.jar'), { code: 'EUNSAFEPATH' });
+});
+
+test('safepath.isValidFolderName: sözleşme §7.1 kuralı', () => {
+    for (const ok of ['kum-firtinasi', 'tiktok-doldurdoldur', 'a1']) assert.ok(isValidFolderName(ok), ok);
+    for (const no of ['a', '-x', 'Kum', 'kum_firtinasi', 'con', 'com1', 'x'.repeat(49), '../x', 'kum firtinasi']) {
+        assert.ok(!isValidFolderName(no), no);
+    }
+});
+
+// ─── links.cjs ──────────────────────────────────────────────────────────────
+const links = require('../electron/lib/links.cjs');
+
+test('links.isAllowedLink: yalnızca https + izinli host', () => {
+    assert.ok(links.isAllowedLink('https://hardsetups.com/launcher'));
+    assert.ok(links.isAllowedLink('https://magaza.hardsetups.com/urun/x'));
+    assert.ok(links.isAllowedLink('https://www.youtube.com/watch?v=1'));
+    assert.ok(!links.isAllowedLink('http://hardsetups.com'));
+    assert.ok(!links.isAllowedLink('https://evilhardsetups.com'));
+    assert.ok(!links.isAllowedLink('https://hardsetups.com.evil.site'));
+    assert.ok(!links.isAllowedLink('https://hardsetups.com@evil.site/'));
+    assert.ok(!links.isAllowedLink('file:///C:/Windows/system32/calc.exe'));
+    assert.ok(!links.isAllowedLink('javascript:alert(1)'));
+    assert.ok(!links.isAllowedLink('https://x.youtube.com', ['youtube.com']));
+});
+
+test('links.isAllowedDownload: https zorunlu, yerel http yalnızca izinle', () => {
+    const hosts = ['cdn.hardsetups.com', 'cdn.modrinth.com'];
+    assert.ok(links.isAllowedDownload('https://cdn.hardsetups.com/a.zip', hosts));
+    assert.ok(!links.isAllowedDownload('http://cdn.hardsetups.com/a.zip', hosts));
+    assert.ok(!links.isAllowedDownload('https://s3.amazonaws.com/a.zip', hosts));
+    assert.ok(!links.isAllowedDownload('http://127.0.0.1:4000/a.zip', hosts));
+    assert.ok(links.isAllowedDownload('http://127.0.0.1:4000/a.zip', hosts, { allowLocalHttp: true }));
+});
+
+// ─── compat.cjs ─────────────────────────────────────────────────────────────
+const compat = require('../electron/lib/compat.cjs');
+
+test('compat.isSandboxCrash: yalnızca açılıştaki STATUS_BREAKPOINT çökmesi', () => {
+    assert.ok(compat.isSandboxCrash({ reason: 'crashed', exitCode: -2147483645 }, 5000));
+    assert.ok(compat.isSandboxCrash({ reason: 'launch-failed', exitCode: 2147483651 }, 1000));
+    assert.ok(!compat.isSandboxCrash({ reason: 'crashed', exitCode: -2147483645 }, 60000)); // geç çökme
+    assert.ok(!compat.isSandboxCrash({ reason: 'crashed', exitCode: 1 }, 1000));
+    assert.ok(!compat.isSandboxCrash({ reason: 'clean-exit', exitCode: -2147483645 }, 1000));
+    assert.ok(!compat.isSandboxCrash(null, 1000));
+});
+
+test('compat.sandboxDisabled: varsayılan açık; ayar ya da HL_NO_SANDBOX ile kapanır', () => {
+    const store = (v) => ({ get: () => v });
+    assert.strictEqual(compat.sandboxDisabled(store({ noSandbox: false }), {}), false);
+    assert.strictEqual(compat.sandboxDisabled(store(undefined), {}), false);
+    assert.strictEqual(compat.sandboxDisabled(store({ noSandbox: true }), {}), true);
+    assert.strictEqual(compat.sandboxDisabled(store({}), { HL_NO_SANDBOX: '1' }), true);
+});
+
+// ─── semver.cjs ─────────────────────────────────────────────────────────────
+const { compareVersions } = require('../electron/lib/semver.cjs');
+
+test('semver.compareVersions: ön sürümler sayısal, kararlı sürüm ön sürümden büyük', () => {
+    const lt = (a, b) => assert.ok(compareVersions(a, b) < 0, `${a} < ${b}`);
+    lt('1.0.0-alpha.6', '1.0.0-alpha.10');
+    lt('1.0.0-alpha.9', '1.0.0-beta.1');
+    lt('1.0.0-alpha.6', '1.0.0');
+    lt('1.0.0', '1.0.1');
+    lt('1.2.0', '1.10.0');
+    assert.strictEqual(compareVersions('v1.4.0', '1.4.0'), 0);
+    assert.ok(Number.isNaN(compareVersions('abc', '1.0.0')));
+});
+
+// ─── services/offline.cjs (çevrimdışı zarf, sözleşme §6) ────────────────────
+const offline = require('../electron/services/offline.cjs');
+const offlineVectors = require('./fixtures/launcher-offline-vectors.json');
+
+test('offline.canonicalJson: lisans protokolü §3 örnekleri', () => {
+    assert.strictEqual(offline.canonicalJson({ b: 1, a: 2 }), '{"a":2,"b":1}');
+    assert.strictEqual(offline.canonicalJson({ z: { d: 1, c: 2 }, a: 3 }), '{"a":3,"z":{"c":2,"d":1}}');
+    assert.strictEqual(offline.canonicalJson({ items: [3, null, 2] }), '{"items":[3,null,2]}');
+    assert.strictEqual(offline.canonicalJson({ a: null, b: true }), '{"b":true}');
+    assert.strictEqual(offline.canonicalJson({ tr: 'ığüşöçİĞÜŞÖÇ' }), '{"tr":"ığüşöçİĞÜŞÖÇ"}');
+    assert.strictEqual(offline.canonicalJson({ s: 'a"b\\c\n\u0001' }), '{"s":"a\\"b\\\\c\\n\\u0001"}');
+    assert.throws(() => offline.canonicalJson({ x: 1.5 }));
+});
+
+test('offline.verifyEnvelope: sözleşme v1.2 test vektörlerinin (8) hepsi beklendiği gibi', () => {
+    const keyring = offline.buildKeyring(Object.fromEntries(offlineVectors.keys.map((k) => [k.kid, k.publicKeyRawBase64url])));
+    const now = Date.parse(offlineVectors.checkAt);
+    assert.strictEqual(offlineVectors.vectors.length, 8);
+    for (const v of offlineVectors.vectors) {
+        if (v.expect.signatureValid) assert.strictEqual(offline.signingInput(v.envelope), v.signingInput, v.name);
+        const r = offline.verifyEnvelope(v.envelope, { deviceId: offlineVectors.deviceId, now, keyring });
+        assert.strictEqual(r.signatureValid, v.expect.signatureValid, `${v.name}: signatureValid`);
+        assert.strictEqual(r.usable, v.expect.envelopeUsable, `${v.name}: usable`);
+        if (v.expect.reason) assert.strictEqual(r.reason, v.expect.reason, `${v.name}: reason`);
+        assert.deepStrictEqual(r.playable, v.expect.playable, `${v.name}: playable`);
+    }
+});
+
+test('offline: gömülü üretim anahtarı sözleşmedeki parmak izine sahip, test anahtarı gömülü değil', () => {
+    const spki = offline.keyFromRaw(offline.EMBEDDED_KEYS.ed1).export({ format: 'der', type: 'spki' });
+    assert.strictEqual(require('crypto').createHash('sha256').update(spki).digest('hex'),
+        'ff729e2188507bab4e37d20828367aae28a4df8381525868de883032a02ed8aa');
+    assert.ok(!Object.keys(offline.EMBEDDED_KEYS).includes('test-ed1'));
+    const valid = offlineVectors.vectors.find((v) => v.name === 'valid');
+    // Test anahtarıyla imzalı zarf, gömülü anahtarlarla asla geçmez
+    assert.strictEqual(offline.verifyEnvelope(valid.envelope, { deviceId: offlineVectors.deviceId, now: Date.parse(offlineVectors.checkAt) }).usable, false);
+});
+
+test('offline: aynı kid için birden çok anahtar denenir (geliştirme); dev anahtar biçimi süzülür', () => {
+    const vectorKey = offlineVectors.keys[0];
+    const ring = offline.buildKeyring({ [vectorKey.kid]: [offline.EMBEDDED_KEYS.ed1, vectorKey.publicKeyRawBase64url] });
+    const valid = offlineVectors.vectors.find((v) => v.name === 'valid');
+    assert.strictEqual(offline.verifyEnvelope(valid.envelope, { deviceId: offlineVectors.deviceId, now: Date.parse(offlineVectors.checkAt), keyring: ring }).usable, true);
+    assert.deepStrictEqual(offline.parseDevKeys('ed1:KGJ8PRAeqEZrcFM--GO6fb3A_Us21m6HHOgRGX-Cl_s, bozuk, x:kisa'), { ed1: ['KGJ8PRAeqEZrcFM--GO6fb3A_Us21m6HHOgRGX-Cl_s'] });
+    assert.deepStrictEqual(offline.parseDevKeys(undefined), {});
+});
+
+test('offline.clockTrusted: saat 5 dakikadan fazla geri alınmışsa güvenilmez', () => {
+    const ref = '2026-09-24T12:00:00.000Z';
+    assert.ok(offline.clockTrusted(Date.parse('2026-09-24T12:00:00Z'), ref));
+    assert.ok(offline.clockTrusted(Date.parse('2026-09-24T11:56:00Z'), ref));
+    assert.ok(!offline.clockTrusted(Date.parse('2026-09-24T11:54:00Z'), ref));
+    assert.ok(offline.clockTrusted(Date.now(), null));
+});
+
+// ─── services/licenseconfig.cjs (sözleşme §7.5) ─────────────────────────────
+const { mergeLicenseConfig } = require('../electron/services/licenseconfig.cjs');
+const LC = (entries) => ({ path: 'config/hardsetups/ayarlar.json', schemaVersion: 2, format: 'flat-map', entries });
+const lcFile = (dir) => path.join(dir, 'config', 'hardsetups', 'ayarlar.json');
+
+test('licenseConfig: dosya yoksa yalnızca entries ile oluşturulur', () => {
+    const dir = fs.mkdtempSync(path.join(tmpAppData, 'inst-'));
+    assert.deepStrictEqual(mergeLicenseConfig(dir, LC({ 'lisans.anahtar.kumfirtinasi': 'HSMN-OPQR' })), { changed: true, corruptBackup: null });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(lcFile(dir), 'utf8')), { 'lisans.anahtar.kumfirtinasi': 'HSMN-OPQR' });
+});
+
+test('licenseConfig: birleştirir; modun diğer ayarları ve eski lisans.anahtar korunur, değer birebir', () => {
+    const dir = fs.mkdtempSync(path.join(tmpAppData, 'inst-'));
+    fs.mkdirSync(path.dirname(lcFile(dir)), { recursive: true });
+    fs.writeFileSync(lcFile(dir), JSON.stringify({ 'hud.olcek': '1.5', 'lisans.anahtar': 'ESKI-ANAHTAR', 'arena.renk': 'kirmizi' }));
+    mergeLicenseConfig(dir, LC({ 'lisans.anahtar.dolduroldur': ' hsmn-opqr stuv ' }));
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(lcFile(dir), 'utf8')), {
+        'hud.olcek': '1.5', 'lisans.anahtar': 'ESKI-ANAHTAR', 'arena.renk': 'kirmizi', 'lisans.anahtar.dolduroldur': ' hsmn-opqr stuv ',
+    });
+    assert.ok(!fs.existsSync(`${lcFile(dir)}.yedek`) && !fs.existsSync(`${lcFile(dir)}.tmp`));
+    assert.strictEqual(mergeLicenseConfig(dir, LC({ 'lisans.anahtar.dolduroldur': ' hsmn-opqr stuv ' })).changed, false);
+});
+
+test('licenseConfig: bozuk dosya .bozuk-<zaman> olarak saklanır, yeni dosya yazılır', () => {
+    const dir = fs.mkdtempSync(path.join(tmpAppData, 'inst-'));
+    fs.mkdirSync(path.dirname(lcFile(dir)), { recursive: true });
+    fs.writeFileSync(lcFile(dir), '{ bozuk json');
+    const r = mergeLicenseConfig(dir, LC({ 'lisans.anahtar.x': 'K' }), { now: Date.parse('2026-09-24T12:30:00Z') });
+    assert.ok(r.corruptBackup.endsWith('ayarlar.json.bozuk-20260924-123000'));
+    assert.strictEqual(fs.readFileSync(r.corruptBackup, 'utf8'), '{ bozuk json');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(lcFile(dir), 'utf8')), { 'lisans.anahtar.x': 'K' });
+});
+
+test('licenseConfig: güvensiz yol, yanlış biçim ve metin olmayan değer reddedilir; hata mesajı değeri içermez', () => {
+    const dir = fs.mkdtempSync(path.join(tmpAppData, 'inst-'));
+    assert.throws(() => mergeLicenseConfig(dir, { ...LC({ a: 'b' }), path: '../../x.json' }), { code: 'EUNSAFEPATH' });
+    assert.throws(() => mergeLicenseConfig(dir, { ...LC({ a: 'b' }), format: 'json' }), { code: 'EBADLICENSECONFIG' });
+    assert.throws(() => mergeLicenseConfig(dir, LC({ a: 5 })), { code: 'EBADLICENSECONFIG' });
+    assert.throws(() => mergeLicenseConfig(dir, LC({ ['__proto__']: 'x' })), { code: 'EBADLICENSECONFIG' });
+    try { mergeLicenseConfig(dir, LC({ 'lisans.anahtar.x': 5, gizli: 'GIZLI-DEGER' })); } catch (err) {
+        assert.ok(!err.message.includes('GIZLI-DEGER'));
+    }
+});
+
+// ─── services/imagecache.cjs ────────────────────────────────────────────────
+const imagecache = require('../electron/services/imagecache.cjs');
+
+test('imagecache: içerik imzasıyla resim türü; resim olmayan reddedilir', () => {
+    assert.strictEqual(imagecache.sniffImageType(Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex')), 'image/png');
+    assert.strictEqual(imagecache.sniffImageType(Buffer.from('ffd8ffe000104a4649460001', 'hex')), 'image/jpeg');
+    assert.strictEqual(imagecache.sniffImageType(Buffer.from('RIFF\0\0\0\0WEBPVP8 ', 'binary')), 'image/webp');
+    assert.strictEqual(imagecache.sniffImageType(Buffer.from('<svg onload=alert(1)>....')), null);
+    assert.strictEqual(imagecache.sniffImageType(Buffer.from('<html><body>')), null);
+});
+
+test('imagecache: hlimg adresi gidiş-dönüş; bozuk adres reddedilir', () => {
+    const url = 'https://cdn.hardsetups.com/ürün/kum fırtınası.png?v=2';
+    assert.strictEqual(imagecache.decodeImageUrl(imagecache.encodeImageUrl(url)), url);
+    assert.strictEqual(imagecache.decodeImageUrl('hlimg://c/../../etc'), null);
+    assert.strictEqual(imagecache.decodeImageUrl('https://evil/x'), null);
+});
+
+// ─── services/report.cjs (§10 temizleme) ────────────────────────────────────
+const report = require('../electron/services/report.cjs');
+
+test('report.sanitizeReportText: token, lisans anahtarı ve kullanıcı adı yoldan çıkar', () => {
+    const raw = [
+        `[MCLC]: Launching with arguments --username Muffy --accessToken ${FAKE_JWT} --gameDir C:\\Users\\Mehmet Yılmaz\\AppData\\Roaming\\.hlauncher`,
+        '{"lisans.anahtar.kumfirtinasi":"HSMN-OPQR-STUV-WXYZ","licenseKey":"ABCD-EFGH"}',
+        'Yol: c:/users/ahmet/Desktop/x.txt ve /home/ali/.minecraft',
+    ].join('\n');
+    const out = report.sanitizeReportText(raw);
+    for (const secret of [FAKE_JWT, 'HSMN-OPQR-STUV-WXYZ', 'ABCD-EFGH', 'Mehmet Yılmaz', 'ahmet', '/home/ali']) {
+        assert.ok(!out.includes(secret), `sızdı: ${secret}`);
+    }
+    assert.ok(out.includes('C:\\Users\\<kullanıcı>\\AppData') && out.includes('--username Muffy'));
+});
+
+test('report.collectReportFiles: launcher günlüğü + oyunun latest.log + en yeni çökme raporu, hepsi temizlenmiş', () => {
+    const logsDir = fs.mkdtempSync(path.join(tmpAppData, 'rlogs-'));
+    const inst = fs.mkdtempSync(path.join(tmpAppData, 'rinst-'));
+    fs.writeFileSync(path.join(logsDir, 'hlauncher.log'), `--accessToken ${FAKE_JWT}`);
+    fs.mkdirSync(path.join(inst, 'logs'));
+    fs.writeFileSync(path.join(inst, 'logs', 'latest.log'), 'oyun günlüğü C:\\Users\\Ayse\\x');
+    fs.mkdirSync(path.join(inst, 'crash-reports'));
+    fs.writeFileSync(path.join(inst, 'crash-reports', 'crash-2026-01-01.txt'), 'eski');
+    fs.writeFileSync(path.join(inst, 'crash-reports', 'crash-2026-09-24.txt'), 'yeni çökme');
+    fs.utimesSync(path.join(inst, 'crash-reports', 'crash-2026-01-01.txt'), new Date(0), new Date(0));
+    const files = report.collectReportFiles({ logsDir, instanceDir: inst });
+    assert.deepStrictEqual(files.map((f) => f.id), ['launcher', 'game', 'crash']);
+    assert.strictEqual(files[2].name, 'crash-2026-09-24.txt');
+    assert.ok(files.every((f) => !f.text.includes(FAKE_JWT) && !f.text.includes('Ayse')));
+    const mp = report.buildMultipart({ subject: 'Çöktü', message: 'x', consent: 'true' }, files);
+    assert.match(mp.contentType, /^multipart\/form-data; boundary=/);
+    assert.strictEqual((mp.body.toString().match(/name="logs"; filename=/g) || []).length, 3);
+});
+
+// ─── Giriş kapısı (alpha.7): portal özeti → ekran ─────────────────────────
+// Renderer ESM; saf dosya metin olarak okunup `export` atılarak değerlendirilir (import içermez).
+test('authView: HardSetups hesabı zorunlu kapısı doğru ekranı seçer', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'auth', 'authView.js'), 'utf8');
+    assert.ok(!/^\s*import\s/m.test(src), 'authView.js import içermemeli');
+    const { authView, isRevokedReason, isStateError } = new Function(`${src.replace(/^export\s+/gm, '')}\nreturn { authView, isRevokedReason, isStateError };`)();
+    const base = { signedIn: false, configLoaded: true, accountAvailable: true, outdated: null, maintenance: null };
+    // İlk IPC yanıtı gelmeden hiçbir şey (giriş ekranı dahil) gösterilmez
+    assert.strictEqual(authView(null), 'loading');
+    assert.strictEqual(authView(undefined), 'loading');
+    assert.strictEqual(authView(base), 'login');
+    // Oturum varsa her durumda uygulama: çevrimdışı (config yok), bakım ve eski sürüm oturumu kapatmaz
+    assert.strictEqual(authView({ ...base, signedIn: true, configLoaded: false }), 'app');
+    assert.strictEqual(authView({ ...base, signedIn: true, maintenance: { message: null } }), 'app');
+    assert.strictEqual(authView({ ...base, signedIn: true, outdated: { minVersion: '9.0.0' } }), 'app');
+    // Oturum yoksa: sürüm > bakım > sunucu kapalı > giriş
+    assert.strictEqual(authView({ ...base, outdated: { minVersion: '9.0.0' }, maintenance: { message: 'x' }, accountAvailable: false }), 'outdated');
+    assert.strictEqual(authView({ ...base, maintenance: { message: 'x' }, accountAvailable: false }), 'maintenance');
+    assert.strictEqual(authView({ ...base, accountAvailable: false }), 'unavailable');
+    // Config henüz yokken (çevrimdışı ilk açılış) giriş ekranı; hata girişe basınca gösterilir
+    assert.strictEqual(authView({ ...base, configLoaded: false }), 'login');
+    // Bildirim yalnızca güvenlik nedeniyle kapanan oturumda
+    assert.strictEqual(isRevokedReason('DEVICE_REVOKED'), true);
+    assert.strictEqual(isRevokedReason('REFRESH_TOKEN_INVALID'), true);
+    assert.strictEqual(isRevokedReason('logout'), false);
+    assert.strictEqual(isRevokedReason(null), false);
+    // Ekranı zaten değiştiren hatalar kartta ayrıca yazılmaz
+    assert.strictEqual(isStateError({ code: 'PORTAL_UNAVAILABLE' }), true);
+    assert.strictEqual(isStateError({ code: 'NETWORK' }), false);
+    assert.strictEqual(isStateError(null), false);
+});
+
+// ─── i18n: arayüzdeki her t('…') anahtarı iki sözlükte de var mı? ───────────
+test('i18n: src/ içindeki tüm sabit t(\'…\') anahtarları TR ve EN sözlüklerinde mevcut', () => {
+    const i18nSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'i18n.jsx'), 'utf8');
+    const start = i18nSrc.indexOf('export const DICTS = {');
+    const objText = i18nSrc.slice(start + 'export const '.length, i18nSrc.indexOf('\n};') + 3);
+    const dicts = new Function(`let ${objText}; return DICTS;`)();
+    const used = new Map();
+    const walk = (dir) => {
+        for (const entry of fs.readdirSync(dir)) {
+            const p = path.join(dir, entry);
+            if (fs.statSync(p).isDirectory()) walk(p);
+            else if (/\.(jsx|js)$/.test(p) && !p.endsWith('i18n.jsx')) {
+                for (const m of fs.readFileSync(p, 'utf8').matchAll(/\bt\(\s*'([a-zA-Z0-9_.]+)'/g)) used.set(m[1], path.basename(p));
+            }
+        }
+    };
+    walk(path.join(__dirname, '..', 'src'));
+    assert.ok(used.size > 50, `beklenenden az anahtar: ${used.size}`);
+    const missing = [...used].filter(([k]) => !dicts.tr[k] || !dicts.en[k]).map(([k, f]) => `${k} (${f}: ${dicts.tr[k] ? '' : 'TR '}${dicts.en[k] ? '' : 'EN'})`);
+    assert.deepStrictEqual(missing, []);
 });
 
 // ─── i18n: backend ilerleme anahtarları sözlükte var mı? ────────────────────

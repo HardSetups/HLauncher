@@ -1,5 +1,56 @@
 # Değişiklik Günlüğü
 
+## 1.0.0-alpha.7 — 2026-09-25
+
+### Yeni görünüm
+- Baştan tasarlanan tema: koyu grafit katmanlar, düz olmayan ama sakin bir arka plan, kartlarda ince ışık ve gölge. Varsayılan vurgu rengi artık HardSetups **Kiremit** (eski varsayılan turuncuyu kullananlar bir kez Kiremit'e geçer; başka renk seçtiysen dokunulmaz)
+- **Ana sayfa** yenilendi: üstte selamlama, bakiye ve son oynadığın profil için **Oyna**; hızlı erişim düğmeleri; HardSetups ürünleri, duyurular ve haberler; **Kaldığın yerden devam** ve profillerin altta
+- Açılır menüler (bildirimler, ⋯ menüleri) artık kartların ve bantların kenarında kesilmiyor; yer yoksa yukarı açılıyor
+
+### HardSetups hesabı
+- Launcher artık **HardSetups hesabıyla** kullanılır. İlk açılışta **Giriş yap** ya da **Kayıt ol** ekranı gelir; giriş tarayıcıda yapılır, launcher parolanı görmez, ekranda bir bağlantı kodu çıkar
+- **Kayıt ol** sitenin kayıt sayfasını açar; kaydı bitirince launcher'a bağlanırsın
+- Bir kez giriş yaptıktan sonra launcher internet olmadan da açılır. Çıkış yaparsan ya da cihazı siteden kaldırırsan giriş ekranına dönülür; çıkış onay ister
+- Oturum anahtarı Windows'un şifreli deposunda tutulur
+- HardSetups bakımdayken bilgi bandı görünür, kurulu oyunlar oynanabilir kalır
+
+### HardSetups mağazası
+- **HardSetups** sayfasında marka bandı: bakiye, "Yükle", bildirimler, site ve destek bağlantıları
+- **Tüm ürünler** kataloğu, öne çıkanlar, kampanyalar, duyurular ve haberler; vitrin boşken "Nasıl çalışır" rehberi
+- **Ürün sayfası:** görseller, planlar, indirimli fiyat, gereksinimler (Minecraft sürümü, önerilen RAM)
+- **Bakiyeyle satın alma:** launcher kart bilgisi istemez. Satın almadan önce tutar, bakiye ve onaylanacak belgeler gösterilir; bakiye yetmezse eksik tutar ve bakiye yükleme bağlantısı çıkar. Aynı düğmeye iki kez basmak iki kez satın almaz
+- **Bildirimler:** üstteki zil; okunmamış sayısı, "tümünü okundu yap", eski bildirimler için "daha fazla"
+- **Kuponların:** hesabına tanımlı kuponlar vitrinde görünür, tek tıkla kopyalanır; kampanya kuponları da öyle
+
+### Kütüphane
+- Satın aldığın ürünler görselli kartlarda: **Kur**, **Oyna**, **Güncelle**, **Onar** ve **Kaldır**; üstte ürün ve kurulu sayısı, altta mağazadaki diğer ürünler
+- Kurulum yalnızca eksik ya da değişmiş dosyaları indirir, yarıda kalan indirmeye kaldığı yerden devam eder; her dosya doğrulanır
+- **Lisans anahtarıyla kurulum:** başka yerden aldığın anahtarla da kurabilirsin
+- Ayarlar'da **"Beta sürümlerini de kur"**: açarsan kararlı ve beta sürümlerden hangisi yeniyse o kurulur; beta sürümler kartta işaretlenir
+- Kurulan ürün kendi profilinde açılır; sürümü ve loader'ı ürünle kilitlidir. Kaldırırken dünyaların `yedekler` klasörüne alınır
+- İnternet yokken lisanslı ürünler bir süre (varsayılan 72 saat) oynanabilir
+- Ürünler çevrimdışı (kullanıcı adıyla) Minecraft hesabıyla da açılır
+
+### Güncellemeler
+- Launcher güncellemeleri artık doğrudan **HardSetups**'tan gelir
+
+### Yardım ve bilgi
+- **Sorun bildir** (Ayarlar'da ve oyun çökünce): hangi dosyaların gideceğini önceden görürsün; token, anahtar ve bilgisayar yolları gönderilmeden temizlenir; onay kutusu işaretlenmeden hiçbir şey gönderilmez
+- Güncellemeden sonra ilk açılışta **"Bu sürümde neler var"** penceresi
+- Hakkında bölümünde derlemenin imza durumu ve "Mojang veya Microsoft ile bağlantılı değildir" ibaresi
+- Discord durumunda oynadığın HardSetups ürününün adı görünür
+- Ayarlar'da **"Kapatınca tepsiye küçült"** (varsayılan kapalı)
+- Ayarlar'da **"Anonim kullanım sayaçları"** (varsayılan kapalı): açarsan oyunun kaç kez açıldığı, çöktüğü ve kurulduğu yalnızca toplam sayı olarak gider; hesap, cihaz ya da dosya bilgisi gönderilmez
+
+### Güvenlik
+- Electron 44'e geçildi (39 artık güvenlik güncellemesi almıyordu)
+- Chromium sandbox yeniden açık; yalnızca açılışta çöken makinelerde kendiliğinden kapanır
+- Paket sertleştirildi: ASAR bütünlük denetimi, yalnızca ASAR'dan yükleme, NODE_OPTIONS ve hata ayıklayıcı bayrakları kapalı, çerez şifreleme
+- Tarayıcıda yalnızca izinli adresler açılır; kamera/mikrofon/bildirim gibi tarayıcı izinleri kapalı
+- Microsoft oturumu, şifreli depolama yoksa diske yazılmaz
+- Ürün görselleri yalnızca izinli adreslerden, boyut ve tür denetiminden geçerek yüklenir; indirmeler yalnızca izinli sunuculardan yapılır
+- Yayın öncesi güvenlik taraması: pencereye sürüklenen bir dosya artık launcher'ın içinde açılamaz; geliştirici araçları kapalı; Java yolu ve özel JVM ayarları kod çalıştırmaya izin vermeyecek şekilde denetleniyor; sunucu paketleri (hlauncher.json) yalnızca https ile alınıyor; modpack ve ürün arşivleri boyut hilelerine karşı korunuyor; bir sayfa beklenmedik veriyle açılamazsa pencerenin tamamı yerine yalnızca o sayfa hata gösteriyor
+
 ## 1.0.0-alpha.6 — 2026-09-24
 
 ### Güvenlik düzeltmesi

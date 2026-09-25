@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, CheckCircle2, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Trash2, Wrench, ArrowUpCircle, LifeBuoy, FolderOpen, Sparkles } from 'lucide-react';
+import ReportModal from './components/ReportModal';
+import Markdown from './components/Markdown';
+import { notesFor } from './utils/changelog.js';
 import Rail from './components/Rail';
 import TopBar from './components/TopBar';
 import HomePage from './components/HomePage';
@@ -9,16 +12,33 @@ import BrowsePage from './components/BrowsePage';
 import ServersPage from './components/ServersPage';
 import SettingsPage from './components/SettingsPage';
 import AccountPage from './components/AccountPage';
+import PortalPage from './components/PortalPage';
+import ProductView from './components/ProductView';
 import DownloadBar from './components/DownloadBar';
 import UpdateModal from './components/UpdateModal';
 import CreateInstanceModal from './components/CreateInstanceModal';
 import Modal from './components/Modal';
 import Onboarding from './components/Onboarding';
+import AuthScreen, { AuthSplash } from './components/AuthScreen';
+import { authView, isRevokedReason } from './components/auth/authView.js';
 import { contrastText } from './utils/color';
+import { DEFAULT_ACCENT } from './utils/accents.js';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { I18nProvider, useI18n } from './i18n.jsx';
 import { TaskProvider, useTasks } from './tasks.jsx';
 
 const MAX_SERVERS = 20;
+
+/** Ana sayfadaki küçük HardSetups kartı için tek öğe: duyuru > kampanya > hero. Yoksa null (kart hiç görünmez). */
+function hsHighlightOf(home) {
+  const a = home.announcements?.[0];
+  if (a) return { title: a.text, text: null };
+  const c = home.campaigns?.[0];
+  if (c) return { title: c.title, text: c.description, coupon: c.couponCode };
+  const h = home.hero?.[0];
+  if (h) return { title: h.title, text: h.subtitle, slug: h.action?.type === 'product' ? h.action.slug : null };
+  return null;
+}
 const PROGRESS_KEYS = { assets: 'progress.assets', classes: 'progress.classes', libraries: 'progress.libraries', natives: 'progress.natives' };
 
 function App() {
@@ -55,6 +75,18 @@ function App() {
   const [pendingDelete, setPendingDelete] = useState(null);
 
   const [news, setNews] = useState([]);
+  // HardSetups hesabı özeti (token içermez): { signedIn, user, wallet, maintenance, outdated, ... }
+  // null: ilk IPC yanıtı gelmedi → açılış ekranı. signedIn değilse giriş kapısı (authView).
+  const [portal, setPortal] = useState(null);
+  // Oturum güvenlik nedeniyle düştüyse (DEVICE_REVOKED…) giriş ekranında bildirim; kendi çıkışında null
+  const [sessionEnd, setSessionEnd] = useState(null);
+  // Vitrin özeti ana sayfa için (kullanıcı kararı: küçük "HardSetups'ta yeni" kartı +
+  // L4 canlıyken haberler panelden). API yoksa null → haberler news.json'dan.
+  const [portalHome, setPortalHome] = useState(null);
+  const [reportFor, setReportFor] = useState(null); // { instance, subject } — "Sorun bildir"
+  const [crash, setCrash] = useState(null);         // { code, instanceId }
+  const [whatsNew, setWhatsNew] = useState(null);   // { version, notes }
+  const lastRunRef = useRef(null);                  // çökme bildirimi hangi profile ait
   const [updaterStatus, setUpdaterStatus] = useState({ state: 'idle' });
   const [updateOpen, setUpdateOpen] = useState(false);
   const promptedVersion = useRef(null);
@@ -93,6 +125,13 @@ function App() {
       setInstances(insts);
       setLang(store.settings.language || 'tr');
 
+      // Güncellemeden sonraki ilk açılış: "Bu sürümde neler var" (ilk kurulumda gösterilmez)
+      if (sys.appVersion && store.lastSeenVersion !== sys.appVersion) {
+        const notes = store.lastSeenVersion ? notesFor(sys.appVersion) : null;
+        if (notes) setWhatsNew({ version: sys.appVersion, notes });
+        api.markVersionSeen().catch(() => {});
+      }
+
       // Eski sürümden (localStorage) tek seferlik migrasyon
       const legacyName = localStorage.getItem('thc_username');
       if (!store.settings.onboarded && legacyName) {
@@ -116,7 +155,7 @@ function App() {
         setSettingsState(store.settings);
       }
     }).catch((err) => {
-      setSettingsState({ language: 'tr', accent: '#ff6a3d', ram: 4, fullscreen: false, javaPath: '', jvmPreset: 'balanced', customJvmArgs: '', checkUpdates: true, onboarded: true });
+      setSettingsState({ language: 'tr', accent: DEFAULT_ACCENT, ram: 4, fullscreen: false, javaPath: '', jvmPreset: 'balanced', customJvmArgs: '', checkUpdates: true, onboarded: true });
       surfaceError(err);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -139,6 +178,7 @@ function App() {
         setProgressLabel(PROGRESS_KEYS[data.type] || 'progress.preparing');
       }),
       api.onLaunchFinished(() => {
+        lastRunRef.current = launchRef.current.launchingId;
         setLaunch((prev) => ({ ...prev, launchingId: null, runningId: prev.launchingId }));
         setProgress(100);
         refreshInstances(); // son oynama zamanı güncellensin
@@ -152,15 +192,35 @@ function App() {
         clearLaunch();
         api.showLauncher();
       }),
-      api.onGameCrashed((data) => setErrorMessage(tRef.current('game.crashed', { code: data?.code ?? '?' }))),
+      api.onGameCrashed((data) => setCrash({ code: data?.code ?? '?', instanceId: lastRunRef.current })),
       api.onJavaStatus((data) => {
         setInstallStatus(data);
         if (data.type === 'done') setTimeout(() => setInstallStatus(null), 1200);
       }),
       api.onUpdaterStatus(setUpdaterStatus),
+      api.onPortalState(setPortal),
+      // Oturum kapanınca giriş kapısı görünür (oyun açıksa oyun sürer). Panelden iptal /
+      // güvenlik nedeni giriş ekranında bildirilir; yeniden girişte ana sayfadan başlanır.
+      api.onPortalSession((e) => {
+        if (e.signedIn) { setSessionEnd(null); return; }
+        setSessionEnd(isRevokedReason(e.reason) ? e.reason : null);
+        setView({ page: 'home' });
+      }),
     ];
     api.getUpdaterStatus().then(setUpdaterStatus).catch(() => {});
-    return () => unsubs.forEach((off) => off?.());
+    // İlk durum: ana süreç hazır değilse (NOT_READY) kısa aralıkla yeniden sorulur; o sürede
+    // açılış ekranı görünür. Olay akışı (portal:state) daha önce gelirse sorgu durur.
+    let stateTimer = null;
+    let gotState = false;
+    const unsubFirst = api.onPortalState(() => { gotState = true; });
+    const askState = () => api.portalState()
+      .then((res) => {
+        if (gotState) return;
+        if (res.ok) { gotState = true; setPortal(res.state); } else stateTimer = setTimeout(askState, 1000);
+      })
+      .catch(() => { if (!gotState) stateTimer = setTimeout(askState, 1000); });
+    askState();
+    return () => { clearTimeout(stateTimer); unsubFirst?.(); unsubs.forEach((off) => off?.()); };
   }, [api, refreshInstances]);
 
   // Güncelleme indirildiğinde her sürüm için bir kez sor; oyun açıksa üst bardaki düğme bekler
@@ -189,6 +249,17 @@ function App() {
     api.getNews().then((n) => { if (!cancelled) setNews(n); }).catch(() => {});
     return () => { cancelled = true; };
   }, [api]);
+
+  // ── HardSetups vitrin özeti (ana sayfa kartı + panel haberleri) ───────────
+  const portalReady = !!portal?.configLoaded && !portal?.outdated;
+  useEffect(() => {
+    if (!portalReady) { setPortalHome(null); return undefined; }
+    let cancelled = false;
+    api.portalHome('open')
+      .then((res) => { if (!cancelled) setPortalHome(res.ok ? res.home : null); })
+      .catch(() => { if (!cancelled) setPortalHome(null); });
+    return () => { cancelled = true; };
+  }, [api, portalReady, portal?.signedIn]);
 
   // ── Canlı sunucu durumu (mcstatus.io, 30sn) ───────────────────────────────
   // Yalnızca id/adres kümesi değişince yeniden kurulur.
@@ -313,11 +384,14 @@ function App() {
 
   const stopGame = useCallback(() => api.stopGame(), [api]);
 
-  // ── Türetilmiş değerler ───────────────────────────────────────────────────
-  if (!settings) {
-    return <div className="boot">{t('common.loading')}</div>;
-  }
+  // ── Giriş kapısı ──────────────────────────────────────────────────────────
+  // HardSetups hesabı zorunlu (alpha.7): oturum yoksa kabuk (ray, sayfalar, onboarding) hiç
+  // çizilmez, yerine tam pencere AuthScreen gelir. Portal durumu gelene kadar açılış ekranı:
+  // giriş yapmış oyuncu giriş ekranını bir an bile görmez.
+  const gate = authView(portal);
+  if (!settings || gate === 'loading') return <AuthSplash />;
 
+  // ── Türetilmiş değerler ───────────────────────────────────────────────────
   const accent = settings.accent;
   const onAccent = contrastText(accent);
   const latestVersionId = versionManifest[0]?.id;
@@ -373,6 +447,8 @@ function App() {
           : [{ label: t('browse.title') }];
       }
       case 'servers': return [{ label: t('nav.servers') }];
+      case 'hardsetups': return [{ label: t('nav.library') }];
+      case 'product': return [{ label: t('nav.library'), onClick: () => navigate({ page: 'hardsetups', tab: 'store' }) }, { label: view.title || view.slug || '' }];
       case 'settings': return [{ label: t('nav.settings') }];
       case 'account': return [{ label: t('nav.account') }];
       default: return [{ label: t('nav.home') }];
@@ -380,11 +456,83 @@ function App() {
   })();
 
   const pageMotion = { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0 }, transition: { duration: 0.14 } };
-  const pageKey = page === 'instance' ? `inst-${view.id}` : page === 'browse' ? `browse-${view.instanceId || ''}-${view.type || ''}` : page;
+  const pageKey = page === 'instance' ? `inst-${view.id}` : page === 'browse' ? `browse-${view.instanceId || ''}-${view.type || ''}` : page === 'product' ? `product-${view.slug}` : page;
+  const gated = gate !== 'app';
+
+  // Kapıda da gerekenler: indirilen güncelleme, hata ve (oyun açıkken oturum düştüyse) çökme bildirimi
+  const sharedModals = (
+    <>
+      <UpdateModal open={updateOpen && updateReady} status={updaterStatus} gameBusy={gameBusy} onClose={() => setUpdateOpen(false)} />
+
+      <Modal
+        open={!!errorMessage}
+        onClose={() => setErrorMessage(null)}
+        icon={<AlertTriangle size={18} />}
+        tone="danger"
+        title={t('err.title')}
+        footer={
+          <>
+            <button className="btn-ghost" onClick={() => api.openLogs()}>{t('err.openLogs')}</button>
+            <button className="btn-primary" onClick={() => setErrorMessage(null)} autoFocus>{t('common.ok')}</button>
+          </>
+        }
+      >
+        <p className="modal-text" style={{ whiteSpace: 'pre-wrap' }}>{errorMessage}</p>
+      </Modal>
+
+      {/* Oyun çöktü: günlükler + (HardSetups) sorun bildir — bildirim hesap ister, kapıda gizli */}
+      <Modal
+        open={!!crash && !errorMessage}
+        onClose={() => setCrash(null)}
+        icon={<AlertTriangle size={18} />}
+        tone="danger"
+        title={t('err.title')}
+        footer={
+          <>
+            <button className="btn-ghost" onClick={() => api.openLogs()}><FolderOpen size={15} /> {t('err.openLogs')}</button>
+            {!gated && portal?.features?.report !== false && (
+              <button className="btn-secondary" onClick={() => {
+                const inst = findInstance(crash?.instanceId);
+                setCrash(null);
+                setReportFor({ instance: inst || null, subject: t('hs.report.crashSubject', { name: inst?.name || '' }) });
+              }}><LifeBuoy size={15} /> {t('hs.report.title')}</button>
+            )}
+            <button className="btn-primary" onClick={() => setCrash(null)} autoFocus>{t('common.ok')}</button>
+          </>
+        }
+      >
+        <p className="modal-text">{t('game.crashed', { code: crash?.code ?? '?' })}</p>
+      </Modal>
+    </>
+  );
+
+  if (gated) {
+    return (
+      <div className="app-shell" style={{ '--accent': accent, '--on-accent': onAccent }}>
+        <ErrorBoundary>
+        <AuthScreen
+          portal={portal}
+          view={gate}
+          sessionEnd={sessionEnd}
+          updaterStatus={updaterStatus}
+          onOpenUpdate={() => setUpdateOpen(true)}
+          appVersion={systemInfo.appVersion}
+          onLanguage={(lang) => { setLang(lang); updateSetting('language', lang); }}
+          running={runningInst ? { name: runningInst.name } : launchingInst ? { name: launchingInst.name, launching: true } : null}
+          onStop={stopGame}
+        />
+        </ErrorBoundary>
+        {sharedModals}
+        <div id="hl-floating" className="floating-root" />
+      </div>
+    );
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="app-shell" style={{ '--accent': accent, '--on-accent': onAccent }}>
+      {/* Açılır menüler buraya portal ile çizilir (ui.jsx Menu): kesilmez, vurgu rengini miras alır */}
+      <div id="hl-floating" className="floating-root" />
       <Rail
         view={view}
         navigate={navigate}
@@ -397,10 +545,30 @@ function App() {
       <div className="app-column">
         <TopBar crumbs={crumbs} status={topStatus} onStop={stopGame} updateReady={updateReady} onOpenUpdate={() => setUpdateOpen(true)} />
 
+        {portal?.outdated && (
+          <div className="banner portal-banner" role="alert">
+            <ArrowUpCircle size={16} />
+            <span style={{ flex: 1 }}>{t('hs.outdated.text', { min: portal.outdated.minVersion || '' })}</span>
+            <button className="btn-secondary btn-xs" onClick={() => (updateReady ? setUpdateOpen(true) : api.checkAppUpdate())}>{t('hs.outdated.update')}</button>
+            <button className="btn-ghost btn-xs" onClick={() => api.portalOpenLink('launcher')}>{t('hs.outdated.download')}</button>
+          </div>
+        )}
+        {portal?.maintenance && !portal?.outdated && (
+          <div className="banner portal-banner" role="status">
+            <Wrench size={16} />
+            <span>
+              <b>{t('hs.maintenance.title')}</b>
+              {portal.maintenance.message ? ` ${portal.maintenance.message}` : ''}
+              <span className="muted"> — {t('hs.maintenance.playable')}</span>
+            </span>
+          </div>
+        )}
+
         {/* İndirme paneli açıkken sayfaların altı boşalır: panel düğmeleri örtmesin */}
         <main className={`app-main${tasks.length || launch.launchingId || updaterStatus.state === 'downloading' ? ' has-dl' : ''}`}>
           <AnimatePresence mode="wait">
             <motion.div key={pageKey} className="page" {...pageMotion}>
+              <ErrorBoundary>
               {page === 'home' && (
                 <HomePage
                   instances={sortedInstances}
@@ -408,7 +576,12 @@ function App() {
                   account={account}
                   servers={servers}
                   statuses={serverStatuses}
-                  news={news}
+                  news={portalHome
+                    ? portalHome.news.map((n) => ({ title: n.title, text: n.excerpt, date: n.publishedAt ? n.publishedAt.slice(0, 10) : null, url: n.url }))
+                    : news}
+                  hsHighlight={portalHome ? hsHighlightOf(portalHome) : null}
+                  portal={portal}
+                  portalHome={portalHome}
                   launch={launch}
                   onPlay={(inst) => launchInstance(inst)}
                   onOpenInstance={openInstance}
@@ -468,6 +641,37 @@ function App() {
                 />
               )}
 
+              {page === 'hardsetups' && (
+                <PortalPage
+                  portal={portal}
+                  tab={view.tab || 'store'}
+                  setTab={(tab) => setView((v) => ({ ...v, tab }))}
+                  autoInstall={view.install || null}
+                  onAutoInstallDone={() => setView((v) => ({ ...v, install: null }))}
+                  onOpenProduct={(slug) => navigate({ page: 'product', slug })}
+                  instances={instances}
+                  launch={launch}
+                  onPlay={(inst) => launchInstance(inst)}
+                  onStop={stopGame}
+                  onOpenInstance={openInstance}
+                  onInstancesRefresh={refreshInstances}
+                  onError={setErrorMessage}
+                  onNotice={setNotice}
+                />
+              )}
+
+              {page === 'product' && (
+                <ProductView
+                  slug={view.slug}
+                  portal={portal}
+                  onLoaded={(title) => setView((v) => (v.page === 'product' && v.title !== title ? { ...v, title } : v))}
+                  onBack={() => navigate({ page: 'hardsetups', tab: 'store' })}
+                  onOpenLibrary={() => navigate({ page: 'hardsetups', tab: 'library' })}
+                  onInstall={(slug) => navigate({ page: 'hardsetups', tab: 'library', install: slug })}
+                  onConnect={() => navigate({ page: 'account' })}
+                />
+              )}
+
               {page === 'settings' && (
                 <SettingsPage
                   settings={settings}
@@ -477,6 +681,7 @@ function App() {
                   updaterStatus={updaterStatus}
                   onNotice={setNotice}
                   onError={setErrorMessage}
+                  onReport={portal?.features?.report !== false ? () => setReportFor({ instance: null, subject: '' }) : null}
                 />
               )}
 
@@ -484,17 +689,17 @@ function App() {
                 <AccountPage
                   account={account}
                   setAccount={setAccount}
+                  portal={portal}
                   onError={setErrorMessage}
                 />
               )}
+              </ErrorBoundary>
             </motion.div>
           </AnimatePresence>
         </main>
       </div>
 
       <DownloadBar extraTasks={[launchTask, updateTask].filter(Boolean)} />
-
-      <UpdateModal open={updateOpen && updateReady} status={updaterStatus} gameBusy={gameBusy} onClose={() => setUpdateOpen(false)} />
 
       <CreateInstanceModal
         open={creating}
@@ -523,22 +728,6 @@ function App() {
         <p className="modal-text">{pendingDelete ? t('prof.deleteConfirm', { name: pendingDelete.name }) : ''}</p>
       </Modal>
 
-      <Modal
-        open={!!errorMessage}
-        onClose={() => setErrorMessage(null)}
-        icon={<AlertTriangle size={18} />}
-        tone="danger"
-        title={t('err.title')}
-        footer={
-          <>
-            <button className="btn-ghost" onClick={() => api.openLogs()}>{t('err.openLogs')}</button>
-            <button className="btn-primary" onClick={() => setErrorMessage(null)} autoFocus>{t('common.ok')}</button>
-          </>
-        }
-      >
-        <p className="modal-text" style={{ whiteSpace: 'pre-wrap' }}>{errorMessage}</p>
-      </Modal>
-
       {/* Bilgi: hata açıksa üst üste binmesin */}
       <Modal
         open={!!notice && !errorMessage}
@@ -551,9 +740,32 @@ function App() {
         <p className="modal-text">{notice}</p>
       </Modal>
 
+      <ReportModal
+        open={!!reportFor}
+        onClose={() => setReportFor(null)}
+        portal={portal}
+        instance={reportFor?.instance || null}
+        defaultSubject={reportFor?.subject || ''}
+        onConnect={() => navigate({ page: 'account' })}
+        onNotice={setNotice}
+      />
+
+      {/* Güncellemeden sonraki ilk açılış */}
+      <Modal
+        open={!!whatsNew && !errorMessage}
+        onClose={() => setWhatsNew(null)}
+        icon={<Sparkles size={18} />}
+        size="md"
+        title={t('whatsnew.title', { version: whatsNew?.version || '' })}
+        footer={<button className="btn-primary" onClick={() => setWhatsNew(null)} autoFocus>{t('common.ok')}</button>}
+      >
+        <div className="whatsnew"><Markdown source={whatsNew?.notes || ''} onLink={(url) => api.portalOpenUrl(url)} /></div>
+      </Modal>
+
       <AnimatePresence>
         {!settings.onboarded && (
           <Onboarding
+            username={portal?.user?.username || ''}
             accent={accent}
             account={account}
             setAccount={setAccount}
@@ -564,6 +776,8 @@ function App() {
           />
         )}
       </AnimatePresence>
+
+      {sharedModals}
     </div>
   );
 }
