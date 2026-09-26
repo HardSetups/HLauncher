@@ -338,6 +338,13 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
         return imageHostAllowed(u.hostname, u.protocol);
     }
     const findManaged = (slug) => instances.list().find((i) => i.origin === 'hardsetups' && i.product === slug) || null;
+    /** Ürünün bu cihazdaki kurulu sürümü verilen sürüme eşit ya da daha yeni mi? (hl-manifest.json'dan) */
+    function isInstalledAtLeast(slug, version) {
+        const inst = findManaged(slug);
+        if (!inst || !version) return false;
+        const installed = installer.readInstalled(getInstanceDir(inst.id))?.version?.version || inst.installedVersion;
+        return !!installed && compareVersions(installed, version) >= 0;
+    }
 
     function requireReady({ account = true } = {}) {
         assertSupported();
@@ -628,7 +635,10 @@ function createPortal({ app, store, dataRoot, log, openExternal, send, isGameRun
                 endsAt: str(c.endsAt, 40), description: str(c.description, 200),
             })).filter((c) => c.code && c.type && c.value !== null).slice(0, 5),
             news: arr(data?.news).map((n) => ({ id: str(n.id, 64), title: str(n.title, 160), excerpt: str(n.excerpt, 400), imageUrl: str(n.imageUrl, 2048), url: str(n.url, 2048), publishedAt: str(n.publishedAt, 40) })).filter((n) => n.title),
-            updates: arr(data?.updates).map((u) => ({ product: str(u.product, 64), version: str(u.version, 40), publishedAt: str(u.publishedAt, 40), changelog: str(u.changelog, 4000) })).filter((u) => u.product),
+            // Sunucu son 30 günün sürümlerini gönderir; bu cihazda o sürüm (ya da daha yenisi) zaten
+            // kuruluysa "güncelleme var" gösterilmez (güncelledikten sonra uyarı kalıyordu)
+            updates: arr(data?.updates).map((u) => ({ product: str(u.product, 64), version: str(u.version, 40), publishedAt: str(u.publishedAt, 40), changelog: str(u.changelog, 4000) }))
+                .filter((u) => u.product && !isInstalledAtLeast(u.product, u.version)),
             expiring: arr(data?.expiring).map((e) => ({ licenseId: str(e.licenseId, 64), product: str(e.product, 64), expiresAt: str(e.expiresAt, 40), renewUrl: str(e.renewUrl, 2048) })).filter((e) => e.product),
         };
     }

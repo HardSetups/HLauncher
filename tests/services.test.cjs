@@ -792,6 +792,18 @@ test('portal.home: bilinmeyen action türü gizlenir, ETag ile 304, kapatılan d
     });
 });
 
+test('portal.home: kurulu sürüm yayındaki sürüme eşit ya da yeniyse "Güncellemeler"de gösterilmez', async () => {
+    await withPortal(async ({ portal, login }) => {
+        await login();
+        const before = (await portal.home({ reason: 'refresh' })).home.updates;
+        assert.ok(before.some((u) => u.product === 'kum-firtinasi'), 'kurulu değilken güncelleme satırı görünür');
+        await portal.installProduct('kum-firtinasi', 'INSTALL');
+        const after = (await portal.home()).home.updates; // önbellekten de olsa yeniden süzülür
+        assert.ok(!after.some((u) => u.product === 'kum-firtinasi'), 'güncel sürüm kuruluyken satır kalmamalı');
+        portal.uninstallProduct('kum-firtinasi', { backupWorlds: false });
+    });
+});
+
 test('portal.home (v1.7): hesaba özel kuponlar yalnızca girişliyken; bilinmeyen türdeki kupon elenir', async () => {
     await withPortal(async ({ portal, login }) => {
         assert.deepStrictEqual((await portal.home()).home.coupons, []);
